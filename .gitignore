@@ -19,3 +19,6 @@ build/
 
 # Docker data
 .redis_data/
+
+#claude
+.claude/
