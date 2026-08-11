@@ -1,0 +1,329 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ==========================================
+// SHARED ENUMS (Native PostgreSQL Enums)
+// ==========================================
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+
+  @@map("users_status_enum")
+}
+
+enum RoleContextType {
+  PATIENT
+  DOCTOR
+  CLINIC_STAFF
+  PHARMACY_STAFF
+  LAB_STAFF
+  ADMIN
+
+  @@map("role_memberships_context_type_enum")
+}
+
+enum RoleMembershipStatus {
+  ACTIVE
+  REVOKED
+
+  @@map("role_memberships_status_enum")
+}
+
+enum DoctorStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+
+  @@map("doctors_status_enum")
+}
+
+enum ProviderStatus {
+  PENDING
+  VERIFIED
+  SUSPENDED
+
+  @@map("provider_status_enum")
+}
+
+enum AffiliationStatus {
+  ACTIVE
+  PAUSED
+
+  @@map("doctor_clinic_affiliations_status_enum")
+}
+
+enum ProviderType {
+  DOCTOR
+  CLINIC
+  PHARMACY
+  LAB
+
+  @@map("provider_type_enum")
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("provider_verification_documents_status_enum")
+}
+
+enum SlotStatus {
+  OPEN
+  HELD
+  BOOKED
+  BLOCKED
+
+  @@map("appointment_slots_status_enum")
+}
+
+enum HoldStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+
+  @@map("appointment_holds_status_enum")
+}
+
+enum AppointmentStatus {
+  HELD
+  EXPIRED
+  CONFIRMED
+  CHECKED_IN
+  CANCELLED
+  NO_SHOW
+  IN_PROGRESS
+  COMPLETED
+  RESCHEDULED
+
+  @@map("appointments_status_enum")
+}
+
+enum EncounterStatus {
+  OPEN
+  COMPLETED
+
+  @@map("encounters_status_enum")
+}
+
+enum PrescriptionSource {
+  DOCTOR_ISSUED
+  PATIENT_UPLOADED
+
+  @@map("prescriptions_source_enum")
+}
+
+enum PrescriptionStatus {
+  UPLOADED
+  QUALITY_CHECK_PASSED
+  QUALITY_CHECK_FAILED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+
+  @@map("prescriptions_status_enum")
+}
+
+enum QualityCheckStatus {
+  PENDING
+  PASSED
+  FAILED
+
+  @@map("prescription_images_quality_check_status_enum")
+}
+
+enum PrescriptionReviewDecision {
+  ACCEPTED
+  REJECTED
+  NEEDS_CLARIFICATION
+
+  @@map("prescription_reviews_decision_enum")
+}
+
+enum PharmacyOrderStatus {
+  RECEIVED
+  UNDER_REVIEW
+  ACCEPTED
+  SUBSTITUTION_PROPOSED
+  REJECTED
+  PAID
+  PREPARING
+  READY_FOR_PICKUP
+  OUT_FOR_DELIVERY
+  FULFILLED
+  CANCELLED
+
+  @@map("pharmacy_orders_status_enum")
+}
+
+enum FulfillmentType {
+  PICKUP
+  DELIVERY
+
+  @@map("pharmacy_orders_fulfillment_type_enum")
+}
+
+enum BroadcastResponse {
+  ACCEPTED
+  DECLINED
+  TIMEOUT
+
+  @@map("pharmacy_order_broadcasts_response_enum")
+}
+
+enum PharmacyOrderItemStatus {
+  AVAILABLE
+  UNAVAILABLE
+  SUBSTITUTED
+
+  @@map("pharmacy_order_items_status_enum")
+}
+
+enum SubstitutionDecision {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@map("substitutions_patient_decision_enum")
+}
+
+enum PayableType {
+  APPOINTMENT
+  PHARMACY_ORDER
+  LAB_ORDER
+
+  @@map("payment_intents_payable_type_enum")
+}
+
+enum PaymentIntentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  CANCELLED
+  SETTLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+
+  @@map("payment_intents_status_enum")
+}
+
+enum PaymentAttemptStatus {
+  INITIATED
+  SUCCEEDED
+  FAILED
+
+  @@map("payment_attempts_status_enum")
+}
+
+enum PayeeType {
+  PLATFORM
+  PROVIDER
+
+  @@map("payment_splits_payee_type_enum")
+}
+
+enum SplitType {
+  COMMISSION
+  PROVIDER_SHARE
+
+  @@map("payment_splits_type_enum")
+}
+
+enum RefundStatus {
+  REQUESTED
+  PROCESSING
+  COMPLETED
+  FAILED
+
+  @@map("refunds_status_enum")
+}
+
+enum LedgerEntryType {
+  EARNING
+  COMMISSION_DEDUCTION
+  PAYOUT
+  ADJUSTMENT
+
+  @@map("provider_ledger_entries_entry_type_enum")
+}
+
+enum CourierType {
+  PHARMACY_OWN
+  THIRD_PARTY
+
+  @@map("delivery_orders_courier_type_enum")
+}
+
+enum DeliveryStatus {
+  PENDING
+  ASSIGNED
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+
+  @@map("delivery_orders_status_enum")
+}
+
+enum NotificationTier {
+  TRANSACTIONAL
+  INFORMATIONAL
+  SAFETY_CRITICAL
+  MARKETING
+
+  @@map("notifications_tier_enum")
+}
+
+enum PolicyType {
+  COMMISSION_RATE
+  CANCELLATION_TIER
+  NOTIFICATION_QUIET_HOURS
+
+  @@map("policy_configs_policy_type_enum")
+}
+
+// ==========================================
+// SHARED MODELS
+// ==========================================
+
+model PolicyConfig {
+  id             String     @id @default(uuid()) @db.Uuid
+  region_code    String
+  policy_type    PolicyType
+  value          Json
+  effective_from DateTime   @default(now()) @db.Timestamptz
+  created_by     String?    @db.Uuid
+  created_at     DateTime   @default(now()) @db.Timestamptz
+  updated_at     DateTime   @updatedAt @db.Timestamptz
+  version        Int        @default(1)
+
+  creator User? @relation("CreatedByPolicyConfig", fields: [created_by], references: [id])
+
+  @@map("policy_configs")
+}
+
+model WebhookEvent {
+  id                 String    @id @default(uuid()) @db.Uuid
+  provider           String
+  event_type         String
+  payload            Json
+  signature_verified Boolean   @default(false)
+  idempotency_key    String    @unique
+  processed_at       DateTime? @db.Timestamptz
+  created_at         DateTime  @default(now()) @db.Timestamptz
+  updated_at         DateTime  @updatedAt @db.Timestamptz
+  version            Int       @default(1)
+
+  @@map("webhook_events")
+}

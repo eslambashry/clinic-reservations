@@ -1,0 +1,84 @@
+// ==========================================
+// PHARMACY MODULE SCHEMA
+// ==========================================
+
+model PharmacyOrder {
+  id                 String              @id @default(uuid()) @db.Uuid
+  prescription_id    String              @db.Uuid
+  patient_id         String              @db.Uuid
+  pharmacy_branch_id String?             @db.Uuid
+  status             PharmacyOrderStatus @default(RECEIVED)
+  payment_intent_id  String?             @db.Uuid
+  fulfillment_type   FulfillmentType     @default(PICKUP)
+  created_at         DateTime            @default(now()) @db.Timestamptz
+  updated_at         DateTime            @updatedAt @db.Timestamptz
+  version            Int                 @default(1)
+
+  prescription    Prescription             @relation(fields: [prescription_id], references: [id])
+  patient         User                     @relation(fields: [patient_id], references: [id])
+  pharmacy_branch PharmacyBranch?          @relation(fields: [pharmacy_branch_id], references: [id])
+  payment_intent  PaymentIntent?           @relation(fields: [payment_intent_id], references: [id])
+  broadcasts      PharmacyOrderBroadcast[]
+  items           PharmacyOrderItem[]
+  delivery_orders DeliveryOrder[]
+
+  @@map("pharmacy_orders")
+}
+
+model PharmacyOrderBroadcast {
+  id                 String             @id @default(uuid()) @db.Uuid
+  pharmacy_order_id  String             @db.Uuid
+  pharmacy_branch_id String             @db.Uuid
+  sent_at            DateTime           @default(now()) @db.Timestamptz
+  responded_at       DateTime?          @db.Timestamptz
+  response           BroadcastResponse?
+  created_at         DateTime           @default(now()) @db.Timestamptz
+  updated_at         DateTime           @updatedAt @db.Timestamptz
+  version            Int                @default(1)
+
+  pharmacy_order  PharmacyOrder  @relation(fields: [pharmacy_order_id], references: [id], onDelete: Cascade)
+  pharmacy_branch PharmacyBranch @relation(fields: [pharmacy_branch_id], references: [id])
+
+  @@map("pharmacy_order_broadcasts")
+}
+
+model PharmacyOrderItem {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  pharmacy_order_id     String                  @db.Uuid
+  prescription_item_id  String                  @db.Uuid
+  status                PharmacyOrderItemStatus @default(AVAILABLE)
+  substituted_drug_code String?
+  unit_price            Decimal?                @db.Decimal(10, 2)
+  quantity              Int
+  created_at            DateTime                @default(now()) @db.Timestamptz
+  updated_at            DateTime                @updatedAt @db.Timestamptz
+  version               Int                     @default(1)
+
+  pharmacy_order    PharmacyOrder    @relation(fields: [pharmacy_order_id], references: [id], onDelete: Cascade)
+  prescription_item PrescriptionItem @relation(fields: [prescription_item_id], references: [id])
+  substituted_drug  DrugCatalog?     @relation(fields: [substituted_drug_code], references: [code])
+  substitutions     Substitution[]
+
+  @@map("pharmacy_order_items")
+}
+
+model Substitution {
+  id                     String               @id @default(uuid()) @db.Uuid
+  pharmacy_order_item_id String               @db.Uuid
+  original_drug_code     String
+  substituted_drug_code  String
+  proposed_by_user_id    String               @db.Uuid
+  proposed_at            DateTime             @default(now()) @db.Timestamptz
+  patient_decision       SubstitutionDecision @default(PENDING)
+  decided_at             DateTime?            @db.Timestamptz
+  created_at             DateTime             @default(now()) @db.Timestamptz
+  updated_at             DateTime             @updatedAt @db.Timestamptz
+  version                Int                  @default(1)
+
+  pharmacy_order_item PharmacyOrderItem @relation(fields: [pharmacy_order_item_id], references: [id], onDelete: Cascade)
+  original_drug       DrugCatalog       @relation("OriginalDrug", fields: [original_drug_code], references: [code])
+  substituted_drug    DrugCatalog       @relation("SubstitutedDrug", fields: [substituted_drug_code], references: [code])
+  proposed_by         User              @relation(fields: [proposed_by_user_id], references: [id])
+
+  @@map("substitutions")
+}

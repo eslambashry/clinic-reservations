@@ -1,0 +1,24 @@
+// ==========================================
+// AUDIT MODULE SCHEMA
+// ==========================================
+
+model AuditLog {
+  id                       String   @id @default(uuid()) @db.Uuid
+  actor_user_id            String?  @db.Uuid
+  actor_role_membership_id String?  @db.Uuid
+  action                   String
+  resource_type            String
+  resource_id              String   @db.Uuid
+  subject_patient_id       String?  @db.Uuid
+  reason_code              String?
+  correlation_id           String?
+  source_ip                String?
+  occurred_at              DateTime @default(now()) @db.Timestamptz
+  created_at               DateTime @default(now()) @db.Timestamptz
+  updated_at               DateTime @updatedAt @db.Timestamptz
+  version                  Int      @default(1)
+
+  actor User? @relation("ActorUser", fields: [actor_user_id], references: [id])
+
+  @@map("audit_logs")
+}

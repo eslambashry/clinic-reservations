@@ -1,0 +1,96 @@
+// ==========================================
+// PRESCRIPTIONS MODULE SCHEMA
+// ==========================================
+
+model DrugCatalog {
+  code                  String   @id
+  generic_name          String
+  controlled_substance  Boolean  @default(false)
+  requires_prescription Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.Timestamptz
+  updated_at            DateTime @updatedAt @db.Timestamptz
+  version               Int      @default(1)
+
+  prescription_items   PrescriptionItem[]
+  pharmacy_order_items PharmacyOrderItem[]
+  substitutions_orig   Substitution[]      @relation("OriginalDrug")
+  substitutions_sub    Substitution[]      @relation("SubstitutedDrug")
+
+  @@map("drug_catalog")
+}
+
+model Prescription {
+  id           String             @id @default(uuid()) @db.Uuid
+  encounter_id String?            @db.Uuid
+  patient_id   String             @db.Uuid
+  doctor_id    String?            @db.Uuid
+  source       PrescriptionSource
+  status       PrescriptionStatus @default(UPLOADED)
+  expires_at   DateTime?          @db.Timestamptz
+  created_at   DateTime           @default(now()) @db.Timestamptz
+  updated_at   DateTime           @updatedAt @db.Timestamptz
+  version      Int                @default(1)
+
+  encounter       Encounter?           @relation(fields: [encounter_id], references: [id])
+  patient         User                 @relation("PatientPrescriptions", fields: [patient_id], references: [id])
+  doctor          User?                @relation("DoctorPrescriptions", fields: [doctor_id], references: [id])
+  items           PrescriptionItem[]
+  images          PrescriptionImage[]
+  reviews         PrescriptionReview[]
+  pharmacy_orders PharmacyOrder[]
+
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  prescription_id     String   @db.Uuid
+  drug_code           String?
+  drug_name_free_text String?
+  dose                String?
+  frequency           String?
+  duration_days       Int?
+  quantity            Int?
+  created_at          DateTime @default(now()) @db.Timestamptz
+  updated_at          DateTime @updatedAt @db.Timestamptz
+  version             Int      @default(1)
+
+  prescription         Prescription        @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  drug                 DrugCatalog?        @relation(fields: [drug_code], references: [code])
+  pharmacy_order_items PharmacyOrderItem[]
+
+  @@map("prescription_items")
+}
+
+model PrescriptionImage {
+  id                   String             @id @default(uuid()) @db.Uuid
+  prescription_id      String             @db.Uuid
+  file_url             String
+  quality_check_status QualityCheckStatus @default(PENDING)
+  blur_score           Decimal?           @db.Decimal(5, 2)
+  created_at           DateTime           @default(now()) @db.Timestamptz
+  updated_at           DateTime           @updatedAt @db.Timestamptz
+  version              Int                @default(1)
+
+  prescription Prescription @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+
+  @@map("prescription_images")
+}
+
+model PrescriptionReview {
+  id                             String                     @id @default(uuid()) @db.Uuid
+  prescription_id                String                     @db.Uuid
+  pharmacist_user_id             String                     @db.Uuid
+  decision                       PrescriptionReviewDecision
+  reason_code                    String?
+  controlled_substance_confirmed Boolean                    @default(false)
+  reviewed_at                    DateTime                   @default(now()) @db.Timestamptz
+  created_at                     DateTime                   @default(now()) @db.Timestamptz
+  updated_at                     DateTime                   @updatedAt @db.Timestamptz
+  version                        Int                        @default(1)
+
+  prescription Prescription @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  pharmacist   User         @relation(fields: [pharmacist_user_id], references: [id])
+
+  @@map("prescription_reviews")
+}

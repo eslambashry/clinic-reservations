@@ -1,0 +1,81 @@
+// ==========================================
+// SCHEDULING MODULE SCHEMA
+// ==========================================
+
+model ScheduleTemplate {
+  id                           String   @id @default(uuid()) @db.Uuid
+  doctor_clinic_affiliation_id String   @db.Uuid
+  weekday                      Int
+  start_time                   String
+  end_time                     String
+  slot_duration_minutes        Int
+  buffer_minutes               Int      @default(0)
+  created_at                   DateTime @default(now()) @db.Timestamptz
+  updated_at                   DateTime @updatedAt @db.Timestamptz
+  version                      Int      @default(1)
+
+  affiliation DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id], onDelete: Cascade)
+
+  @@map("schedule_templates")
+}
+
+model AppointmentSlot {
+  id                           String     @id @default(uuid()) @db.Uuid
+  doctor_clinic_affiliation_id String     @db.Uuid
+  start_at                     DateTime   @db.Timestamptz
+  end_at                       DateTime   @db.Timestamptz
+  status                       SlotStatus @default(OPEN)
+  created_at                   DateTime   @default(now()) @db.Timestamptz
+  updated_at                   DateTime   @updatedAt @db.Timestamptz
+  version                      Int        @default(1)
+
+  affiliation DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id], onDelete: Cascade)
+  holds       AppointmentHold[]
+  appointment Appointment?
+
+  @@index([doctor_clinic_affiliation_id, start_at])
+  @@map("appointment_slots")
+}
+
+model AppointmentHold {
+  id         String     @id @default(uuid()) @db.Uuid
+  slot_id    String     @db.Uuid
+  patient_id String     @db.Uuid
+  expires_at DateTime   @db.Timestamptz
+  status     HoldStatus @default(ACTIVE)
+  created_at DateTime   @default(now()) @db.Timestamptz
+  updated_at DateTime   @updatedAt @db.Timestamptz
+  version    Int        @default(1)
+
+  slot    AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)
+  patient User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([slot_id, status])
+  @@map("appointment_holds")
+}
+
+model Appointment {
+  id                              String            @id @default(uuid()) @db.Uuid
+  slot_id                         String            @unique @db.Uuid
+  patient_id                      String            @db.Uuid
+  doctor_clinic_affiliation_id    String            @db.Uuid
+  status                          AppointmentStatus @default(HELD)
+  payment_intent_id               String?           @db.Uuid
+  cancelled_by                    String?           @db.Uuid
+  cancelled_reason                String?
+  rescheduled_from_appointment_id String?           @db.Uuid
+  created_at                      DateTime          @default(now()) @db.Timestamptz
+  updated_at                      DateTime          @updatedAt @db.Timestamptz
+  version                         Int               @default(1)
+
+  slot             AppointmentSlot         @relation(fields: [slot_id], references: [id])
+  patient          User                    @relation("PatientAppointments", fields: [patient_id], references: [id])
+  affiliation      DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id])
+  payment_intent   PaymentIntent?          @relation(fields: [payment_intent_id], references: [id])
+  canceller        User?                   @relation("CancelledAppointments", fields: [cancelled_by], references: [id])
+  rescheduled_from Appointment?            @relation("RescheduledFrom", fields: [rescheduled_from_appointment_id], references: [id])
+  rescheduled_to   Appointment[]           @relation("RescheduledFrom")
+  encounters       Encounter[]
+
+  @@map("appointments")
+}

@@ -1,0 +1,148 @@
+// ==========================================
+// IDENTITY MODULE SCHEMA
+// ==========================================
+
+model User {
+  id         String     @id @default(uuid()) @db.Uuid
+  phone      String     @unique
+  email      String?    @unique
+  status     UserStatus @default(ACTIVE)
+  created_at DateTime   @default(now()) @db.Timestamptz
+  updated_at DateTime   @updatedAt @db.Timestamptz
+  deleted_at DateTime?  @db.Timestamptz
+  version    Int        @default(1)
+
+  role_memberships                RoleMembership[]
+  devices                         Device[]
+  refresh_tokens                  RefreshToken[]
+  doctor                          Doctor?
+  appointment_holds               AppointmentHold[]
+  appointments                    Appointment[]                  @relation("PatientAppointments")
+  cancelled_appointments          Appointment[]                  @relation("CancelledAppointments")
+  health_record                   HealthRecord?
+  consents                        Consent[]
+  prescriptions                   Prescription[]                 @relation("PatientPrescriptions")
+  prescriptions_authored          Prescription[]                 @relation("DoctorPrescriptions")
+  prescription_reviews            PrescriptionReview[]
+  pharmacy_orders                 PharmacyOrder[]
+  substitutions_proposed          Substitution[]
+  payment_intents                 PaymentIntent[]
+  notifications                   Notification[]
+  notification_preferences        NotificationPreference[]
+  reviews                         Review[]
+  audit_logs                      AuditLog[]                     @relation("ActorUser")
+  policy_configs_created          PolicyConfig[]                 @relation("CreatedByPolicyConfig")
+  provider_verifications_reviewed ProviderVerificationDocument[] @relation("ReviewedByAdmin")
+
+  @@map("users")
+}
+
+model Role {
+  code        String   @id
+  name        String
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @updatedAt @db.Timestamptz
+  version     Int      @default(1)
+
+  role_permissions RolePermission[]
+  role_memberships RoleMembership[]
+
+  @@map("roles")
+}
+
+model Permission {
+  code        String   @id
+  module      String
+  action      String
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+  updated_at  DateTime @updatedAt @db.Timestamptz
+  version     Int      @default(1)
+
+  role_permissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id              String   @id @default(uuid()) @db.Uuid
+  role_code       String
+  permission_code String
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+  version         Int      @default(1)
+
+  role       Role       @relation(fields: [role_code], references: [code], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_code], references: [code], onDelete: Cascade)
+
+  @@unique([role_code, permission_code])
+  @@map("role_permissions")
+}
+
+model RoleMembership {
+  id           String               @id @default(uuid()) @db.Uuid
+  user_id      String               @db.Uuid
+  role_code    String
+  context_type RoleContextType
+  context_id   String?              @db.Uuid
+  status       RoleMembershipStatus @default(ACTIVE)
+  created_at   DateTime             @default(now()) @db.Timestamptz
+  updated_at   DateTime             @updatedAt @db.Timestamptz
+  version      Int                  @default(1)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [role_code], references: [code])
+
+  @@map("role_memberships")
+}
+
+model OtpRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  phone       String
+  code_hash   String
+  purpose     String
+  expires_at  DateTime  @db.Timestamptz
+  consumed_at DateTime? @db.Timestamptz
+  attempts    Int       @default(0)
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  updated_at  DateTime  @updatedAt @db.Timestamptz
+  version     Int       @default(1)
+
+  @@map("otp_requests")
+}
+
+model Device {
+  id           String   @id @default(uuid()) @db.Uuid
+  user_id      String   @db.Uuid
+  fcm_token    String
+  platform     String
+  app_version  String?
+  last_seen_at DateTime @default(now()) @db.Timestamptz
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+  version      Int      @default(1)
+
+  user           User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  refresh_tokens RefreshToken[]
+
+  @@map("devices")
+}
+
+model RefreshToken {
+  id                    String    @id @default(uuid()) @db.Uuid
+  user_id               String    @db.Uuid
+  token_hash            String    @unique
+  device_id             String?   @db.Uuid
+  rotated_from_token_id String?   @db.Uuid
+  expires_at            DateTime  @db.Timestamptz
+  revoked_at            DateTime? @db.Timestamptz
+  created_at            DateTime  @default(now()) @db.Timestamptz
+  updated_at            DateTime  @updatedAt @db.Timestamptz
+  version               Int       @default(1)
+
+  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [device_id], references: [id], onDelete: SetNull)
+
+  @@map("refresh_tokens")
+}

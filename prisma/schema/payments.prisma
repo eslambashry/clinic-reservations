@@ -1,0 +1,91 @@
+// ==========================================
+// PAYMENTS MODULE SCHEMA
+// ==========================================
+
+model PaymentIntent {
+  id              String              @id @default(uuid()) @db.Uuid
+  payer_user_id   String              @db.Uuid
+  payable_type    PayableType
+  payable_id      String              @db.Uuid
+  amount          Decimal             @db.Decimal(10, 2)
+  currency        String              @db.Char(3)
+  tax_amount      Decimal?            @db.Decimal(10, 2)
+  status          PaymentIntentStatus @default(CREATED)
+  idempotency_key String              @unique
+  created_at      DateTime            @default(now()) @db.Timestamptz
+  updated_at      DateTime            @updatedAt @db.Timestamptz
+  version         Int                 @default(1)
+
+  payer                   User                  @relation(fields: [payer_user_id], references: [id])
+  appointments            Appointment[]
+  pharmacy_orders         PharmacyOrder[]
+  payment_attempts        PaymentAttempt[]
+  payment_splits          PaymentSplit[]
+  refunds                 Refund[]
+  provider_ledger_entries ProviderLedgerEntry[]
+
+  @@map("payment_intents")
+}
+
+model PaymentAttempt {
+  id                String               @id @default(uuid()) @db.Uuid
+  payment_intent_id String               @db.Uuid
+  gateway_reference String?
+  status            PaymentAttemptStatus @default(INITIATED)
+  failure_code      String?
+  attempted_at      DateTime             @default(now()) @db.Timestamptz
+  created_at        DateTime             @default(now()) @db.Timestamptz
+  updated_at        DateTime             @updatedAt @db.Timestamptz
+  version           Int                  @default(1)
+
+  payment_intent PaymentIntent @relation(fields: [payment_intent_id], references: [id], onDelete: Cascade)
+
+  @@map("payment_attempts")
+}
+
+model PaymentSplit {
+  id                String    @id @default(uuid()) @db.Uuid
+  payment_intent_id String    @db.Uuid
+  payee_type        PayeeType
+  payee_id          String?   @db.Uuid
+  amount            Decimal   @db.Decimal(10, 2)
+  type              SplitType
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @updatedAt @db.Timestamptz
+  version           Int       @default(1)
+
+  payment_intent PaymentIntent @relation(fields: [payment_intent_id], references: [id], onDelete: Cascade)
+
+  @@map("payment_splits")
+}
+
+model Refund {
+  id                String       @id @default(uuid()) @db.Uuid
+  payment_intent_id String       @db.Uuid
+  amount            Decimal      @db.Decimal(10, 2)
+  reason            String?
+  status            RefundStatus @default(REQUESTED)
+  created_at        DateTime     @default(now()) @db.Timestamptz
+  updated_at        DateTime     @updatedAt @db.Timestamptz
+  version           Int          @default(1)
+
+  payment_intent PaymentIntent @relation(fields: [payment_intent_id], references: [id], onDelete: Cascade)
+
+  @@map("refunds")
+}
+
+model ProviderLedgerEntry {
+  id                        String          @id @default(uuid()) @db.Uuid
+  provider_type             ProviderType
+  provider_id               String          @db.Uuid
+  entry_type                LedgerEntryType
+  amount                    Decimal         @db.Decimal(10, 2)
+  related_payment_intent_id String?         @db.Uuid
+  created_at                DateTime        @default(now()) @db.Timestamptz
+  updated_at                DateTime        @updatedAt @db.Timestamptz
+  version                   Int             @default(1)
+
+  related_payment_intent PaymentIntent? @relation(fields: [related_payment_intent_id], references: [id])
+
+  @@map("provider_ledger_entries")
+}

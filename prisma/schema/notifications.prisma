@@ -1,0 +1,37 @@
+// ==========================================
+// NOTIFICATIONS MODULE SCHEMA
+// ==========================================
+
+model Notification {
+  id            String           @id @default(uuid()) @db.Uuid
+  user_id       String           @db.Uuid
+  tier          NotificationTier
+  channel       String
+  template_code String
+  status        String
+  sent_at       DateTime?        @db.Timestamptz
+  read_at       DateTime?        @db.Timestamptz
+  created_at    DateTime         @default(now()) @db.Timestamptz
+  updated_at    DateTime         @updatedAt @db.Timestamptz
+  version       Int              @default(1)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id         String           @id @default(uuid()) @db.Uuid
+  user_id    String           @db.Uuid
+  tier       NotificationTier
+  channel    String
+  enabled    Boolean          @default(true)
+  created_at DateTime         @default(now()) @db.Timestamptz
+  updated_at DateTime         @updatedAt @db.Timestamptz
+  version    Int              @default(1)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, tier, channel])
+  @@map("notification_preferences")
+}
