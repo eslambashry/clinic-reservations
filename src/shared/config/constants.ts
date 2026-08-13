@@ -32,6 +32,11 @@ export const OUTBOX_CONSTANTS = {
   BATCH_SIZE: 20,
 } as const;
 
+/** File 11 Part 12 ("e.g., next 30 days") / File 12 Part 33.9. */
+export const SCHEDULING_CONSTANTS = {
+  SLOT_GENERATION_WINDOW_DAYS: 30,
+} as const;
+
 /**
  * `DEC-B09` — explicitly delegated to engineering discretion. This is the
  * global fallback only; endpoints with a documented stricter need (e.g.

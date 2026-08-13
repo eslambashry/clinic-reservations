@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { ForbiddenError } from '../errors/domain-errors';
@@ -14,7 +14,9 @@ import { ROLES_KEY } from './roles.decorator';
  */
 @Injectable()
 export class RbacGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  // Explicit `@Inject` — see the identical note on `JwtAuthGuard`/
+  // `CorrelationIdMiddleware` (`tsx`-only `Reflector` injection quirk).
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
     const requiredContexts = this.reflector.getAllAndOverride<string[] | undefined>(ROLES_KEY, [

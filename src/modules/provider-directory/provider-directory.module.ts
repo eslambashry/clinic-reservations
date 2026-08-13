@@ -19,9 +19,11 @@ import { GetClinicUseCase } from './application/get-clinic.use-case';
 import { GetDoctorUseCase } from './application/get-doctor.use-case';
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
+import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
 import { ListSpecialtiesUseCase } from './application/list-specialties.use-case';
 import { ListVerificationDocumentsUseCase } from './application/list-verification-documents.use-case';
 import { RejectVerificationDocumentUseCase } from './application/reject-verification-document.use-case';
+import { ResolveAffiliationForSchedulingUseCase } from './application/resolve-affiliation-for-scheduling.use-case';
 import { SearchDoctorsUseCase } from './application/search-doctors.use-case';
 import { SuspendClinicBranchUseCase } from './application/suspend-clinic-branch.use-case';
 import { SuspendClinicUseCase } from './application/suspend-clinic.use-case';
@@ -56,9 +58,11 @@ import { AuditModule } from '../audit/audit.module';
  * File 11 Part 03: owns `doctors`, `clinics`, `clinic_branches`,
  * `doctor_clinic_affiliations`, `pharmacies`, `pharmacy_branches`,
  * `specialties`, `addresses`, `provider_verification_documents` — no other
- * module reaches into these tables directly (File 12 Part 05); Scheduling
- * (Phase 3) will call through this module's exported use-cases once it
- * needs to resolve a doctor/clinic-branch, never its `infrastructure/`.
+ * module reaches into these tables directly (File 12 Part 05). File 12 Part
+ * 33.3: `scheduling-appointments` now calls through this module's exported
+ * use-cases (`ResolveAffiliationForSchedulingUseCase`/
+ * `ListSchedulableAffiliationsUseCase`) to resolve a doctor/clinic-branch
+ * pair and check visibility — never its `infrastructure/`.
  */
 @Module({
   imports: [AuditModule],
@@ -118,6 +122,9 @@ import { AuditModule } from '../audit/audit.module';
     ApproveVerificationDocumentUseCase,
     RejectVerificationDocumentUseCase,
     ListSpecialtiesUseCase,
+    ResolveAffiliationForSchedulingUseCase,
+    ListSchedulableAffiliationsUseCase,
   ],
+  exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase],
 })
 export class ProviderDirectoryModule {}

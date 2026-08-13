@@ -1,0 +1,39 @@
+import { Module } from '@nestjs/common';
+import { DoctorSlotsController } from './api/doctor-slots.controller';
+import { ScheduleTemplatesController } from './api/schedule-templates.controller';
+import { CreateScheduleTemplateUseCase } from './application/create-schedule-template.use-case';
+import { DeleteScheduleTemplateUseCase } from './application/delete-schedule-template.use-case';
+import { GenerateSlotsUseCase } from './application/generate-slots.use-case';
+import { GetDoctorSlotsUseCase } from './application/get-doctor-slots.use-case';
+import { ListScheduleTemplatesUseCase } from './application/list-schedule-templates.use-case';
+import { UpdateScheduleTemplateUseCase } from './application/update-schedule-template.use-case';
+import { AppointmentSlotRepository } from './infrastructure/appointment-slot.repository';
+import { ScheduleTemplateRepository } from './infrastructure/schedule-template.repository';
+import { SlotGenerationJob } from './infrastructure/slot-generation.job';
+import { AuditModule } from '../audit/audit.module';
+import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
+
+/**
+ * File 11 Part 03: owns `schedule_templates`, `appointment_slots` for this
+ * phase (`appointment_holds`/`appointments` are schema-only until Phase 4,
+ * File 12 Part 33 preamble). Imports `ProviderDirectoryModule` for the two
+ * use-cases it exports (Part 33.3) — never reaches into its repositories.
+ */
+@Module({
+  imports: [AuditModule, ProviderDirectoryModule],
+  controllers: [ScheduleTemplatesController, DoctorSlotsController],
+  providers: [
+    // infrastructure
+    ScheduleTemplateRepository,
+    AppointmentSlotRepository,
+    SlotGenerationJob,
+    // application
+    CreateScheduleTemplateUseCase,
+    UpdateScheduleTemplateUseCase,
+    DeleteScheduleTemplateUseCase,
+    ListScheduleTemplatesUseCase,
+    GenerateSlotsUseCase,
+    GetDoctorSlotsUseCase,
+  ],
+})
+export class SchedulingAppointmentsModule {}

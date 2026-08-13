@@ -22,6 +22,14 @@ export type AffiliationWithBranch = Prisma.DoctorClinicAffiliationGetPayload<{
   include: typeof AFFILIATION_WITH_BRANCH;
 }>;
 
+const AFFILIATION_WITH_VISIBILITY_CHAIN = {
+  doctor: true,
+  clinic_branch: { include: { clinic: true } },
+} satisfies Prisma.DoctorClinicAffiliationInclude;
+export type AffiliationWithVisibilityChain = Prisma.DoctorClinicAffiliationGetPayload<{
+  include: typeof AFFILIATION_WITH_VISIBILITY_CHAIN;
+}>;
+
 @Injectable()
 export class AffiliationRepository {
   create(db: Prisma.TransactionClient, input: CreateAffiliationInput): Promise<DoctorClinicAffiliation> {
@@ -37,6 +45,29 @@ export class AffiliationRepository {
 
   findById(db: Prisma.TransactionClient, id: string): Promise<DoctorClinicAffiliation | null> {
     return db.doctorClinicAffiliation.findUnique({ where: { id } });
+  }
+
+  /** File 12 Part 33.3 — resolves the `doctorId`+`clinicBranchId` pair scheduling needs, with the full visibility chain attached. */
+  findByDoctorAndBranch(
+    db: Prisma.TransactionClient,
+    doctorId: string,
+    clinicBranchId: string,
+  ): Promise<AffiliationWithVisibilityChain | null> {
+    return db.doctorClinicAffiliation.findUnique({
+      where: { doctor_id_clinic_branch_id: { doctor_id: doctorId, clinic_branch_id: clinicBranchId } },
+      include: AFFILIATION_WITH_VISIBILITY_CHAIN,
+    });
+  }
+
+  /** Batch form for the slot-generation job (Part 33.3) — only the visibility chain fields, keyed for a `Map` lookup. */
+  findManyByIdsWithVisibilityChain(
+    db: Prisma.TransactionClient,
+    affiliationIds: string[],
+  ): Promise<AffiliationWithVisibilityChain[]> {
+    return db.doctorClinicAffiliation.findMany({
+      where: { id: { in: affiliationIds } },
+      include: AFFILIATION_WITH_VISIBILITY_CHAIN,
+    });
   }
 
   /** `onlyActive=false` (Admin view) returns every affiliation regardless of status. */

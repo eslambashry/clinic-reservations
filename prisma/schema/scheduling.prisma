@@ -33,7 +33,7 @@ model AppointmentSlot {
   holds       AppointmentHold[]
   appointment Appointment?
 
-  @@index([doctor_clinic_affiliation_id, start_at])
+  @@unique([doctor_clinic_affiliation_id, start_at])
   @@map("appointment_slots")
 }
 

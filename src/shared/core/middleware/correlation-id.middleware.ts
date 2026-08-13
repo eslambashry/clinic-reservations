@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware } from '@nestjs/common';
+import { Inject, Injectable, NestMiddleware } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { NextFunction, Request, Response } from 'express';
 import { RequestContextService } from '../context/request-context.service';
@@ -13,7 +13,14 @@ const HEADER = 'x-correlation-id';
  */
 @Injectable()
 export class CorrelationIdMiddleware implements NestMiddleware {
-  constructor(private readonly context: RequestContextService) {}
+  // Explicit `@Inject` (not just a typed constructor param) — see the
+  // identical note in `PrismaService`/`RedisService`: `tsx`'s decorator
+  // metadata emission for constructor `design:paramtypes` is unreliable for
+  // some classes (found here via a live `start:dev` crash on the first real
+  // request — `this.context` resolved `undefined`, `ts-jest`-run tests never
+  // hit it since `tsc` compiles this correctly). Explicit token injection
+  // sidesteps the reflection path entirely.
+  constructor(@Inject(RequestContextService) private readonly context: RequestContextService) {}
 
   use(req: Request, res: Response, next: NextFunction): void {
     const correlationId = (req.header(HEADER) || randomUUID()) as string;

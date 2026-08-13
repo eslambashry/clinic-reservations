@@ -156,11 +156,11 @@ async function main() {
   }
 
   if (testDoctor) {
-    const existingAffiliation = await prisma.doctorClinicAffiliation.findFirst({
+    let affiliation = await prisma.doctorClinicAffiliation.findFirst({
       where: { doctor_id: testDoctor.id, clinic_branch_id: testBranch.id },
     });
-    if (!existingAffiliation) {
-      await prisma.doctorClinicAffiliation.create({
+    if (!affiliation) {
+      affiliation = await prisma.doctorClinicAffiliation.create({
         data: {
           doctor_id: testDoctor.id,
           clinic_branch_id: testBranch.id,
@@ -169,6 +169,28 @@ async function main() {
         },
       });
       console.log(`✅ Seeded affiliation: doctor ${testDoctor.id} <-> branch ${testBranch.id}`);
+    }
+
+    // Phase 3 (Availability, File 12 Part 33): one weekday template so the
+    // exit criterion (real slots via GET /doctors/{id}/slots) is runnable
+    // end-to-end — verify the doctor (Phase 2 flow) then run
+    // GenerateSlotsUseCase. Monday 09:00-13:00, Africa/Cairo (the seeded
+    // branch's timezone), 20-minute slots with a 5-minute buffer.
+    const existingTemplate = await prisma.scheduleTemplate.findFirst({
+      where: { doctor_clinic_affiliation_id: affiliation.id, weekday: 1 },
+    });
+    if (!existingTemplate) {
+      await prisma.scheduleTemplate.create({
+        data: {
+          doctor_clinic_affiliation_id: affiliation.id,
+          weekday: 1,
+          start_time: '09:00',
+          end_time: '13:00',
+          slot_duration_minutes: 20,
+          buffer_minutes: 5,
+        },
+      });
+      console.log(`✅ Seeded schedule template: affiliation ${affiliation.id}, Monday 09:00-13:00`);
     }
   }
 

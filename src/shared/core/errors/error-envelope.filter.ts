@@ -5,6 +5,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Inject,
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -46,7 +47,11 @@ interface Resolved {
 export class ErrorEnvelopeFilter implements ExceptionFilter {
   private readonly logger = new Logger(ErrorEnvelopeFilter.name);
 
-  constructor(private readonly context: RequestContextService) {}
+  // Explicit `@Inject` — see the identical note on `CorrelationIdMiddleware`:
+  // this class's own crash (this.context resolving undefined under `tsx`)
+  // is what surfaced the bug in the first place, since it's the filter that
+  // handles the middleware's failure and then failed identically itself.
+  constructor(@Inject(RequestContextService) private readonly context: RequestContextService) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();

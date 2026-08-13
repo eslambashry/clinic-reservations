@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
@@ -17,9 +17,12 @@ import { IS_PUBLIC_KEY } from './public.decorator';
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  // Explicit `@Inject` on both — see the identical note on
+  // `CorrelationIdMiddleware` (`tsx`-only metadata-reflection quirk; here it
+  // was `Reflector`, a framework class, that resolved `undefined`).
   constructor(
-    private readonly jwt: JwtService,
-    private readonly reflector: Reflector,
+    @Inject(JwtService) private readonly jwt: JwtService,
+    @Inject(Reflector) private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

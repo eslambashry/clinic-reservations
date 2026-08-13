@@ -1,4 +1,4 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Response } from 'express';
 import { Observable, map } from 'rxjs';
@@ -24,7 +24,9 @@ export interface SuccessEnvelope<T> {
  */
 @Injectable()
 export class ResponseInterceptor<T> implements NestInterceptor<T, SuccessEnvelope<T> | undefined> {
-  constructor(private readonly context: RequestContextService) {}
+  // Explicit `@Inject` — see the identical note on `CorrelationIdMiddleware`
+  // (same `tsx`-only `RequestContextService` injection quirk).
+  constructor(@Inject(RequestContextService) private readonly context: RequestContextService) {}
 
   intercept(ctx: ExecutionContext, next: CallHandler<T>): Observable<SuccessEnvelope<T> | undefined> {
     const response = ctx.switchToHttp().getResponse<Response>();
