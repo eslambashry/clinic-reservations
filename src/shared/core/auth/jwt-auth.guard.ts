@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { UnauthenticatedError } from '../errors/domain-errors';
 import { AccessTokenPayload } from './jwt-payload.interface';
+import { IS_OPTIONAL_AUTH_KEY } from './optional-auth.decorator';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
 /**
@@ -11,7 +12,8 @@ import { IS_PUBLIC_KEY } from './public.decorator';
  * `Authorization: Bearer <jwt>` header and attaches the decoded claims to
  * `request.user` for `RbacGuard`/`@CurrentUser()` to read. Endpoints marked
  * `@Public()` (OTP request/verify, login, health check) skip verification
- * entirely.
+ * entirely. Endpoints marked `@OptionalAuth()` (File 12 Part 32.9) verify a
+ * token if one is present but never throw if it's missing/invalid.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -29,9 +31,18 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<Request & { user: AccessTokenPayload }>();
+    const isOptional = this.reflector.getAllAndOverride<boolean>(IS_OPTIONAL_AUTH_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    const request = context.switchToHttp().getRequest<Request & { user?: AccessTokenPayload }>();
     const token = this.extractToken(request);
+
     if (!token) {
+      if (isOptional) {
+        return true;
+      }
       throw new UnauthenticatedError();
     }
 
@@ -39,6 +50,9 @@ export class JwtAuthGuard implements CanActivate {
       request.user = await this.jwt.verifyAsync<AccessTokenPayload>(token);
       return true;
     } catch (error) {
+      if (isOptional) {
+        return true;
+      }
       if (error instanceof Error && error.name === 'TokenExpiredError') {
         throw new UnauthenticatedError('TOKEN_EXPIRED', 'Access token has expired.');
       }

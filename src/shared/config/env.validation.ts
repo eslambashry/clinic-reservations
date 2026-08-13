@@ -1,4 +1,4 @@
-import { plainToInstance } from 'class-transformer';
+import { Type, plainToInstance } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Min, validateSync } from 'class-validator';
 
 enum NodeEnv {
@@ -17,6 +17,13 @@ class EnvironmentVariables {
   @IsOptional()
   NODE_ENV: NodeEnv = NodeEnv.Development;
 
+  // `@Type(() => Number)` explicitly, not relying on class-transformer's
+  // `enableImplicitConversion` design-type reflection: that path depends on
+  // `emitDecoratorMetadata`, which `tsx`/esbuild (the dev-loop transpiler,
+  // `start:dev`) doesn't implement — plainToInstance silently left PORT as
+  // the raw string "3000" under `tsx`, failing `@IsInt()`/`@Min(1)` even
+  // though the identical code worked once actually compiled by `tsc`.
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()

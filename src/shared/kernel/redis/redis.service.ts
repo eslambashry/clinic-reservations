@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -13,7 +13,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   public readonly client: Redis;
 
-  constructor(config: ConfigService) {
+  // See the identical note in `PrismaService` — explicit `@Inject` avoids a
+  // `tsx`-only metadata-reflection quirk for `ConfigService` injection.
+  constructor(@Inject(ConfigService) config: ConfigService) {
     this.client = new Redis(config.get<string>('redis.url') as string, {
       lazyConnect: true,
       maxRetriesPerRequest: 3,

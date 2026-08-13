@@ -5,7 +5,7 @@ import { RATE_LIMIT_DEFAULT } from '../config/constants';
 import { AuthCoreModule } from './auth/auth-core.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RbacGuard } from './auth/rbac.guard';
-import { RequestContextService } from './context/request-context.service';
+import { RequestContextModule } from './context/request-context.module';
 import { ErrorEnvelopeFilter } from './errors/error-envelope.filter';
 import { ResponseInterceptor } from './http/response.interceptor';
 import { AppLoggingModule } from './logging/logging.module';
@@ -24,6 +24,7 @@ import { OutboxModule } from './outbox/outbox.module';
  */
 @Module({
   imports: [
+    RequestContextModule,
     AppLoggingModule,
     AuthCoreModule,
     OutboxModule,
@@ -32,7 +33,6 @@ import { OutboxModule } from './outbox/outbox.module';
     ]),
   ],
   providers: [
-    RequestContextService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RbacGuard },
@@ -47,7 +47,7 @@ import { OutboxModule } from './outbox/outbox.module';
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
     { provide: APP_FILTER, useClass: ErrorEnvelopeFilter },
   ],
-  exports: [RequestContextService, AuthCoreModule],
+  exports: [RequestContextModule, AuthCoreModule],
 })
 export class CoreModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

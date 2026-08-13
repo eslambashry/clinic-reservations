@@ -1,12 +1,18 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["prismaSchemaFolder"]
+  previewFeatures = ["prismaSchemaFolder", "postgresqlExtensions"]
 }
 
+/// File 11 Part 22 / File 12 Part 32.17: `postgis` backs the doctor-search
+/// radius/distance query (`ST_DWithin`/`ST_Distance`), `pg_trgm` backs
+/// typo-tolerant name/specialty matching — both declared here so
+/// `prisma migrate` manages enabling them instead of a hand-written
+/// `CREATE EXTENSION` migration.
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [postgis, pg_trgm]
 }
 
 // ==========================================

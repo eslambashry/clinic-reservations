@@ -77,6 +77,101 @@ async function main() {
     }
   }
 
+  // Phase 2 (Provider Directory, File 12 Part 32): a Platform Admin test
+  // user, so there's someone who can actually call the verify/suspend
+  // endpoints — Admin accounts are provisioned manually, no self-service
+  // signup exists (File 11 07.1/07.3).
+  let adminUser = await prisma.user.findUnique({ where: { phone: '+201000000001' } });
+  if (!adminUser) {
+    adminUser = await prisma.user.create({
+      data: { phone: '+201000000001', first_name: 'Platform', last_name: 'Admin' },
+    });
+    console.log(`✅ Seeded admin user: ${adminUser.phone}`);
+  }
+  const adminMembership = await prisma.roleMembership.findFirst({
+    where: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
+  });
+  if (!adminMembership) {
+    await prisma.roleMembership.create({
+      data: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
+    });
+    console.log(`✅ Granted ADMIN role_membership to ${adminUser.phone}`);
+  }
+
+  // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
+  // this is what makes the Phase 2 Definition of Done runnable end-to-end
+  // (File 11 Part 28 Phase 2 exit criterion): once an Admin verifies this
+  // doctor, it becomes visible via `GET /v1/doctors/search` because its
+  // affiliation/branch/clinic are already in good standing.
+  const generalPractice = await prisma.specialty.findFirst({ where: { name_en: 'General Practice' } });
+  let testDoctorUser = await prisma.user.findUnique({ where: { phone: '+201000000002' } });
+  if (!testDoctorUser) {
+    testDoctorUser = await prisma.user.create({
+      data: { phone: '+201000000002', first_name: 'Mona', last_name: 'Fahmy' },
+    });
+    console.log(`✅ Seeded test doctor user: ${testDoctorUser.phone}`);
+  }
+  let testDoctor = await prisma.doctor.findUnique({ where: { user_id: testDoctorUser.id } });
+  if (!testDoctor && generalPractice) {
+    testDoctor = await prisma.doctor.create({
+      data: {
+        user_id: testDoctorUser.id,
+        specialty_code: generalPractice.code,
+        license_number: 'EG-MED-SEED-0001',
+        region_code: DEFAULT_REGION,
+      },
+    });
+    console.log(`✅ Seeded test doctor: ${testDoctor.id} (status=${testDoctor.status})`);
+  }
+
+  let testClinic = await prisma.clinic.findFirst({ where: { legal_name: 'Nile Medical Group LLC (Seed)' } });
+  if (!testClinic) {
+    testClinic = await prisma.clinic.create({
+      data: {
+        legal_name: 'Nile Medical Group LLC (Seed)',
+        brand_name: 'Nile Clinic',
+        region_code: DEFAULT_REGION,
+        status: 'VERIFIED',
+        verified_at: new Date(),
+      },
+    });
+    console.log(`✅ Seeded test clinic: ${testClinic.id}`);
+  }
+
+  let testBranch = await prisma.clinicBranch.findFirst({ where: { clinic_id: testClinic.id } });
+  if (!testBranch) {
+    const address = await prisma.address.create({
+      data: { line1: '12 Tahrir St', city: 'Cairo', region_code: DEFAULT_REGION, country_code: 'EG' },
+    });
+    testBranch = await prisma.clinicBranch.create({
+      data: {
+        clinic_id: testClinic.id,
+        address_id: address.id,
+        phone: '+20221234567',
+        iana_timezone: 'Africa/Cairo',
+        status: 'VERIFIED',
+      },
+    });
+    console.log(`✅ Seeded test clinic branch: ${testBranch.id}`);
+  }
+
+  if (testDoctor) {
+    const existingAffiliation = await prisma.doctorClinicAffiliation.findFirst({
+      where: { doctor_id: testDoctor.id, clinic_branch_id: testBranch.id },
+    });
+    if (!existingAffiliation) {
+      await prisma.doctorClinicAffiliation.create({
+        data: {
+          doctor_id: testDoctor.id,
+          clinic_branch_id: testBranch.id,
+          consult_fee: '350.00',
+          currency: 'EGP',
+        },
+      });
+      console.log(`✅ Seeded affiliation: doctor ${testDoctor.id} <-> branch ${testBranch.id}`);
+    }
+  }
+
   console.log('🎉 Database seed completed successfully!');
 }
 
