@@ -5,6 +5,7 @@ import { ClinicsController } from './api/clinics.controller';
 import { DoctorsController } from './api/doctors.controller';
 import { PharmacyBranchesController } from './api/pharmacy-branches.controller';
 import { PharmaciesController } from './api/pharmacies.controller';
+import { ProviderRegistrationController } from './api/provider-registration.controller';
 import { SpecialtiesController } from './api/specialties.controller';
 import { VerificationDocumentsController } from './api/verification-documents.controller';
 import { ApproveVerificationDocumentUseCase } from './application/approve-verification-document.use-case';
@@ -25,6 +26,7 @@ import { ListVerificationDocumentsUseCase } from './application/list-verificatio
 import { RejectVerificationDocumentUseCase } from './application/reject-verification-document.use-case';
 import { ResolveAffiliationForSchedulingUseCase } from './application/resolve-affiliation-for-scheduling.use-case';
 import { SearchDoctorsUseCase } from './application/search-doctors.use-case';
+import { SelfRegisterProviderUseCase } from './application/self-register-provider.use-case';
 import { SuspendClinicBranchUseCase } from './application/suspend-clinic-branch.use-case';
 import { SuspendClinicUseCase } from './application/suspend-clinic.use-case';
 import { SuspendDoctorUseCase } from './application/suspend-doctor.use-case';
@@ -75,6 +77,7 @@ import { AuditModule } from '../audit/audit.module';
     PharmacyBranchesController,
     VerificationDocumentsController,
     SpecialtiesController,
+    ProviderRegistrationController,
   ],
   providers: [
     // infrastructure
@@ -124,6 +127,7 @@ import { AuditModule } from '../audit/audit.module';
     ListSpecialtiesUseCase,
     ResolveAffiliationForSchedulingUseCase,
     ListSchedulableAffiliationsUseCase,
+    SelfRegisterProviderUseCase,
   ],
   exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase],
 })

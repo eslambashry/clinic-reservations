@@ -38,6 +38,18 @@ export const SCHEDULING_CONSTANTS = {
 } as const;
 
 /**
+ * ADR-005 (`docs/decisions/ADR-005-PROVIDER-SELF-REGISTRATION.md`, FILE_12
+ * Part 34) — the self-registration form doesn't collect a branch timezone,
+ * affiliation currency, or address country; these are flagged engineering
+ * defaults for the Egypt-first MVP launch, not silently inline-guessed.
+ */
+export const PROVIDER_REGISTRATION_CONSTANTS = {
+  DEFAULT_IANA_TIMEZONE: 'Africa/Cairo',
+  DEFAULT_CURRENCY: 'EGP',
+  DEFAULT_COUNTRY_CODE: 'EG',
+} as const;
+
+/**
  * `DEC-B09` — explicitly delegated to engineering discretion. This is the
  * global fallback only; endpoints with a documented stricter need (e.g.
  * `/otp/request`, File 11 Part 05.1) override it per-route with `@Throttle()`
