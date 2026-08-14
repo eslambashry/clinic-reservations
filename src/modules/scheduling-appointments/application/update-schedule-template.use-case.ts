@@ -3,6 +3,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { isValidScheduleWindow } from '../domain/slot-generation.rules';
 import { ScheduleTemplateRepository, UpdateScheduleTemplateInput } from '../infrastructure/schedule-template.repository';
 
 @Injectable()
@@ -22,7 +23,7 @@ export class UpdateScheduleTemplateUseCase {
 
       const startTime = input.startTime ?? template.start_time;
       const endTime = input.endTime ?? template.end_time;
-      if (endTime <= startTime) {
+      if (!isValidScheduleWindow(startTime, endTime)) {
         throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'endTime must be after startTime.', { startTime, endTime });
       }
 

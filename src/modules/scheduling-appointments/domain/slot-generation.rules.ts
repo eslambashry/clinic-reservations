@@ -51,3 +51,8 @@ export function generateSlotBoundaries(template: ScheduleTemplateWindow, dateIso
 export function isoWeekdayOf(dateIso: string, timezone: string): number {
   return DateTime.fromISO(dateIso, { zone: timezone }).weekday;
 }
+
+/** File 12 Part 33.6: a template window must fit within a single calendar day — `endTime` must be strictly after `startTime`. */
+export function isValidScheduleWindow(startTime: string, endTime: string): boolean {
+  return endTime > startTime;
+}

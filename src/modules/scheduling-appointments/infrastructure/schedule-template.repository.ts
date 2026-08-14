@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, ScheduleTemplate } from '@prisma/client';
-import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
+import { OptimisticLockError, updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
 
 export interface CreateScheduleTemplateInput {
   doctorClinicAffiliationId: string;
@@ -67,8 +67,18 @@ export class ScheduleTemplateRepository {
     });
   }
 
-  /** Part 33.8: hard delete — no `deleted_at` on this table, and not retroactive to already-generated slots. */
-  async remove(db: Prisma.TransactionClient, id: string): Promise<void> {
-    await db.scheduleTemplate.delete({ where: { id } });
+  /**
+   * Part 33.8: hard delete — no `deleted_at` on this table, and not
+   * retroactive to already-generated slots. Version-guarded like `update`
+   * (via a conditional delete rather than `updateWithOptimisticLock`, which
+   * only knows how to `updateMany`) so a delete racing a concurrent
+   * update/delete throws `OptimisticLockError` (-> 409) instead of a raw
+   * Prisma "record not found" (-> 500).
+   */
+  async remove(db: Prisma.TransactionClient, id: string, currentVersion: number): Promise<void> {
+    const result = await db.scheduleTemplate.deleteMany({ where: { id, version: currentVersion } });
+    if (result.count === 0) {
+      throw new OptimisticLockError(id, currentVersion);
+    }
   }
 }

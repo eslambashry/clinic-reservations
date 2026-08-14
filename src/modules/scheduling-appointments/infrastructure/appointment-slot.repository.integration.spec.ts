@@ -1,28 +1,34 @@
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'node:crypto';
+import { Test, TestingModule } from '@nestjs/testing';
 import { AppointmentSlotRepository } from './appointment-slot.repository';
 import { ScheduleTemplateRepository } from './schedule-template.repository';
 import { GenerateSlotsUseCase } from '../application/generate-slots.use-case';
 import { ListSchedulableAffiliationsUseCase } from '../../provider-directory/application/list-schedulable-affiliations.use-case';
 import { AffiliationRepository } from '../../provider-directory/infrastructure/affiliation.repository';
+import { AppConfigModule } from '../../../shared/config/config.module';
+import { PrismaModule } from '../../../shared/kernel/prisma/prisma.module';
+import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 
 dotenv.config();
 
 /**
  * File 11 Part 26 "Database" test type / File 12 Part 33: runs
  * `GenerateSlotsUseCase` end-to-end against a real Postgres (local
- * docker-compose, Part 32.17), exercising the whole cross-module path
- * (Part 33.3) rather than mocking `provider-directory`'s repository.
+ * docker-compose, Part 32.17). Dependencies are resolved by Nest's real DI
+ * container (`Test.createTestingModule`) rather than manually `new`-ed up,
+ * so a broken `@Injectable()`/constructor-injection wiring on any of these
+ * classes fails this spec too — importing the full `ProviderDirectoryModule`
+ * here would additionally require standing up its unrelated
+ * controllers/use-cases and their own cross-cutting dependencies (Outbox,
+ * RequestContext, ...), so this scopes the container to exactly the
+ * providers `GenerateSlotsUseCase` actually needs.
  */
 describe('GenerateSlotsUseCase (integration)', () => {
-  const prisma = new PrismaClient();
-  const affiliations = new AffiliationRepository();
-  const scheduleTemplates = new ScheduleTemplateRepository();
-  const appointmentSlots = new AppointmentSlotRepository();
-  const listSchedulableAffiliations = new ListSchedulableAffiliationsUseCase(prisma as any, affiliations);
-  const generateSlots = new GenerateSlotsUseCase(prisma as any, scheduleTemplates, appointmentSlots, listSchedulableAffiliations);
+  let moduleRef: TestingModule;
+  let prisma: PrismaService;
+  let generateSlots: GenerateSlotsUseCase;
 
   const suffix = randomUUID().slice(0, 8);
   const specialtyCode = `TEST_SPECIALTY_SCHED_${suffix}`;
@@ -49,6 +55,14 @@ describe('GenerateSlotsUseCase (integration)', () => {
   }
 
   beforeAll(async () => {
+    moduleRef = await Test.createTestingModule({
+      imports: [AppConfigModule, PrismaModule],
+      providers: [AffiliationRepository, ListSchedulableAffiliationsUseCase, ScheduleTemplateRepository, AppointmentSlotRepository, GenerateSlotsUseCase],
+    }).compile();
+    await moduleRef.init();
+    prisma = moduleRef.get(PrismaService);
+    generateSlots = moduleRef.get(GenerateSlotsUseCase);
+
     await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'Test Specialty', name_ar: 'تخصص اختبار' } });
 
     const clinic = await prisma.clinic.create({
@@ -96,7 +110,7 @@ describe('GenerateSlotsUseCase (integration)', () => {
     await prisma.clinic.delete({ where: { id: clinicId } });
     await prisma.address.delete({ where: { id: addressId } });
     await prisma.specialty.delete({ where: { code: specialtyCode } });
-    await prisma.$disconnect();
+    await moduleRef.close();
   });
 
   it('generates correctly-timezoned, buffer-spaced slots for a VERIFIED doctor and none for a PENDING one', async () => {

@@ -39,17 +39,19 @@ export class GenerateSlotsUseCase {
     const schedulable = await this.listSchedulableAffiliations.execute(affiliationIds);
 
     const windowDates = this.rollingWindowDates();
-    let slotsCreated = 0;
 
-    for (const { affiliationId, timezone } of schedulable) {
-      try {
-        slotsCreated += await this.generateForAffiliation(affiliationId, timezone, windowDates);
-      } catch (error) {
-        this.logger.error(`Slot generation failed for affiliation ${affiliationId}`, error instanceof Error ? error.stack : error);
-      }
-    }
+    const counts = await Promise.all(
+      schedulable.map(async ({ affiliationId, timezone }) => {
+        try {
+          return await this.generateForAffiliation(affiliationId, timezone, windowDates);
+        } catch (error) {
+          this.logger.error(`Slot generation failed for affiliation ${affiliationId}`, error instanceof Error ? error.stack : error);
+          return 0;
+        }
+      }),
+    );
 
-    return { affiliationsProcessed: schedulable.length, slotsCreated };
+    return { affiliationsProcessed: schedulable.length, slotsCreated: counts.reduce((sum, count) => sum + count, 0) };
   }
 
   private async generateForAffiliation(affiliationId: string, timezone: string, windowDates: string[]): Promise<number> {

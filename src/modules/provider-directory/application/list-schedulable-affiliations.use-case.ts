@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { isDoctorVisibleViaAffiliation } from '../domain/provider-visibility.rules';
-import { AffiliationRepository } from '../infrastructure/affiliation.repository';
+import { AffiliationRepository, toVisibilityChainInput } from '../infrastructure/affiliation.repository';
 import { ScheduleableAffiliation } from './resolve-affiliation-for-scheduling.use-case';
 
 /**
@@ -28,14 +28,7 @@ export class ListSchedulableAffiliationsUseCase {
     const rows = await this.affiliations.findManyByIdsWithVisibilityChain(this.prisma, affiliationIds);
 
     return rows
-      .filter((affiliation) =>
-        isDoctorVisibleViaAffiliation({
-          doctor: { status: affiliation.doctor.status, deletedAt: affiliation.doctor.deleted_at },
-          affiliation: { status: affiliation.status },
-          branch: { status: affiliation.clinic_branch.status },
-          clinic: { status: affiliation.clinic_branch.clinic.status, deletedAt: affiliation.clinic_branch.clinic.deleted_at },
-        }),
-      )
+      .filter((affiliation) => isDoctorVisibleViaAffiliation(toVisibilityChainInput(affiliation)))
       .map((affiliation) => ({ affiliationId: affiliation.id, timezone: affiliation.clinic_branch.iana_timezone }));
   }
 }

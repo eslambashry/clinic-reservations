@@ -22,13 +22,32 @@ export type AffiliationWithBranch = Prisma.DoctorClinicAffiliationGetPayload<{
   include: typeof AFFILIATION_WITH_BRANCH;
 }>;
 
+/** Part 33.3's visibility-chain read only ever needs these fields — `select`, not the full `doctor`/`clinic_branch`/`clinic` rows an `include` would pull. */
 const AFFILIATION_WITH_VISIBILITY_CHAIN = {
-  doctor: true,
-  clinic_branch: { include: { clinic: true } },
-} satisfies Prisma.DoctorClinicAffiliationInclude;
+  id: true,
+  status: true,
+  doctor: { select: { status: true, deleted_at: true } },
+  clinic_branch: {
+    select: {
+      status: true,
+      iana_timezone: true,
+      clinic: { select: { status: true, deleted_at: true } },
+    },
+  },
+} satisfies Prisma.DoctorClinicAffiliationSelect;
 export type AffiliationWithVisibilityChain = Prisma.DoctorClinicAffiliationGetPayload<{
-  include: typeof AFFILIATION_WITH_VISIBILITY_CHAIN;
+  select: typeof AFFILIATION_WITH_VISIBILITY_CHAIN;
 }>;
+
+/** Shared mapper into `isDoctorVisibleViaAffiliation`'s input shape — the one place both `scheduling-appointments` call sites (Part 33.3) derive it from, instead of two copies. */
+export function toVisibilityChainInput(affiliation: AffiliationWithVisibilityChain) {
+  return {
+    doctor: { status: affiliation.doctor.status, deletedAt: affiliation.doctor.deleted_at },
+    affiliation: { status: affiliation.status },
+    branch: { status: affiliation.clinic_branch.status },
+    clinic: { status: affiliation.clinic_branch.clinic.status, deletedAt: affiliation.clinic_branch.clinic.deleted_at },
+  };
+}
 
 @Injectable()
 export class AffiliationRepository {
@@ -55,18 +74,18 @@ export class AffiliationRepository {
   ): Promise<AffiliationWithVisibilityChain | null> {
     return db.doctorClinicAffiliation.findUnique({
       where: { doctor_id_clinic_branch_id: { doctor_id: doctorId, clinic_branch_id: clinicBranchId } },
-      include: AFFILIATION_WITH_VISIBILITY_CHAIN,
+      select: AFFILIATION_WITH_VISIBILITY_CHAIN,
     });
   }
 
-  /** Batch form for the slot-generation job (Part 33.3) — only the visibility chain fields, keyed for a `Map` lookup. */
+  /** Batch form for the slot-generation job (Part 33.3) — only the visibility chain fields. */
   findManyByIdsWithVisibilityChain(
     db: Prisma.TransactionClient,
     affiliationIds: string[],
   ): Promise<AffiliationWithVisibilityChain[]> {
     return db.doctorClinicAffiliation.findMany({
       where: { id: { in: affiliationIds } },
-      include: AFFILIATION_WITH_VISIBILITY_CHAIN,
+      select: AFFILIATION_WITH_VISIBILITY_CHAIN,
     });
   }
 

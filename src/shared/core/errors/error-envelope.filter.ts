@@ -9,6 +9,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { OptimisticLockError } from '../../kernel/prisma/optimistic-lock';
 import { RequestContextService } from '../context/request-context.service';
@@ -118,6 +119,28 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
         message: exception.message,
         details: {},
       };
+    }
+
+    // Fallback for any Prisma error a use-case didn't already translate into
+    // an AppError — keeps a raw DB error from leaking as a bare 500 for the
+    // two most common cases (unique/FK constraint violations).
+    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      if (exception.code === 'P2002') {
+        return {
+          status: HttpStatus.CONFLICT,
+          code: 'UNIQUE_CONSTRAINT_VIOLATION',
+          message: 'This action conflicts with an existing record.',
+          details: {},
+        };
+      }
+      if (exception.code === 'P2003') {
+        return {
+          status: HttpStatus.NOT_FOUND,
+          code: 'RESOURCE_NOT_FOUND',
+          message: 'A referenced resource was not found.',
+          details: {},
+        };
+      }
     }
 
     return {

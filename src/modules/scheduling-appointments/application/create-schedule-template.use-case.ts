@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, ScheduleTemplate } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { isValidScheduleWindow } from '../domain/slot-generation.rules';
 import { CreateScheduleTemplateInput, ScheduleTemplateRepository } from '../infrastructure/schedule-template.repository';
 
 /**
@@ -20,7 +21,7 @@ export class CreateScheduleTemplateUseCase {
   ) {}
 
   async execute(input: CreateScheduleTemplateInput, actor: AccessTokenPayload): Promise<ScheduleTemplate> {
-    if (input.endTime <= input.startTime) {
+    if (!isValidScheduleWindow(input.startTime, input.endTime)) {
       throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'endTime must be after startTime.', {
         startTime: input.startTime,
         endTime: input.endTime,
@@ -52,5 +53,5 @@ export function translateScheduleTemplateError(error: unknown, affiliationId: st
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
     return new NotFoundError('DoctorClinicAffiliation', affiliationId);
   }
-  return error instanceof Error ? error : new Error(String(error));
+  return new DomainError(500, 'INTERNAL_ERROR', error instanceof Error ? error.message : 'Unexpected error while creating the schedule template.');
 }

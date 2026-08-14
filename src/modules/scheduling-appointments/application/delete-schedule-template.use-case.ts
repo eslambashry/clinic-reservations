@@ -26,7 +26,7 @@ export class DeleteScheduleTemplateUseCase {
         throw new NotFoundError('ScheduleTemplate', scheduleTemplateId);
       }
 
-      await this.scheduleTemplates.remove(tx, scheduleTemplateId);
+      await this.scheduleTemplates.remove(tx, scheduleTemplateId, template.version);
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,

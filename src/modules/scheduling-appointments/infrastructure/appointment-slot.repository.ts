@@ -27,14 +27,20 @@ export class AppointmentSlotRepository {
     return result.count;
   }
 
-  /** File 10 §2.3: only `OPEN` slots are ever returned — `HELD`/`BOOKED` are omitted, not shown-as-disabled. */
-  findOpenInRange(db: Prisma.TransactionClient, affiliationId: string, from: Date, to: Date): Promise<AppointmentSlot[]> {
+  /** File 10 §2.3: only `OPEN` slots are ever returned — `HELD`/`BOOKED` are omitted, not shown-as-disabled. Public, unauthenticated endpoint — `select` only what `GetDoctorSlotsUseCase` actually returns. */
+  findOpenInRange(
+    db: Prisma.TransactionClient,
+    affiliationId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Pick<AppointmentSlot, 'id' | 'start_at' | 'end_at'>[]> {
     return db.appointmentSlot.findMany({
       where: {
         doctor_clinic_affiliation_id: affiliationId,
         status: 'OPEN',
         start_at: { gte: from, lt: to },
       },
+      select: { id: true, start_at: true, end_at: true },
       orderBy: { start_at: 'asc' },
     });
   }

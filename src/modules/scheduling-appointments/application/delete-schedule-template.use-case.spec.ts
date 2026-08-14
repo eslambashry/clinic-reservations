@@ -30,7 +30,7 @@ describe('DeleteScheduleTemplateUseCase', () => {
 
     await useCase.execute('t1', actor);
 
-    expect(scheduleTemplates.remove).toHaveBeenCalledWith(tx, 't1');
+    expect(scheduleTemplates.remove).toHaveBeenCalledWith(tx, 't1', 1);
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'scheduling_appointments.schedule_template.delete', resourceId: 't1' }));
   });
 });

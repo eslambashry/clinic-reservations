@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { canBypassVisibility, isDoctorVisibleViaAffiliation } from '../domain/provider-visibility.rules';
-import { AffiliationRepository } from '../infrastructure/affiliation.repository';
+import { AffiliationRepository, toVisibilityChainInput } from '../infrastructure/affiliation.repository';
 
 export interface ScheduleableAffiliation {
   affiliationId: string;
@@ -28,14 +28,7 @@ export class ResolveAffiliationForSchedulingUseCase {
     const affiliation = await this.affiliations.findByDoctorAndBranch(this.prisma, doctorId, clinicBranchId);
 
     const isAdmin = canBypassVisibility(callerContextType);
-    const isVisible =
-      affiliation !== null &&
-      isDoctorVisibleViaAffiliation({
-        doctor: { status: affiliation.doctor.status, deletedAt: affiliation.doctor.deleted_at },
-        affiliation: { status: affiliation.status },
-        branch: { status: affiliation.clinic_branch.status },
-        clinic: { status: affiliation.clinic_branch.clinic.status, deletedAt: affiliation.clinic_branch.clinic.deleted_at },
-      });
+    const isVisible = affiliation !== null && isDoctorVisibleViaAffiliation(toVisibilityChainInput(affiliation));
 
     if (!affiliation || (!isAdmin && !isVisible)) {
       throw new NotFoundError('Doctor', doctorId);
