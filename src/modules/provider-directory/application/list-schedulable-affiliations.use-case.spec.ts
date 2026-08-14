@@ -1,3 +1,4 @@
+import { describe, it, expect, jest } from '@jest/globals';
 import { ListSchedulableAffiliationsUseCase } from './list-schedulable-affiliations.use-case';
 
 function affiliation(overrides: Partial<any> = {}) {
