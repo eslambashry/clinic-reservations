@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**See also `MEMORY.md`** — the structured reference for architecture, folder structure, conventions, ADRs, DB rules, auth flow, API rules, git workflow, testing strategy, and glossary. Update the relevant section of `MEMORY.md` whenever any of those change; if it ever disagrees with this file or `docs/FILE_11_*`/`docs/FILE_12_*`, those win — fix `MEMORY.md` to match.
+
 ## Project state
 
 This is the **backend** repo for MedSuper, a healthcare booking/pharmacy platform (Egypt-first launch), built on **NestJS** (File 12 `DEC-B01`). `prisma/schema/*.prisma` fully defines the MVP data model. **Phase 0 (Foundation)** is complete: the NestJS app/worker scaffold and every cross-cutting concern in `src/shared/core/**` are real, working implementations, not stubs. **Phase 1 (Identity & Auth, `src/modules/identity-auth/`)** is complete: OTP request/verify, JWT access + opaque rotating refresh tokens, logout — see that module for the reference example of the `api/application/domain/infrastructure` layering every subsequent module should follow. **Every other domain module (Provider Directory, Scheduling, ...) is still unbuilt** — `src/modules/<name>/README.md` is the one-line source of truth for MVP vs. POSTPONE; build order follows File 12 Part 10 (Provider Directory next).
