@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -9,9 +9,9 @@ import { ScheduleTemplateRepository, UpdateScheduleTemplateInput } from '../infr
 @Injectable()
 export class UpdateScheduleTemplateUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly scheduleTemplates: ScheduleTemplateRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(scheduleTemplateId: string, input: UpdateScheduleTemplateInput, actor: AccessTokenPayload): Promise<void> {

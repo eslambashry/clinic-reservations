@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProviderVerificationDocument, RoleContextType } from '@prisma/client';
 import { ApproveVerificationDocumentUseCase } from '../application/approve-verification-document.use-case';
@@ -19,10 +19,10 @@ import { RejectVerificationDocumentDto } from './dto/reject-verification-documen
 @Controller('provider-verification-documents')
 export class VerificationDocumentsController {
   constructor(
-    private readonly uploadDocument: UploadVerificationDocumentUseCase,
-    private readonly listDocuments: ListVerificationDocumentsUseCase,
-    private readonly approveDocument: ApproveVerificationDocumentUseCase,
-    private readonly rejectDocument: RejectVerificationDocumentUseCase,
+    @Inject(UploadVerificationDocumentUseCase) private readonly uploadDocument: UploadVerificationDocumentUseCase,
+    @Inject(ListVerificationDocumentsUseCase) private readonly listDocuments: ListVerificationDocumentsUseCase,
+    @Inject(ApproveVerificationDocumentUseCase) private readonly approveDocument: ApproveVerificationDocumentUseCase,
+    @Inject(RejectVerificationDocumentUseCase) private readonly rejectDocument: RejectVerificationDocumentUseCase,
   ) {}
 
   @Get()

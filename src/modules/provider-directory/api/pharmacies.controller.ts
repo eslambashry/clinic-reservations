@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Pharmacy, PharmacyBranch, RoleContextType } from '@prisma/client';
 import { CreatePharmacyBranchUseCase } from '../application/create-pharmacy-branch.use-case';
@@ -20,12 +20,12 @@ import { UpdatePharmacyDto } from './dto/update-pharmacy.dto';
 @Controller('pharmacies')
 export class PharmaciesController {
   constructor(
-    private readonly createPharmacy: CreatePharmacyUseCase,
-    private readonly updatePharmacy: UpdatePharmacyUseCase,
-    private readonly verifyPharmacy: VerifyPharmacyUseCase,
-    private readonly suspendPharmacy: SuspendPharmacyUseCase,
-    private readonly getPharmacy: GetPharmacyUseCase,
-    private readonly createBranch: CreatePharmacyBranchUseCase,
+    @Inject(CreatePharmacyUseCase) private readonly createPharmacy: CreatePharmacyUseCase,
+    @Inject(UpdatePharmacyUseCase) private readonly updatePharmacy: UpdatePharmacyUseCase,
+    @Inject(VerifyPharmacyUseCase) private readonly verifyPharmacy: VerifyPharmacyUseCase,
+    @Inject(SuspendPharmacyUseCase) private readonly suspendPharmacy: SuspendPharmacyUseCase,
+    @Inject(GetPharmacyUseCase) private readonly getPharmacy: GetPharmacyUseCase,
+    @Inject(CreatePharmacyBranchUseCase) private readonly createBranch: CreatePharmacyBranchUseCase,
   ) {}
 
   @OptionalAuth()

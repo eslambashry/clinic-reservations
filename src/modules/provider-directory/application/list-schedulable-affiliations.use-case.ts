@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { isDoctorVisibleViaAffiliation } from '../domain/provider-visibility.rules';
 import { AffiliationRepository, toVisibilityChainInput } from '../infrastructure/affiliation.repository';
@@ -16,8 +16,8 @@ import { ScheduleableAffiliation } from './resolve-affiliation-for-scheduling.us
 @Injectable()
 export class ListSchedulableAffiliationsUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly affiliations: AffiliationRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
   ) {}
 
   async execute(affiliationIds: string[]): Promise<ScheduleableAffiliation[]> {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, ScheduleTemplate } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -15,9 +15,9 @@ import { CreateScheduleTemplateInput, ScheduleTemplateRepository } from '../infr
 @Injectable()
 export class CreateScheduleTemplateUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly scheduleTemplates: ScheduleTemplateRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(input: CreateScheduleTemplateInput, actor: AccessTokenPayload): Promise<ScheduleTemplate> {

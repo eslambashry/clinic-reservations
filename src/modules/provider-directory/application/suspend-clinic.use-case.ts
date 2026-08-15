@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -8,9 +8,9 @@ import { ClinicRepository } from '../infrastructure/clinic.repository';
 @Injectable()
 export class SuspendClinicUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly clinics: ClinicRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ClinicRepository) private readonly clinics: ClinicRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(clinicId: string, actor: AccessTokenPayload): Promise<void> {

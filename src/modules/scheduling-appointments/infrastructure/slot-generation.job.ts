@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { GenerateSlotsUseCase } from '../application/generate-slots.use-case';
 
@@ -17,7 +17,7 @@ import { GenerateSlotsUseCase } from '../application/generate-slots.use-case';
 export class SlotGenerationJob {
   private readonly logger = new Logger(SlotGenerationJob.name);
 
-  constructor(private readonly generateSlots: GenerateSlotsUseCase) {}
+  constructor(@Inject(GenerateSlotsUseCase) private readonly generateSlots: GenerateSlotsUseCase) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async run(): Promise<void> {

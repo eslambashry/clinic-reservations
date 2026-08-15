@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -33,12 +33,12 @@ function holdExpired(holdId: string): DomainError {
 @Injectable()
 export class ConfirmAppointmentUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly holds: AppointmentHoldRepository,
-    private readonly slots: AppointmentSlotRepository,
-    private readonly appointments: AppointmentRepository,
-    private readonly audit: AuditService,
-    private readonly outbox: OutboxService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentHoldRepository) private readonly holds: AppointmentHoldRepository,
+    @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(holdId: string, input: ConfirmAppointmentInput, actor: AccessTokenPayload): Promise<ConfirmAppointmentResult> {

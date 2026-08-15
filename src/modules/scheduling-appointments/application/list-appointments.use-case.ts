@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
 import { AppointmentSummary, toAppointmentSummary } from './get-appointment.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -36,8 +36,8 @@ interface AppointmentCursor {
 @Injectable()
 export class ListAppointmentsUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly appointments: AppointmentRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
   ) {}
 
   async execute(input: ListAppointmentsInput, actor: AccessTokenPayload): Promise<ListAppointmentsResult> {

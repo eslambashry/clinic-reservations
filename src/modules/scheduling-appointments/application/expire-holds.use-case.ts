@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
@@ -19,9 +19,9 @@ export class ExpireHoldsUseCase {
   private readonly logger = new Logger(ExpireHoldsUseCase.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly holds: AppointmentHoldRepository,
-    private readonly slots: AppointmentSlotRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentHoldRepository) private readonly holds: AppointmentHoldRepository,
+    @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
   ) {}
 
   async execute(): Promise<ExpireHoldsResult> {

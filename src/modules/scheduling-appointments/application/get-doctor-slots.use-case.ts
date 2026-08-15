@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { ResolveAffiliationForSchedulingUseCase } from '../../provider-directory/application/resolve-affiliation-for-scheduling.use-case';
 import { DomainError } from '../../../shared/core/errors/domain-errors';
@@ -25,9 +25,9 @@ export interface GetDoctorSlotsResult {
 @Injectable()
 export class GetDoctorSlotsUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly appointmentSlots: AppointmentSlotRepository,
-    private readonly resolveAffiliation: ResolveAffiliationForSchedulingUseCase,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentSlotRepository) private readonly appointmentSlots: AppointmentSlotRepository,
+    @Inject(ResolveAffiliationForSchedulingUseCase) private readonly resolveAffiliation: ResolveAffiliationForSchedulingUseCase,
   ) {}
 
   async execute(

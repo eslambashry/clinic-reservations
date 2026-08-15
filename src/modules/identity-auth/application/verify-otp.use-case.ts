@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { RoleContextType } from '@prisma/client';
 import { DomainError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
@@ -30,12 +30,12 @@ export class VerifyOtpUseCase {
   private readonly logger = new Logger(VerifyOtpUseCase.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly otpRequests: OtpRequestRepository,
-    private readonly users: UserRepository,
-    private readonly roleMemberships: RoleMembershipRepository,
-    private readonly tokens: TokenService,
-    private readonly outbox: OutboxService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OtpRequestRepository) private readonly otpRequests: OtpRequestRepository,
+    @Inject(UserRepository) private readonly users: UserRepository,
+    @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
+    @Inject(TokenService) private readonly tokens: TokenService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(input: VerifyOtpInput): Promise<VerifyOtpResult> {

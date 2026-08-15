@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
@@ -48,14 +48,14 @@ export const SELF_REGISTRATION_NOT_PERSISTED_FIELDS = [
 @Injectable()
 export class SelfRegisterProviderUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly specialties: SpecialtyRepository,
-    private readonly clinics: ClinicRepository,
-    private readonly addresses: AddressRepository,
-    private readonly branches: ClinicBranchRepository,
-    private readonly doctors: DoctorRepository,
-    private readonly affiliations: AffiliationRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(SpecialtyRepository) private readonly specialties: SpecialtyRepository,
+    @Inject(ClinicRepository) private readonly clinics: ClinicRepository,
+    @Inject(AddressRepository) private readonly addresses: AddressRepository,
+    @Inject(ClinicBranchRepository) private readonly branches: ClinicBranchRepository,
+    @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
+    @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(dto: SubmitProviderRegistrationDto, actor: AccessTokenPayload): Promise<SelfRegisterProviderResult> {

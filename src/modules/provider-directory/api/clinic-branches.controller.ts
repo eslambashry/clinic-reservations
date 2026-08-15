@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { GetClinicBranchUseCase } from '../application/get-clinic-branch.use-case';
@@ -16,10 +16,10 @@ import { UpdateClinicBranchDto } from './dto/update-clinic-branch.dto';
 @Controller('clinic-branches')
 export class ClinicBranchesController {
   constructor(
-    private readonly updateBranch: UpdateClinicBranchUseCase,
-    private readonly verifyBranch: VerifyClinicBranchUseCase,
-    private readonly suspendBranch: SuspendClinicBranchUseCase,
-    private readonly getBranch: GetClinicBranchUseCase,
+    @Inject(UpdateClinicBranchUseCase) private readonly updateBranch: UpdateClinicBranchUseCase,
+    @Inject(VerifyClinicBranchUseCase) private readonly verifyBranch: VerifyClinicBranchUseCase,
+    @Inject(SuspendClinicBranchUseCase) private readonly suspendBranch: SuspendClinicBranchUseCase,
+    @Inject(GetClinicBranchUseCase) private readonly getBranch: GetClinicBranchUseCase,
   ) {}
 
   @OptionalAuth()

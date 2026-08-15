@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GetDoctorSlotsResult, GetDoctorSlotsUseCase } from '../application/get-doctor-slots.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
@@ -14,7 +14,7 @@ import { GetDoctorSlotsQueryDto } from './dto/get-doctor-slots-query.dto';
 @ApiTags('doctors')
 @Controller('doctors')
 export class DoctorSlotsController {
-  constructor(private readonly getDoctorSlots: GetDoctorSlotsUseCase) {}
+  constructor(@Inject(GetDoctorSlotsUseCase) private readonly getDoctorSlots: GetDoctorSlotsUseCase) {}
 
   @OptionalAuth()
   @Get(':doctorId/slots')

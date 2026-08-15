@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, Specialty } from '@prisma/client';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 
@@ -8,7 +8,7 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
  */
 @Injectable()
 export class SpecialtyRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   findAll(): Promise<Specialty[]> {
     return this.prisma.specialty.findMany({ orderBy: { name_en: 'asc' } });

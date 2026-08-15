@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { RedisService } from '../../../shared/kernel/redis/redis.service';
 import { OTP_CONSTANTS } from '../domain/otp.constants';
 
@@ -13,7 +13,7 @@ import { OTP_CONSTANTS } from '../domain/otp.constants';
  */
 @Injectable()
 export class PhoneRateLimiterService {
-  constructor(private readonly redis: RedisService) {}
+  constructor(@Inject(RedisService) private readonly redis: RedisService) {}
 
   /** Returns true if the request is allowed (and counts it); false if the phone is over its window limit. */
   async consume(phone: string): Promise<boolean> {

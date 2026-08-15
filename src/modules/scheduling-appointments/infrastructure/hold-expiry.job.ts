@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ExpireHoldsUseCase } from '../application/expire-holds.use-case';
 
@@ -15,7 +15,7 @@ import { ExpireHoldsUseCase } from '../application/expire-holds.use-case';
 export class HoldExpiryJob {
   private readonly logger = new Logger(HoldExpiryJob.name);
 
-  constructor(private readonly expireHolds: ExpireHoldsUseCase) {}
+  constructor(@Inject(ExpireHoldsUseCase) private readonly expireHolds: ExpireHoldsUseCase) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
   async run(): Promise<void> {

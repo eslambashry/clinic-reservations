@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PharmacyBranch } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -18,11 +18,11 @@ export interface CreatePharmacyBranchInput {
 @Injectable()
 export class CreatePharmacyBranchUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly pharmacies: PharmacyRepository,
-    private readonly branches: PharmacyBranchRepository,
-    private readonly addresses: AddressRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(PharmacyRepository) private readonly pharmacies: PharmacyRepository,
+    @Inject(PharmacyBranchRepository) private readonly branches: PharmacyBranchRepository,
+    @Inject(AddressRepository) private readonly addresses: AddressRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(

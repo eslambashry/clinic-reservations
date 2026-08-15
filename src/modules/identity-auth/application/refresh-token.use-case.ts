@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { UnauthenticatedError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { hashRefreshToken } from '../domain/refresh-token.util';
@@ -21,10 +21,10 @@ export class RefreshTokenUseCase {
   private readonly logger = new Logger(RefreshTokenUseCase.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly refreshTokens: RefreshTokenRepository,
-    private readonly roleMemberships: RoleMembershipRepository,
-    private readonly tokens: TokenService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
+    @Inject(TokenService) private readonly tokens: TokenService,
   ) {}
 
   async execute(input: RefreshTokenInput): Promise<RefreshTokenResult> {

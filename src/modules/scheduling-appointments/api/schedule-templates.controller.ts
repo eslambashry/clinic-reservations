@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType, ScheduleTemplate } from '@prisma/client';
 import { CreateScheduleTemplateUseCase } from '../application/create-schedule-template.use-case';
@@ -23,10 +23,10 @@ import { UpdateScheduleTemplateDto } from './dto/update-schedule-template.dto';
 @Controller('schedule-templates')
 export class ScheduleTemplatesController {
   constructor(
-    private readonly createScheduleTemplate: CreateScheduleTemplateUseCase,
-    private readonly updateScheduleTemplate: UpdateScheduleTemplateUseCase,
-    private readonly deleteScheduleTemplate: DeleteScheduleTemplateUseCase,
-    private readonly listScheduleTemplates: ListScheduleTemplatesUseCase,
+    @Inject(CreateScheduleTemplateUseCase) private readonly createScheduleTemplate: CreateScheduleTemplateUseCase,
+    @Inject(UpdateScheduleTemplateUseCase) private readonly updateScheduleTemplate: UpdateScheduleTemplateUseCase,
+    @Inject(DeleteScheduleTemplateUseCase) private readonly deleteScheduleTemplate: DeleteScheduleTemplateUseCase,
+    @Inject(ListScheduleTemplatesUseCase) private readonly listScheduleTemplates: ListScheduleTemplatesUseCase,
   ) {}
 
   @Post()

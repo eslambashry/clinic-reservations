@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -32,11 +32,11 @@ export interface CreateHoldResult {
 @Injectable()
 export class CreateHoldUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly slots: AppointmentSlotRepository,
-    private readonly holds: AppointmentHoldRepository,
-    private readonly audit: AuditService,
-    private readonly outbox: OutboxService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
+    @Inject(AppointmentHoldRepository) private readonly holds: AppointmentHoldRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(input: CreateHoldInput, actor: AccessTokenPayload): Promise<CreateHoldResult> {

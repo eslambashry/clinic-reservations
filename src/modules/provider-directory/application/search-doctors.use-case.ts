@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { DoctorSearchRepository, DoctorSearchRow, DoctorSearchSort } from '../infrastructure/doctor-search.repository';
 
@@ -51,7 +51,7 @@ interface DoctorSearchCursor {
 
 @Injectable()
 export class SearchDoctorsUseCase {
-  constructor(private readonly repository: DoctorSearchRepository) {}
+  constructor(@Inject(DoctorSearchRepository) private readonly repository: DoctorSearchRepository) {}
 
   async execute(input: SearchDoctorsInput): Promise<SearchDoctorsResult> {
     const hasLocation = input.lat !== undefined && input.lng !== undefined;

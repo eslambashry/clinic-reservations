@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
+import { Body, Controller, Inject, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { UpdateAffiliationUseCase } from '../application/update-affiliation.use-case';
@@ -12,7 +12,7 @@ import { UpdateAffiliationDto } from './dto/update-affiliation.dto';
 @Roles(RoleContextType.ADMIN)
 @Controller('affiliations')
 export class AffiliationsController {
-  constructor(private readonly updateAffiliation: UpdateAffiliationUseCase) {}
+  constructor(@Inject(UpdateAffiliationUseCase) private readonly updateAffiliation: UpdateAffiliationUseCase) {}
 
   @Patch(':affiliationId')
   @ApiOperation({ summary: 'Admin: pause/reactivate an affiliation or update its fee' })

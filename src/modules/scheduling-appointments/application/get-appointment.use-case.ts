@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -37,8 +37,8 @@ export function toAppointmentSummary(appointment: AppointmentWithSlotTimes): App
 @Injectable()
 export class GetAppointmentUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly appointments: AppointmentRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
   ) {}
 
   async execute(appointmentId: string, actor: AccessTokenPayload): Promise<AppointmentSummary> {

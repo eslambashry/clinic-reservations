@@ -26,9 +26,9 @@ export class RequestOtpUseCase {
   private readonly logger = new Logger(RequestOtpUseCase.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly otpRequests: OtpRequestRepository,
-    private readonly rateLimiter: PhoneRateLimiterService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OtpRequestRepository) private readonly otpRequests: OtpRequestRepository,
+    @Inject(PhoneRateLimiterService) private readonly rateLimiter: PhoneRateLimiterService,
     @Inject(OTP_SENDER) private readonly otpSender: OtpSenderPort,
   ) {}
 

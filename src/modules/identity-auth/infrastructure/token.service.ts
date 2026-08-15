@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Prisma, RoleMembership } from '@prisma/client';
@@ -22,10 +22,10 @@ export interface IssuedTokens {
 @Injectable()
 export class TokenService {
   constructor(
-    private readonly jwt: JwtService,
-    private readonly config: ConfigService,
-    private readonly refreshTokens: RefreshTokenRepository,
-    private readonly permissions: PermissionRepository,
+    @Inject(JwtService) private readonly jwt: JwtService,
+    @Inject(ConfigService) private readonly config: ConfigService,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(PermissionRepository) private readonly permissions: PermissionRepository,
   ) {}
 
   /** First issuance for a session (OTP verify) — no predecessor to link. */

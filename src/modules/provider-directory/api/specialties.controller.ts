@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Specialty } from '@prisma/client';
 import { ListSpecialtiesUseCase } from '../application/list-specialties.use-case';
@@ -8,7 +8,9 @@ import { Public } from '../../../shared/core/auth/public.decorator';
 @ApiTags('specialties')
 @Controller('specialties')
 export class SpecialtiesController {
-  constructor(private readonly listSpecialties: ListSpecialtiesUseCase) {}
+  constructor(
+    @Inject(ListSpecialtiesUseCase) private readonly listSpecialties: ListSpecialtiesUseCase,
+  ) {}
 
   @Public()
   @Get()

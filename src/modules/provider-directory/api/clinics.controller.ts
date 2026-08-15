@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Clinic, ClinicBranch, RoleContextType } from '@prisma/client';
 import { CreateClinicBranchUseCase } from '../application/create-clinic-branch.use-case';
@@ -20,12 +20,12 @@ import { UpdateClinicDto } from './dto/update-clinic.dto';
 @Controller('clinics')
 export class ClinicsController {
   constructor(
-    private readonly createClinic: CreateClinicUseCase,
-    private readonly updateClinic: UpdateClinicUseCase,
-    private readonly verifyClinic: VerifyClinicUseCase,
-    private readonly suspendClinic: SuspendClinicUseCase,
-    private readonly getClinic: GetClinicUseCase,
-    private readonly createBranch: CreateClinicBranchUseCase,
+    @Inject(CreateClinicUseCase) private readonly createClinic: CreateClinicUseCase,
+    @Inject(UpdateClinicUseCase) private readonly updateClinic: UpdateClinicUseCase,
+    @Inject(VerifyClinicUseCase) private readonly verifyClinic: VerifyClinicUseCase,
+    @Inject(SuspendClinicUseCase) private readonly suspendClinic: SuspendClinicUseCase,
+    @Inject(GetClinicUseCase) private readonly getClinic: GetClinicUseCase,
+    @Inject(CreateClinicBranchUseCase) private readonly createBranch: CreateClinicBranchUseCase,
   ) {}
 
   @OptionalAuth()

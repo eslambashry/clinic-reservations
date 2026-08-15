@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { RequestContextService } from '../../../shared/core/context/request-context.service';
 import { AuditLogRepository, CreateAuditLogParams } from '../infrastructure/audit-log.repository';
@@ -16,8 +16,8 @@ export type RecordAuditParams = Omit<CreateAuditLogParams, 'correlationId'>;
 @Injectable()
 export class AuditService {
   constructor(
-    private readonly repository: AuditLogRepository,
-    private readonly context: RequestContextService,
+    @Inject(AuditLogRepository) private readonly repository: AuditLogRepository,
+    @Inject(RequestContextService) private readonly context: RequestContextService,
   ) {}
 
   async record(tx: Prisma.TransactionClient, params: RecordAuditParams): Promise<void> {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { CancelAppointmentResult, CancelAppointmentUseCase } from '../application/cancel-appointment.use-case';
@@ -31,12 +31,12 @@ import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 @Controller('appointments')
 export class AppointmentsController {
   constructor(
-    private readonly createHold: CreateHoldUseCase,
-    private readonly confirmAppointment: ConfirmAppointmentUseCase,
-    private readonly cancelAppointment: CancelAppointmentUseCase,
-    private readonly rescheduleAppointment: RescheduleAppointmentUseCase,
-    private readonly listAppointments: ListAppointmentsUseCase,
-    private readonly getAppointment: GetAppointmentUseCase,
+    @Inject(CreateHoldUseCase) private readonly createHold: CreateHoldUseCase,
+    @Inject(ConfirmAppointmentUseCase) private readonly confirmAppointment: ConfirmAppointmentUseCase,
+    @Inject(CancelAppointmentUseCase) private readonly cancelAppointment: CancelAppointmentUseCase,
+    @Inject(RescheduleAppointmentUseCase) private readonly rescheduleAppointment: RescheduleAppointmentUseCase,
+    @Inject(ListAppointmentsUseCase) private readonly listAppointments: ListAppointmentsUseCase,
+    @Inject(GetAppointmentUseCase) private readonly getAppointment: GetAppointmentUseCase,
   ) {}
 
   @Post('hold')

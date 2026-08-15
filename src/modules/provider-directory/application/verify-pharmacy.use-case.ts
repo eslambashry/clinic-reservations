@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -9,10 +9,10 @@ import { PharmacyRepository } from '../infrastructure/pharmacy.repository';
 @Injectable()
 export class VerifyPharmacyUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly pharmacies: PharmacyRepository,
-    private readonly audit: AuditService,
-    private readonly outbox: OutboxService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(PharmacyRepository) private readonly pharmacies: PharmacyRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(pharmacyId: string, actor: AccessTokenPayload): Promise<void> {

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { ListSchedulableAffiliationsUseCase } from '../../provider-directory/application/list-schedulable-affiliations.use-case';
 import { SCHEDULING_CONSTANTS } from '../../../shared/config/constants';
@@ -28,10 +28,10 @@ export class GenerateSlotsUseCase {
   private readonly logger = new Logger(GenerateSlotsUseCase.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly scheduleTemplates: ScheduleTemplateRepository,
-    private readonly appointmentSlots: AppointmentSlotRepository,
-    private readonly listSchedulableAffiliations: ListSchedulableAffiliationsUseCase,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
+    @Inject(AppointmentSlotRepository) private readonly appointmentSlots: AppointmentSlotRepository,
+    @Inject(ListSchedulableAffiliationsUseCase) private readonly listSchedulableAffiliations: ListSchedulableAffiliationsUseCase,
   ) {}
 
   async execute(): Promise<GenerateSlotsResult> {

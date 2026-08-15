@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -9,9 +9,9 @@ import { VerificationDocumentRepository } from '../infrastructure/verification-d
 @Injectable()
 export class ApproveVerificationDocumentUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly documents: VerificationDocumentRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(VerificationDocumentRepository) private readonly documents: VerificationDocumentRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(documentId: string, actor: AccessTokenPayload): Promise<void> {

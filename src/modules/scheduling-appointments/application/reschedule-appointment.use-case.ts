@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -34,12 +34,12 @@ export interface RescheduleAppointmentResult {
 @Injectable()
 export class RescheduleAppointmentUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly appointments: AppointmentRepository,
-    private readonly slots: AppointmentSlotRepository,
-    private readonly holds: AppointmentHoldRepository,
-    private readonly audit: AuditService,
-    private readonly outbox: OutboxService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
+    @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
+    @Inject(AppointmentHoldRepository) private readonly holds: AppointmentHoldRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(appointmentId: string, input: RescheduleAppointmentInput, actor: AccessTokenPayload): Promise<RescheduleAppointmentResult> {

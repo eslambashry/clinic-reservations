@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { hashRefreshToken } from '../domain/refresh-token.util';
 import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository';
@@ -11,8 +11,8 @@ export interface LogoutInput {
 @Injectable()
 export class LogoutUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
   ) {}
 
   async execute(input: LogoutInput): Promise<void> {

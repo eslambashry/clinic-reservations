@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, ProviderType, ProviderVerificationDocument } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -20,12 +20,12 @@ export interface UploadVerificationDocumentInput {
 @Injectable()
 export class UploadVerificationDocumentUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly documents: VerificationDocumentRepository,
-    private readonly doctors: DoctorRepository,
-    private readonly clinics: ClinicRepository,
-    private readonly pharmacies: PharmacyRepository,
-    private readonly audit: AuditService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(VerificationDocumentRepository) private readonly documents: VerificationDocumentRepository,
+    @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
+    @Inject(ClinicRepository) private readonly clinics: ClinicRepository,
+    @Inject(PharmacyRepository) private readonly pharmacies: PharmacyRepository,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Doctor, DoctorClinicAffiliation, RoleContextType } from '@prisma/client';
 import { CreateAffiliationUseCase } from '../application/create-affiliation.use-case';
@@ -27,13 +27,13 @@ import { UpdateDoctorDto } from './dto/update-doctor.dto';
 @Controller('doctors')
 export class DoctorsController {
   constructor(
-    private readonly createDoctor: CreateDoctorUseCase,
-    private readonly updateDoctor: UpdateDoctorUseCase,
-    private readonly verifyDoctor: VerifyDoctorUseCase,
-    private readonly suspendDoctor: SuspendDoctorUseCase,
-    private readonly getDoctor: GetDoctorUseCase,
-    private readonly searchDoctors: SearchDoctorsUseCase,
-    private readonly createAffiliation: CreateAffiliationUseCase,
+    @Inject(CreateDoctorUseCase) private readonly createDoctor: CreateDoctorUseCase,
+    @Inject(UpdateDoctorUseCase) private readonly updateDoctor: UpdateDoctorUseCase,
+    @Inject(VerifyDoctorUseCase) private readonly verifyDoctor: VerifyDoctorUseCase,
+    @Inject(SuspendDoctorUseCase) private readonly suspendDoctor: SuspendDoctorUseCase,
+    @Inject(GetDoctorUseCase) private readonly getDoctor: GetDoctorUseCase,
+    @Inject(SearchDoctorsUseCase) private readonly searchDoctors: SearchDoctorsUseCase,
+    @Inject(CreateAffiliationUseCase) private readonly createAffiliation: CreateAffiliationUseCase,
   ) {}
 
   @OptionalAuth()

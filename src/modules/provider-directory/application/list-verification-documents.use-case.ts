@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ProviderType, ProviderVerificationDocument, VerificationStatus } from '@prisma/client';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
@@ -29,8 +29,8 @@ interface DocumentCursor {
 @Injectable()
 export class ListVerificationDocumentsUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly documents: VerificationDocumentRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(VerificationDocumentRepository) private readonly documents: VerificationDocumentRepository,
   ) {}
 
   async execute(input: ListVerificationDocumentsInput): Promise<ListVerificationDocumentsResult> {

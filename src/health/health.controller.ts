@@ -1,4 +1,4 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
 import { Public } from '../shared/core/auth/public.decorator';
 import { PrismaService } from '../shared/kernel/prisma/prisma.service';
 import { RedisService } from '../shared/kernel/redis/redis.service';
@@ -11,8 +11,8 @@ import { RedisService } from '../shared/kernel/redis/redis.service';
 @Controller('health')
 export class HealthController {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RedisService) private readonly redis: RedisService,
   ) {}
 
   @Public()

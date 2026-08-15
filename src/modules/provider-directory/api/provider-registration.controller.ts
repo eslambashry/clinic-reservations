@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ListSpecialtiesUseCase } from '../application/list-specialties.use-case';
 import { SelfRegisterProviderResult, SelfRegisterProviderUseCase } from '../application/self-register-provider.use-case';
@@ -28,8 +28,8 @@ interface RegistrationLookups {
 @Controller('provider/registration')
 export class ProviderRegistrationController {
   constructor(
-    private readonly selfRegisterProvider: SelfRegisterProviderUseCase,
-    private readonly listSpecialties: ListSpecialtiesUseCase,
+    @Inject(SelfRegisterProviderUseCase) private readonly selfRegisterProvider: SelfRegisterProviderUseCase,
+    @Inject(ListSpecialtiesUseCase) private readonly listSpecialties: ListSpecialtiesUseCase,
   ) {}
 
   @Get('lookups')

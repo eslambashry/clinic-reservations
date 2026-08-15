@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, HttpCode, Inject, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { Public } from '../../../shared/core/auth/public.decorator';
 import { LogoutUseCase } from '../application/logout.use-case';
@@ -20,10 +20,10 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 @Controller('auth')
 export class IdentityAuthController {
   constructor(
-    private readonly requestOtp: RequestOtpUseCase,
-    private readonly verifyOtp: VerifyOtpUseCase,
-    private readonly refreshToken: RefreshTokenUseCase,
-    private readonly logout: LogoutUseCase,
+    @Inject(RequestOtpUseCase) private readonly requestOtp: RequestOtpUseCase,
+    @Inject(VerifyOtpUseCase) private readonly verifyOtp: VerifyOtpUseCase,
+    @Inject(RefreshTokenUseCase) private readonly refreshToken: RefreshTokenUseCase,
+    @Inject(LogoutUseCase) private readonly logout: LogoutUseCase,
   ) {}
 
   @Public()

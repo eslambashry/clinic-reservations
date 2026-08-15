@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 
@@ -49,7 +49,7 @@ export interface DoctorSearchRow {
  */
 @Injectable()
 export class DoctorSearchRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async search(params: DoctorSearchParams): Promise<DoctorSearchRow[]> {
     const hasLocation = params.lat !== undefined && params.lng !== undefined;

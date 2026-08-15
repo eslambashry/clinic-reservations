@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ScheduleTemplate } from '@prisma/client';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { ScheduleTemplateRepository } from '../infrastructure/schedule-template.repository';
@@ -6,8 +6,8 @@ import { ScheduleTemplateRepository } from '../infrastructure/schedule-template.
 @Injectable()
 export class ListScheduleTemplatesUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly scheduleTemplates: ScheduleTemplateRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
   ) {}
 
   execute(affiliationId: string): Promise<ScheduleTemplate[]> {

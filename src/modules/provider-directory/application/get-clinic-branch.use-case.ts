@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { canBypassVisibility, isBranchVisible, isProviderEntityVisible } from '../domain/provider-visibility.rules';
@@ -7,8 +7,8 @@ import { ClinicBranchRepository, ClinicBranchWithRelations } from '../infrastruc
 @Injectable()
 export class GetClinicBranchUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly branches: ClinicBranchRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ClinicBranchRepository) private readonly branches: ClinicBranchRepository,
   ) {}
 
   async execute(branchId: string, callerContextType: string | undefined): Promise<ClinicBranchWithRelations> {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { canBypassVisibility, isProviderEntityVisible } from '../domain/provider-visibility.rules';
@@ -20,9 +20,9 @@ export interface DoctorDetail {
 @Injectable()
 export class GetDoctorUseCase {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly doctors: DoctorRepository,
-    private readonly affiliations: AffiliationRepository,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
+    @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
   ) {}
 
   async execute(doctorId: string, callerContextType: string | undefined): Promise<DoctorDetail> {
