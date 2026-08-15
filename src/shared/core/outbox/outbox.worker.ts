@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { OutboxEvent, Prisma } from '@prisma/client';
 import { OUTBOX_CONSTANTS } from '../../config/constants';
@@ -24,7 +24,11 @@ export class OutboxWorker {
   private readonly handlers = new Map<string, OutboxEventHandler>();
   private draining = false;
 
-  constructor(private readonly prisma: PrismaService) {}
+  // Explicit @Inject avoids a `tsx`-only metadata-reflection quirk for
+  // constructor injection — see the identical note on `PrismaService`'s own
+  // constructor, which this class had missed (same bug class as
+  // `IdempotencyInterceptor`, found and fixed alongside this).
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   /** Called from a consuming module's `onModuleInit` — see the interface doc. */
   registerHandler(handler: OutboxEventHandler): void {

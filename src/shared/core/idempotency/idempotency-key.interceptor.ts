@@ -1,4 +1,4 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor } from '@nestjs/common';
 import { Request } from 'express';
 import { Observable, from, of } from 'rxjs';
 import { catchError, switchMap, tap } from 'rxjs/operators';
@@ -30,7 +30,10 @@ interface IdempotencyRecord {
  */
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly redis: RedisService) {}
+  // Explicit @Inject avoids a `tsx`-only metadata-reflection quirk for
+  // constructor injection — see the identical note on `PrismaService`
+  // /`RedisService`'s own constructors, which this class had missed.
+  constructor(@Inject(RedisService) private readonly redis: RedisService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request & { user?: AccessTokenPayload }>();

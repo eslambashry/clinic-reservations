@@ -13,6 +13,14 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('v1');
   app.enableShutdownHooks();
 
+  // No CORS config existed at all before this — any browser-based client
+  // (Flutter web, a future admin dashboard) got a CORS-preflight 404 on
+  // every request, unrelated to auth/business logic. `origin: true`
+  // reflects the request's Origin header, which is fine for local dev
+  // across arbitrary localhost ports; tighten to an explicit allowlist
+  // before any real deployment.
+  app.enableCors({ origin: true, credentials: true });
+
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder().setTitle('MedSuper API').setVersion('1.0').build(),
