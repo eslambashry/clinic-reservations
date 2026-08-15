@@ -1,11 +1,32 @@
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { GetDoctorUseCase } from './get-doctor.use-case';
 
+function doctor(overrides: Partial<any> = {}) {
+  return {
+    id: 'd1',
+    status: 'VERIFIED',
+    deleted_at: null,
+    photo_url: null,
+    rating_avg: 4.5,
+    rating_count: 10,
+    user: { first_name: 'Mona', last_name: 'Hassan' },
+    specialty: { code: 'CARDIOLOGY', name_en: 'Cardiology' },
+    ...overrides,
+  };
+}
+
 function affiliation(overrides: Partial<any> = {}) {
   return {
     id: 'aff-1',
     status: 'ACTIVE',
-    clinic_branch: { status: 'VERIFIED', clinic: { status: 'VERIFIED', deleted_at: null } },
+    clinic_branch_id: 'branch-1',
+    consult_fee: { toString: () => '150.00' },
+    currency: 'EGP',
+    clinic_branch: {
+      status: 'VERIFIED',
+      iana_timezone: 'Africa/Cairo',
+      clinic: { status: 'VERIFIED', deleted_at: null, brand_name: 'Nile Clinic' },
+    },
     ...overrides,
   };
 }
@@ -21,43 +42,51 @@ describe('GetDoctorUseCase', () => {
 
   it('404s an anonymous caller for a PENDING doctor (never reveal existence, File 11 07.2)', async () => {
     const { doctors, useCase } = setup();
-    doctors.findByIdWithUser.mockResolvedValue({ id: 'd1', status: 'PENDING', deleted_at: null });
+    doctors.findByIdWithUser.mockResolvedValue(doctor({ status: 'PENDING' }));
 
     await expect(useCase.execute('d1', undefined)).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it('404s a non-Admin authenticated caller for a PENDING doctor', async () => {
     const { doctors, useCase } = setup();
-    doctors.findByIdWithUser.mockResolvedValue({ id: 'd1', status: 'PENDING', deleted_at: null });
+    doctors.findByIdWithUser.mockResolvedValue(doctor({ status: 'PENDING' }));
 
     await expect(useCase.execute('d1', 'PATIENT')).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it('lets an Admin caller see a PENDING doctor, including non-ACTIVE affiliations', async () => {
     const { doctors, affiliations, useCase } = setup();
-    doctors.findByIdWithUser.mockResolvedValue({ id: 'd1', status: 'PENDING', deleted_at: null });
+    doctors.findByIdWithUser.mockResolvedValue(doctor({ status: 'PENDING' }));
     const paused = affiliation({ id: 'aff-paused', status: 'PAUSED' });
     affiliations.findByDoctorId.mockResolvedValue([paused]);
 
     const result = await useCase.execute('d1', 'ADMIN');
 
-    expect(result.doctor.status).toBe('PENDING');
-    expect(result.affiliations).toEqual([paused]);
+    expect(result.isVerified).toBe(false);
+    expect(result.affiliations).toEqual([
+      { clinicBranchId: 'branch-1', clinicName: 'Nile Clinic', consultationFee: '150.00', currency: 'EGP', ianaTimezone: 'Africa/Cairo' },
+    ]);
   });
 
   it('returns a VERIFIED doctor to an anonymous caller, filtered to visible affiliations only', async () => {
     const { doctors, affiliations, useCase } = setup();
-    doctors.findByIdWithUser.mockResolvedValue({ id: 'd1', status: 'VERIFIED', deleted_at: null });
+    doctors.findByIdWithUser.mockResolvedValue(doctor());
     const visible = affiliation({ id: 'aff-visible' });
     const pausedAtSuspendedBranch = affiliation({
       id: 'aff-hidden',
       status: 'ACTIVE',
-      clinic_branch: { status: 'SUSPENDED', clinic: { status: 'VERIFIED', deleted_at: null } },
+      clinic_branch: {
+        status: 'SUSPENDED',
+        iana_timezone: 'Africa/Cairo',
+        clinic: { status: 'VERIFIED', deleted_at: null, brand_name: 'Nile Clinic' },
+      },
     });
     affiliations.findByDoctorId.mockResolvedValue([visible, pausedAtSuspendedBranch]);
 
     const result = await useCase.execute('d1', undefined);
 
-    expect(result.affiliations).toEqual([visible]);
+    expect(result.name).toBe('Mona Hassan');
+    expect(result.affiliations).toHaveLength(1);
+    expect(result.affiliations[0].clinicBranchId).toBe('branch-1');
   });
 });

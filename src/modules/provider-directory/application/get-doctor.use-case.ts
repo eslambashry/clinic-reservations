@@ -2,12 +2,38 @@ import { Inject, Injectable } from '@nestjs/common';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { canBypassVisibility, isProviderEntityVisible } from '../domain/provider-visibility.rules';
-import { AffiliationRepository } from '../infrastructure/affiliation.repository';
-import { DoctorRepository, DoctorWithUser } from '../infrastructure/doctor.repository';
+import { AffiliationRepository, AffiliationWithBranch } from '../infrastructure/affiliation.repository';
+import { DoctorRepository } from '../infrastructure/doctor.repository';
 
+export interface DoctorAffiliationSummary {
+  clinicBranchId: string;
+  clinicName: string;
+  consultationFee: string;
+  currency: string;
+  ianaTimezone: string;
+}
+
+/**
+ * Flat, camelCase shape for `GET /v1/doctors/{id}` — only fields that
+ * actually exist in the schema (File 12 Part 32: no bio/qualifications/
+ * fellowships/languages/experienceYears/isOnline columns exist yet;
+ * availableDays comes from the separate `/slots` endpoint, not here).
+ */
 export interface DoctorDetail {
-  doctor: DoctorWithUser;
-  affiliations: Awaited<ReturnType<AffiliationRepository['findByDoctorId']>>;
+  id: string;
+  name: string;
+  specialty: string;
+  specialtyKey: string;
+  rating: number;
+  reviewCount: number;
+  photoUrl: string | null;
+  isVerified: boolean;
+  clinicBranchId: string | null;
+  clinicName: string | null;
+  consultationFee: string | null;
+  currency: string | null;
+  ianaTimezone: string | null;
+  affiliations: DoctorAffiliationSummary[];
 }
 
 /**
@@ -34,12 +60,41 @@ export class GetDoctorUseCase {
     }
 
     const allAffiliations = await this.affiliations.findByDoctorId(this.prisma, doctorId, false);
-    const affiliations = isAdmin
+    const visibleAffiliations = isAdmin
       ? allAffiliations
       : allAffiliations.filter(
           (a) => a.status === 'ACTIVE' && a.clinic_branch.status === 'VERIFIED' && a.clinic_branch.clinic.status === 'VERIFIED' && a.clinic_branch.clinic.deleted_at === null,
         );
 
-    return { doctor, affiliations };
+    const affiliations = visibleAffiliations.map(toAffiliationSummary);
+    const primary = affiliations[0] ?? null;
+    const name = [doctor.user.first_name, doctor.user.last_name].filter(Boolean).join(' ') || 'Unknown';
+
+    return {
+      id: doctor.id,
+      name,
+      specialty: doctor.specialty.name_en,
+      specialtyKey: doctor.specialty.code,
+      rating: Number(doctor.rating_avg),
+      reviewCount: doctor.rating_count,
+      photoUrl: doctor.photo_url,
+      isVerified: doctor.status === 'VERIFIED',
+      clinicBranchId: primary?.clinicBranchId ?? null,
+      clinicName: primary?.clinicName ?? null,
+      consultationFee: primary?.consultationFee ?? null,
+      currency: primary?.currency ?? null,
+      ianaTimezone: primary?.ianaTimezone ?? null,
+      affiliations,
+    };
   }
+}
+
+function toAffiliationSummary(a: AffiliationWithBranch): DoctorAffiliationSummary {
+  return {
+    clinicBranchId: a.clinic_branch_id,
+    clinicName: a.clinic_branch.clinic.brand_name,
+    consultationFee: a.consult_fee.toString(),
+    currency: a.currency,
+    ianaTimezone: a.clinic_branch.iana_timezone,
+  };
 }
