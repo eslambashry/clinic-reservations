@@ -1,6 +1,9 @@
-import { Body, Controller, HttpCode, Inject, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
+import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
+import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Public } from '../../../shared/core/auth/public.decorator';
+import { GetCurrentUserResult, GetCurrentUserUseCase } from '../application/get-current-user.use-case';
 import { LogoutUseCase } from '../application/logout.use-case';
 import { RefreshTokenResult, RefreshTokenUseCase } from '../application/refresh-token.use-case';
 import { RequestOtpResult, RequestOtpUseCase } from '../application/request-otp.use-case';
@@ -24,6 +27,7 @@ export class IdentityAuthController {
     @Inject(VerifyOtpUseCase) private readonly verifyOtp: VerifyOtpUseCase,
     @Inject(RefreshTokenUseCase) private readonly refreshToken: RefreshTokenUseCase,
     @Inject(LogoutUseCase) private readonly logout: LogoutUseCase,
+    @Inject(GetCurrentUserUseCase) private readonly getCurrentUser: GetCurrentUserUseCase,
   ) {}
 
   @Public()
@@ -49,5 +53,10 @@ export class IdentityAuthController {
   @HttpCode(204)
   async signOut(@Body() dto: LogoutDto): Promise<void> {
     await this.logout.execute({ refreshToken: dto.refreshToken, allDevices: dto.allDevices });
+  }
+
+  @Get('me')
+  me(@CurrentUser() payload: AccessTokenPayload): Promise<GetCurrentUserResult> {
+    return this.getCurrentUser.execute({ userId: payload.sub, activeRoleCode: payload.roleCode });
   }
 }

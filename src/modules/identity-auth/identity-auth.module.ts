@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
 import { IdentityAuthController } from './api/identity-auth.controller';
+import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
 import { RefreshTokenUseCase } from './application/refresh-token.use-case';
@@ -30,6 +31,7 @@ import { UserRepository } from './infrastructure/user.repository';
     VerifyOtpUseCase,
     RefreshTokenUseCase,
     LogoutUseCase,
+    GetCurrentUserUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
