@@ -2,8 +2,10 @@
   "name": "clinic-reservations-backend",
   "version": "1.0.0",
   "description": "Backend modular monolith API service for MedSuper Healthcare Platform",
-  "main": "dist/index.js",
+  "main": "src/index.js",
   "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node src/index.js",
     "build": "tsc",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -20,7 +22,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@fastify/jwt": "^10.2.1",
+    "@fastify/multipart": "^10.1.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "@prisma/client": "^5.22.0",
+    "fastify": "^5.11.3"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
