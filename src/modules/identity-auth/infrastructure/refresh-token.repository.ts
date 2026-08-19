@@ -22,8 +22,19 @@ export class RefreshTokenRepository {
     return db.refreshToken.findUnique({ where: { token_hash: tokenHash } });
   }
 
-  revoke(db: Prisma.TransactionClient, id: string): Promise<RefreshToken> {
-    return db.refreshToken.update({ where: { id }, data: { revoked_at: new Date() } });
+  /**
+   * Conditional revoke, not a plain `update` — `false` means another
+   * concurrent call already revoked this exact token first (a genuine race
+   * on `/token/refresh`, not a bug: two callers can both read the token as
+   * not-yet-revoked before either commits). The caller must not proceed to
+   * mint a new token pair from a predecessor it didn't actually get to
+   * revoke itself. Same conditional-updateMany shape as every other
+   * concurrency-guarded write in the codebase (e.g.
+   * `AppointmentHoldRepository.markConverted`).
+   */
+  async revoke(db: Prisma.TransactionClient, id: string): Promise<boolean> {
+    const result = await db.refreshToken.updateMany({ where: { id, revoked_at: null }, data: { revoked_at: new Date() } });
+    return result.count === 1;
   }
 
   /**

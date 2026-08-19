@@ -7,7 +7,18 @@ import { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import { ConflictError } from '../errors/domain-errors';
 
 const HEADER = 'idempotency-key';
-const TTL_SECONDS = 24 * 60 * 60;
+/** How long a *successful* response is cached and replayed to a retry with the same key. */
+const COMPLETED_TTL_SECONDS = 24 * 60 * 60;
+/**
+ * How long the `IN_PROGRESS` lock survives before self-healing. Short on
+ * purpose: `catchError` below already releases the lock immediately on a
+ * caught exception, so this TTL only matters when the handler never gets
+ * that far — a process crash, OOM kill, or deploy restart mid-transaction.
+ * All locked endpoints are single-transaction and normally sub-second; a
+ * generous multiple of that is enough headroom without leaving a crashed
+ * lock blocking retries for the full `COMPLETED_TTL_SECONDS` window.
+ */
+const IN_PROGRESS_TTL_SECONDS = 30;
 
 interface IdempotencyRecord {
   status: 'IN_PROGRESS' | 'COMPLETED';
@@ -78,7 +89,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   private async tryAcquire(redisKey: string): Promise<IdempotencyRecord | undefined> {
     const record: IdempotencyRecord = { status: 'IN_PROGRESS' };
-    const acquired = await this.redis.client.set(redisKey, JSON.stringify(record), 'EX', TTL_SECONDS, 'NX');
+    const acquired = await this.redis.client.set(redisKey, JSON.stringify(record), 'EX', IN_PROGRESS_TTL_SECONDS, 'NX');
     if (acquired === 'OK') {
       return undefined;
     }
@@ -88,7 +99,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
 
   private async complete(redisKey: string, response: unknown): Promise<void> {
     const record: IdempotencyRecord = { status: 'COMPLETED', response };
-    await this.redis.set(redisKey, JSON.stringify(record), TTL_SECONDS);
+    await this.redis.set(redisKey, JSON.stringify(record), COMPLETED_TTL_SECONDS);
   }
 
   private async release(redisKey: string): Promise<void> {

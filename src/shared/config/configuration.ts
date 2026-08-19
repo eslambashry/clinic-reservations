@@ -15,6 +15,10 @@ export interface AppConfig {
     accessTtlSeconds: number;
     refreshTtlSeconds: number;
   };
+  /** `null` means no allowlist configured — `main.ts` falls back to reflecting any Origin (dev-only). */
+  cors: {
+    allowedOrigins: string[] | null;
+  };
 }
 
 export default (): AppConfig => ({
@@ -31,5 +35,10 @@ export default (): AppConfig => ({
     accessSecret: process.env.JWT_ACCESS_SECRET as string,
     accessTtlSeconds: AUTH_CONSTANTS.ACCESS_TOKEN_TTL_SECONDS,
     refreshTtlSeconds: AUTH_CONSTANTS.REFRESH_TOKEN_TTL_SECONDS,
+  },
+  cors: {
+    allowedOrigins: process.env.CORS_ALLOWED_ORIGINS
+      ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
+      : null,
   },
 });

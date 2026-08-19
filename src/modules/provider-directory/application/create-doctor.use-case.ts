@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Doctor, Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { ConflictError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 import { SpecialtyRepository } from '../infrastructure/specialty.repository';
@@ -57,6 +57,7 @@ export class CreateDoctorUseCase {
   }
 }
 
+/** Never a bare `Error` (project convention: use-cases only throw `AppError` subclasses) and never the raw driver/DB error text — see the identical note on `translateCreateHoldError`. */
 export function translateCreateDoctorError(error: unknown, userId: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2003') {
@@ -66,5 +67,5 @@ export function translateCreateDoctorError(error: unknown, userId: string): Erro
       return new ConflictError('DOCTOR_ALREADY_EXISTS', 'This user already has a doctor profile.', { userId });
     }
   }
-  return error instanceof Error ? error : new Error(String(error));
+  return new DomainError(500, 'INTERNAL_ERROR', 'Unexpected error while creating the doctor.');
 }

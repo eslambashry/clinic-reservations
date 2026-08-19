@@ -40,9 +40,21 @@ class EnvironmentVariables {
   @IsString()
   REDIS_URL: string;
 
-  /** Signs/verifies short-lived access JWTs (File 11 Part 07.1). Refresh tokens are opaque, not JWT — no secret needed for those, they're hashed with argon2 instead. */
+  /** Signs/verifies short-lived access JWTs (File 11 Part 07.1). Refresh tokens are opaque, not JWT — no secret needed for those; they're hashed with deterministic SHA-256 for lookup, not argon2 (see `identity-auth/domain/refresh-token.util.ts`). */
   @IsString()
   JWT_ACCESS_SECRET: string;
+
+  /**
+   * Comma-separated allowlist of browser origins allowed to call the API
+   * (e.g. `https://app.medsuper.example,https://admin.medsuper.example`).
+   * Optional: unset means "reflect any Origin" (`src/main.ts`), which is
+   * fine for local dev across arbitrary localhost ports but must be set
+   * before a real deployment — `main.ts` logs a warning at boot if it's
+   * still unset while `NODE_ENV=production`.
+   */
+  @IsString()
+  @IsOptional()
+  CORS_ALLOWED_ORIGINS?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

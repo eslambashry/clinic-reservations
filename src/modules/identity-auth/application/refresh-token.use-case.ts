@@ -52,7 +52,15 @@ export class RefreshTokenUseCase {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      await this.refreshTokens.revoke(tx, existing.id);
+      const revoked = await this.refreshTokens.revoke(tx, existing.id);
+      if (!revoked) {
+        // Lost a concurrent-refresh race: another call revoked this exact
+        // token first (between our read above and this conditional write).
+        // Treat it the same as an unrecognized token, not as a theft
+        // signal — this isn't a replay of an already-rotated token, it's
+        // two legitimate calls racing on the same still-valid one.
+        throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'This refresh token has already been used.');
+      }
 
       // Phase 1 scope: exactly one (PATIENT) membership per user — see the
       // same note in `verify-otp.use-case.ts`.
