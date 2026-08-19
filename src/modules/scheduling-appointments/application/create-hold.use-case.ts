@@ -80,10 +80,15 @@ export class CreateHoldUseCase {
   }
 }
 
-/** File 10 §3.5.1: the partial unique index violation (P2002) is the documented `409 SLOT_ALREADY_HELD` path, not a 500. */
+/**
+ * File 10 §3.5.1: the partial unique index violation (P2002) is the documented `409 SLOT_ALREADY_HELD` path, not a 500.
+ * Any other error gets a fixed, generic message — never the raw driver/DB error text, which can name tables/columns
+ * and would otherwise reach the client verbatim through `DomainError.message` (`ErrorEnvelopeFilter` passes an
+ * `AppError`'s own message straight through; it isn't reinterpreted the way an unrecognized exception is).
+ */
 export function translateCreateHoldError(error: unknown, slotId: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
     return new ConflictError('SLOT_ALREADY_HELD', 'This slot already has an active hold.', { slotId });
   }
-  return new DomainError(500, 'INTERNAL_ERROR', error instanceof Error ? error.message : 'Unexpected error while creating the hold.');
+  return new DomainError(500, 'INTERNAL_ERROR', 'Unexpected error while creating the hold.');
 }

@@ -1,4 +1,4 @@
-import * as argon2 from 'argon2';
+import * as argon2 from '@node-rs/argon2';
 import { randomInt } from 'node:crypto';
 import { OTP_CONSTANTS } from './otp.constants';
 

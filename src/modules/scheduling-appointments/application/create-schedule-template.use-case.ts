@@ -49,9 +49,10 @@ export class CreateScheduleTemplateUseCase {
   }
 }
 
+/** Any error other than the FK case gets a fixed, generic message — never the raw driver/DB error text (see the identical note on `translateCreateHoldError`). */
 export function translateScheduleTemplateError(error: unknown, affiliationId: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
     return new NotFoundError('DoctorClinicAffiliation', affiliationId);
   }
-  return new DomainError(500, 'INTERNAL_ERROR', error instanceof Error ? error.message : 'Unexpected error while creating the schedule template.');
+  return new DomainError(500, 'INTERNAL_ERROR', 'Unexpected error while creating the schedule template.');
 }

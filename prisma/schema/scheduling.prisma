@@ -88,5 +88,10 @@ model Appointment {
   encounters       Encounter[]
   rescheduling_holds AppointmentHold[]     @relation("HoldReschedulesAppointment")
 
+  /// Backs `AppointmentRepository.listForPatient` ("My Appointments",
+  /// File 12 Part 35.14/35.15) — filtered by `patient_id` and optionally
+  /// `status`, ordered via the joined slot's `start_at`. Without this, every
+  /// call is a full sequential scan of `appointments`.
+  @@index([patient_id, status])
   @@map("appointments")
 }
