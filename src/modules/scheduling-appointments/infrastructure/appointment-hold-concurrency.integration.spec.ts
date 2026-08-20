@@ -12,10 +12,19 @@ import { ListAppointmentsUseCase } from '../application/list-appointments.use-ca
 import { RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AuditLogRepository } from '../../audit/infrastructure/audit-log.repository';
+import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
+import { ProcessCancellationRefundUseCase } from '../../payments/application/process-cancellation-refund.use-case';
+import { PaymentIntentRepository } from '../../payments/infrastructure/payment-intent.repository';
+import { PaymentSplitRepository } from '../../payments/infrastructure/payment-split.repository';
+import { ProviderLedgerRepository } from '../../payments/infrastructure/provider-ledger.repository';
+import { RefundRepository } from '../../payments/infrastructure/refund.repository';
+import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
+import { AffiliationRepository } from '../../provider-directory/infrastructure/affiliation.repository';
 import { AppConfigModule } from '../../../shared/config/config.module';
 import { RequestContextService } from '../../../shared/core/context/request-context.service';
 import { ConflictError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
+import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
 import { PrismaModule } from '../../../shared/kernel/prisma/prisma.module';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 
@@ -61,6 +70,15 @@ describe('Appointment booking loop (integration)', () => {
         AuditService,
         RequestContextService,
         OutboxService,
+        PolicyConfigReader,
+        AffiliationRepository,
+        GetAffiliationBillingInfoUseCase,
+        PaymentIntentRepository,
+        PaymentSplitRepository,
+        RefundRepository,
+        ProviderLedgerRepository,
+        CapturePayAtClinicPaymentUseCase,
+        ProcessCancellationRefundUseCase,
         CreateHoldUseCase,
         ConfirmAppointmentUseCase,
         CancelAppointmentUseCase,
@@ -110,10 +128,27 @@ describe('Appointment booking loop (integration)', () => {
   }, 30000);
 
   afterAll(async () => {
+    // Pay-at-clinic confirms now capture a real PaymentIntent (File 12 Part
+    // 36) — collect the ids before the Appointment rows referencing them
+    // are deleted, so the payments-side rows don't leak into the live DB.
+    const appointmentsToClean = await prisma.appointment.findMany({
+      where: { doctor_clinic_affiliation_id: affiliationId },
+      select: { payment_intent_id: true },
+    });
+    const paymentIntentIds = appointmentsToClean.map((a) => a.payment_intent_id).filter((id): id is string => id !== null);
+
     await prisma.appointment.deleteMany({ where: { doctor_clinic_affiliation_id: affiliationId } });
     await prisma.appointmentHold.deleteMany({ where: { slot: { doctor_clinic_affiliation_id: affiliationId } } });
     await prisma.appointmentSlot.deleteMany({ where: { doctor_clinic_affiliation_id: affiliationId } });
-    await prisma.outboxEvent.deleteMany({ where: { event_name: { in: ['AppointmentHeld', 'AppointmentConfirmed', 'AppointmentCancelled'] } } });
+    if (paymentIntentIds.length > 0) {
+      await prisma.refund.deleteMany({ where: { payment_intent_id: { in: paymentIntentIds } } });
+      await prisma.paymentSplit.deleteMany({ where: { payment_intent_id: { in: paymentIntentIds } } });
+      await prisma.providerLedgerEntry.deleteMany({ where: { related_payment_intent_id: { in: paymentIntentIds } } });
+      await prisma.paymentIntent.deleteMany({ where: { id: { in: paymentIntentIds } } });
+    }
+    await prisma.outboxEvent.deleteMany({
+      where: { event_name: { in: ['AppointmentHeld', 'AppointmentConfirmed', 'AppointmentCancelled', 'PaymentCaptured', 'RefundIssued'] } },
+    });
     await prisma.auditLog.deleteMany({ where: { resource_type: { in: ['appointment_hold', 'appointment'] } } });
     await prisma.doctorClinicAffiliation.delete({ where: { id: affiliationId } });
     await prisma.doctor.delete({ where: { id: doctorId } });
@@ -123,7 +158,7 @@ describe('Appointment booking loop (integration)', () => {
     await prisma.address.delete({ where: { id: addressId } });
     await prisma.specialty.delete({ where: { code: specialtyCode } });
     await moduleRef.close();
-  });
+  }, 20000);
 
   async function freshOpenSlot(startAt: Date) {
     return prisma.appointmentSlot.create({
@@ -177,7 +212,7 @@ describe('Appointment booking loop (integration)', () => {
     const appointments = await prisma.appointment.findMany({ where: { slot_id: slot.id } });
     expect(appointments).toHaveLength(1);
     expect(appointments[0].status).toBe('CONFIRMED');
-  });
+  }, 20000);
 
   it('cancels a confirmed appointment and releases its slot back to OPEN', async () => {
     const slot = await freshOpenSlot(new Date('2026-09-01T11:00:00Z'));
@@ -187,8 +222,12 @@ describe('Appointment booking loop (integration)', () => {
     const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slot.id, patientId }, actor);
     const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
 
+    // The affiliation's consult_fee is 100.00 (beforeAll) and the seeded
+    // CANCELLATION_TIER policy is 10% (src/db/seed.ts) — a real fee/refund
+    // is now computed from the payment captured at confirm time (File 12
+    // Part 36), no longer hardcoded 0/0.
     const result = await cancelAppointment.execute(confirmed.appointmentId, { reason: 'PATIENT_REQUEST' }, actor);
-    expect(result).toEqual({ status: 'CANCELLED', refundAmount: 0, feeApplied: 0 });
+    expect(result).toEqual({ status: 'CANCELLED', refundAmount: 90, feeApplied: 10 });
 
     const appointment = await prisma.appointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId } });
     expect(appointment.status).toBe('CANCELLED');
@@ -196,7 +235,7 @@ describe('Appointment booking loop (integration)', () => {
 
     const refreshedSlot = await prisma.appointmentSlot.findUniqueOrThrow({ where: { id: slot.id } });
     expect(refreshedSlot.status).toBe('OPEN');
-  });
+  }, 20000);
 
   it('reschedules a confirmed appointment to a fresh hold, then confirming it links back to the original appointment', async () => {
     const oldSlot = await freshOpenSlot(new Date('2026-09-01T12:00:00Z'));
@@ -221,7 +260,7 @@ describe('Appointment booking loop (integration)', () => {
     const newlyConfirmed = await confirmAppointment.execute(rescheduled.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
     const newAppointment = await prisma.appointment.findUniqueOrThrow({ where: { id: newlyConfirmed.appointmentId } });
     expect(newAppointment.rescheduled_from_appointment_id).toBe(confirmed.appointmentId);
-  });
+  }, 20000);
 
   it('lists and gets the caller\'s own confirmed appointments, cursor-paginated by slot start_at', async () => {
     const patientId = patientUserIds[2];
@@ -250,5 +289,5 @@ describe('Appointment booking loop (integration)', () => {
 
     const detail = await getAppointment.execute(confirmedA.appointmentId, actor);
     expect(detail).toMatchObject({ appointmentId: confirmedA.appointmentId, status: 'CONFIRMED', slotId: slotA.id });
-  });
+  }, 20000);
 });

@@ -15,6 +15,7 @@ import { CreateClinicUseCase } from './application/create-clinic.use-case';
 import { CreateDoctorUseCase } from './application/create-doctor.use-case';
 import { CreatePharmacyBranchUseCase } from './application/create-pharmacy-branch.use-case';
 import { CreatePharmacyUseCase } from './application/create-pharmacy.use-case';
+import { GetAffiliationBillingInfoUseCase } from './application/get-affiliation-billing-info.use-case';
 import { GetClinicBranchUseCase } from './application/get-clinic-branch.use-case';
 import { GetClinicUseCase } from './application/get-clinic.use-case';
 import { GetDoctorUseCase } from './application/get-doctor.use-case';
@@ -64,7 +65,9 @@ import { AuditModule } from '../audit/audit.module';
  * 33.3: `scheduling-appointments` now calls through this module's exported
  * use-cases (`ResolveAffiliationForSchedulingUseCase`/
  * `ListSchedulableAffiliationsUseCase`) to resolve a doctor/clinic-branch
- * pair and check visibility — never its `infrastructure/`.
+ * pair and check visibility — never its `infrastructure/`. File 12 Part
+ * 36.3 adds a third export, `GetAffiliationBillingInfoUseCase`, used by
+ * `payments` to read an affiliation's consult fee inside its own transaction.
  */
 @Module({
   imports: [AuditModule],
@@ -128,7 +131,8 @@ import { AuditModule } from '../audit/audit.module';
     ResolveAffiliationForSchedulingUseCase,
     ListSchedulableAffiliationsUseCase,
     SelfRegisterProviderUseCase,
+    GetAffiliationBillingInfoUseCase,
   ],
-  exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase],
+  exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase, GetAffiliationBillingInfoUseCase],
 })
 export class ProviderDirectoryModule {}

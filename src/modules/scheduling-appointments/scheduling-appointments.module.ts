@@ -22,17 +22,19 @@ import { HoldExpiryJob } from './infrastructure/hold-expiry.job';
 import { ScheduleTemplateRepository } from './infrastructure/schedule-template.repository';
 import { SlotGenerationJob } from './infrastructure/slot-generation.job';
 import { AuditModule } from '../audit/audit.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
 
 /**
  * File 11 Part 03: owns `schedule_templates`, `appointment_slots`,
  * `appointment_holds`, `appointments` (File 12 Part 35 — hold/confirm/
  * cancel/reschedule/`GET` are all implemented now). Imports
- * `ProviderDirectoryModule` for the two use-cases it exports (Part 33.3) —
- * never reaches into its repositories.
+ * `ProviderDirectoryModule` for the three use-cases it exports (Part 33.3/
+ * 36.3) and `PaymentsModule` for pay-at-clinic capture/refund (Part 36) —
+ * never reaches into either module's repositories.
  */
 @Module({
-  imports: [AuditModule, ProviderDirectoryModule],
+  imports: [AuditModule, ProviderDirectoryModule, PaymentsModule],
   controllers: [ScheduleTemplatesController, DoctorSlotsController, AppointmentsController],
   providers: [
     // infrastructure

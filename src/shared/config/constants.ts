@@ -49,6 +49,11 @@ export const PROVIDER_REGISTRATION_CONSTANTS = {
   DEFAULT_COUNTRY_CODE: 'EG',
 } as const;
 
+/** File 11 Part 01: single-region MVP launch — every `policy_configs` read defaults to this region until multi-region is built. */
+export const REGION_CONSTANTS = {
+  DEFAULT_REGION_CODE: 'EG',
+} as const;
+
 /**
  * `DEC-B09` — explicitly delegated to engineering discretion. This is the
  * global fallback only; endpoints with a documented stricter need (e.g.
