@@ -1,10 +1,12 @@
+import { REGION_CONSTANTS } from '../shared/config/constants';
 import { prisma } from './client';
 
 /**
- * File 11 Part 01: single-region MVP launch (Egypt) — 'EG' is the region
- * code every seeded/default policy_config row is scoped to.
+ * File 11 Part 01: single-region MVP launch (Egypt) — every seeded/default
+ * policy_config row is scoped to this region (shared with the runtime's
+ * `PolicyConfigReader`, File 12 Part 36.1 — not duplicated as a second literal).
  */
-const DEFAULT_REGION = 'EG';
+const DEFAULT_REGION = REGION_CONSTANTS.DEFAULT_REGION_CODE;
 
 async function main() {
   console.log('🌱 Starting database seed verification...');
@@ -50,6 +52,28 @@ async function main() {
     });
     console.log(
       `✅ Seeded policy config: ${created.policy_type} (${created.region_code}) = ${JSON.stringify(created.value)}`,
+    );
+  }
+
+  // Seed default commission-rate policy (File 11 Part 13: commission rate is
+  // sourced from policy_configs at capture time, never hardcoded). Flat
+  // placeholder rate, same engineering-placeholder status as the
+  // CANCELLATION_TIER value above — File 10 doesn't state an exact
+  // commission percentage anywhere (File 12 Part 36.2).
+  const existingCommissionPolicy = await prisma.policyConfig.findFirst({
+    where: { region_code: DEFAULT_REGION, policy_type: 'COMMISSION_RATE' },
+  });
+
+  if (!existingCommissionPolicy) {
+    const createdCommission = await prisma.policyConfig.create({
+      data: {
+        region_code: DEFAULT_REGION,
+        policy_type: 'COMMISSION_RATE',
+        value: { ratePercent: 15 },
+      },
+    });
+    console.log(
+      `✅ Seeded policy config: ${createdCommission.policy_type} (${createdCommission.region_code}) = ${JSON.stringify(createdCommission.value)}`,
     );
   }
 

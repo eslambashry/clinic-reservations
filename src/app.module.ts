@@ -5,6 +5,7 @@ import { ProviderDirectoryModule } from './modules/provider-directory/provider-d
 import { SchedulingAppointmentsModule } from './modules/scheduling-appointments/scheduling-appointments.module';
 import { AppConfigModule } from './shared/config/config.module';
 import { CoreModule } from './shared/core/core.module';
+import { PolicyConfigModule } from './shared/kernel/policy-config/policy-config.module';
 import { PrismaModule } from './shared/kernel/prisma/prisma.module';
 import { RedisModule } from './shared/kernel/redis/redis.module';
 
@@ -20,6 +21,7 @@ import { RedisModule } from './shared/kernel/redis/redis.module';
     AppConfigModule,
     PrismaModule,
     RedisModule,
+    PolicyConfigModule,
     CoreModule,
     HealthModule,
     IdentityAuthModule,
