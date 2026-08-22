@@ -1,65 +1,58 @@
-// ==========================================
-// PROVIDER DIRECTORY MODULE SCHEMA
-// ==========================================
-
 model Specialty {
-  code        String   @id
+  code        String      @id
   name_en     String
   name_ar     String
   parent_code String?
-  created_at  DateTime @default(now()) @db.Timestamptz
-  updated_at  DateTime @updatedAt @db.Timestamptz
-  version     Int      @default(1)
-
-  parent   Specialty?  @relation("SpecialtyParent", fields: [parent_code], references: [code])
-  children Specialty[] @relation("SpecialtyParent")
-  doctors  Doctor[]
+  created_at  DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime    @updatedAt @db.Timestamptz(6)
+  version     Int         @default(1)
+  doctors     Doctor[]
+  parent      Specialty?  @relation("SpecialtyParent", fields: [parent_code], references: [code])
+  children    Specialty[] @relation("SpecialtyParent")
 
   @@map("specialties")
 }
 
 model Address {
-  id           String    @id @default(uuid()) @db.Uuid
-  line1        String
-  city         String
-  region_code  String
-  country_code String
-  geo_lat      Decimal?  @db.Decimal(9, 6)
-  geo_lng      Decimal?  @db.Decimal(9, 6)
-  deleted_at   DateTime? @db.Timestamptz
-  created_at   DateTime  @default(now()) @db.Timestamptz
-  updated_at   DateTime  @updatedAt @db.Timestamptz
-  version      Int       @default(1)
-
+  id                String           @id @default(uuid()) @db.Uuid
+  line1             String
+  city              String
+  region_code       String
+  country_code      String
+  geo_lat           Decimal?         @db.Decimal(9, 6)
+  geo_lng           Decimal?         @db.Decimal(9, 6)
+  deleted_at        DateTime?        @db.Timestamptz(6)
+  created_at        DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime         @updatedAt @db.Timestamptz(6)
+  version           Int              @default(1)
   clinic_branches   ClinicBranch[]
-  pharmacy_branches PharmacyBranch[]
   delivery_orders   DeliveryOrder[]
+  pharmacy_branches PharmacyBranch[]
 
   @@map("addresses")
 }
 
 model Doctor {
-  id                  String       @id @default(uuid()) @db.Uuid
-  user_id             String       @unique @db.Uuid
+  id                  String                    @id @default(uuid()) @db.Uuid
+  user_id             String                    @unique @db.Uuid
   specialty_code      String
   license_number      String
-  license_verified_at DateTime?    @db.Timestamptz
-  status              DoctorStatus @default(PENDING)
+  license_verified_at DateTime?                 @db.Timestamptz(6)
+  status              DoctorStatus              @default(PENDING)
+  rating_avg          Decimal                   @default(0) @db.Decimal(2, 1)
+  rating_count        Int                       @default(0)
+  region_code         String?
+  deleted_at          DateTime?                 @db.Timestamptz(6)
+  created_at          DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                  @updatedAt @db.Timestamptz(6)
+  version             Int                       @default(1)
   /// File 12 Part 32.1 — nullable, no upload flow yet (Part 19 deferred);
   /// a pre-hosted URL only, matching `ProviderVerificationDocument.file_url`.
   photo_url           String?
-  rating_avg          Decimal      @default(0) @db.Decimal(2, 1)
-  rating_count        Int          @default(0)
-  region_code         String?
-  deleted_at          DateTime?    @db.Timestamptz
-  created_at          DateTime     @default(now()) @db.Timestamptz
-  updated_at          DateTime     @updatedAt @db.Timestamptz
-  version             Int          @default(1)
-
-  user         User                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  specialty    Specialty                 @relation(fields: [specialty_code], references: [code])
-  affiliations DoctorClinicAffiliation[]
-  encounters   Encounter[]
+  affiliations        DoctorClinicAffiliation[]
+  specialty           Specialty                 @relation(fields: [specialty_code], references: [code])
+  user                User                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  encounters          Encounter[]
 
   @@map("doctors")
 }
@@ -71,90 +64,85 @@ model Clinic {
   tax_id      String?
   region_code String?
   status      ProviderStatus @default(PENDING)
-  verified_at DateTime?      @db.Timestamptz
-  deleted_at  DateTime?      @db.Timestamptz
-  created_at  DateTime       @default(now()) @db.Timestamptz
-  updated_at  DateTime       @updatedAt @db.Timestamptz
+  verified_at DateTime?      @db.Timestamptz(6)
+  deleted_at  DateTime?      @db.Timestamptz(6)
+  created_at  DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime       @updatedAt @db.Timestamptz(6)
   version     Int            @default(1)
-
-  branches ClinicBranch[]
+  branches    ClinicBranch[]
 
   @@map("clinics")
 }
 
 model ClinicBranch {
-  id            String         @id @default(uuid()) @db.Uuid
-  clinic_id     String         @db.Uuid
-  address_id    String         @db.Uuid
+  id            String                    @id @default(uuid()) @db.Uuid
+  clinic_id     String                    @db.Uuid
+  address_id    String                    @db.Uuid
   phone         String
   iana_timezone String
-  status        ProviderStatus @default(PENDING)
-  created_at    DateTime       @default(now()) @db.Timestamptz
-  updated_at    DateTime       @updatedAt @db.Timestamptz
-  version       Int            @default(1)
-
-  clinic       Clinic                    @relation(fields: [clinic_id], references: [id], onDelete: Cascade)
-  address      Address                   @relation(fields: [address_id], references: [id])
-  affiliations DoctorClinicAffiliation[]
+  status        ProviderStatus            @default(PENDING)
+  created_at    DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime                  @updatedAt @db.Timestamptz(6)
+  version       Int                       @default(1)
+  address       Address                   @relation(fields: [address_id], references: [id])
+  clinic        Clinic                    @relation(fields: [clinic_id], references: [id], onDelete: Cascade)
+  affiliations  DoctorClinicAffiliation[]
 
   @@map("clinic_branches")
 }
 
 model DoctorClinicAffiliation {
-  id               String            @id @default(uuid()) @db.Uuid
-  doctor_id        String            @db.Uuid
-  clinic_branch_id String            @db.Uuid
-  consult_fee      Decimal           @db.Decimal(10, 2)
-  currency         String            @db.Char(3)
-  status           AffiliationStatus @default(ACTIVE)
-  created_at       DateTime          @default(now()) @db.Timestamptz
-  updated_at       DateTime          @updatedAt @db.Timestamptz
-  version          Int               @default(1)
-
-  doctor             Doctor             @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
-  clinic_branch      ClinicBranch       @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade)
-  schedule_templates ScheduleTemplate[]
+  id                 String             @id @default(uuid()) @db.Uuid
+  doctor_id          String             @db.Uuid
+  clinic_branch_id   String             @db.Uuid
+  consult_fee        Decimal            @db.Decimal(10, 2)
+  currency           String             @db.Char(3)
+  status             AffiliationStatus  @default(ACTIVE)
+  created_at         DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime           @updatedAt @db.Timestamptz(6)
+  version            Int                @default(1)
   appointment_slots  AppointmentSlot[]
   appointments       Appointment[]
+  clinic_branch      ClinicBranch       @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade)
+  doctor             Doctor             @relation(fields: [doctor_id], references: [id], onDelete: Cascade)
+  schedule_templates ScheduleTemplate[]
 
   @@unique([doctor_id, clinic_branch_id])
   @@map("doctor_clinic_affiliations")
 }
 
 model Pharmacy {
-  id          String         @id @default(uuid()) @db.Uuid
+  id          String           @id @default(uuid()) @db.Uuid
   legal_name  String
   brand_name  String
   tax_id      String?
   region_code String?
-  status      ProviderStatus @default(PENDING)
-  verified_at DateTime?      @db.Timestamptz
-  deleted_at  DateTime?      @db.Timestamptz
-  created_at  DateTime       @default(now()) @db.Timestamptz
-  updated_at  DateTime       @updatedAt @db.Timestamptz
-  version     Int            @default(1)
-
-  branches PharmacyBranch[]
+  status      ProviderStatus   @default(PENDING)
+  verified_at DateTime?        @db.Timestamptz(6)
+  deleted_at  DateTime?        @db.Timestamptz(6)
+  created_at  DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime         @updatedAt @db.Timestamptz(6)
+  version     Int              @default(1)
+  branches    PharmacyBranch[]
 
   @@map("pharmacies")
 }
 
 model PharmacyBranch {
-  id               String         @id @default(uuid()) @db.Uuid
-  pharmacy_id      String         @db.Uuid
-  address_id       String         @db.Uuid
+  id               String                   @id @default(uuid()) @db.Uuid
+  pharmacy_id      String                   @db.Uuid
+  address_id       String                   @db.Uuid
   phone            String
   iana_timezone    String
-  delivery_capable Boolean        @default(false)
-  status           ProviderStatus @default(PENDING)
-  created_at       DateTime       @default(now()) @db.Timestamptz
-  updated_at       DateTime       @updatedAt @db.Timestamptz
-  version          Int            @default(1)
-
-  pharmacy   Pharmacy                 @relation(fields: [pharmacy_id], references: [id], onDelete: Cascade)
-  address    Address                  @relation(fields: [address_id], references: [id])
-  orders     PharmacyOrder[]
-  broadcasts PharmacyOrderBroadcast[]
+  delivery_capable Boolean                  @default(false)
+  status           ProviderStatus           @default(PENDING)
+  created_at       DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime                 @updatedAt @db.Timestamptz(6)
+  version          Int                      @default(1)
+  address          Address                  @relation(fields: [address_id], references: [id])
+  pharmacy         Pharmacy                 @relation(fields: [pharmacy_id], references: [id], onDelete: Cascade)
+  broadcasts       PharmacyOrderBroadcast[]
+  orders           PharmacyOrder[]
 
   @@map("pharmacy_branches")
 }
@@ -167,12 +155,11 @@ model ProviderVerificationDocument {
   file_url      String
   status        VerificationStatus @default(PENDING)
   reviewed_by   String?            @db.Uuid
-  reviewed_at   DateTime?          @db.Timestamptz
-  created_at    DateTime           @default(now()) @db.Timestamptz
-  updated_at    DateTime           @updatedAt @db.Timestamptz
+  reviewed_at   DateTime?          @db.Timestamptz(6)
+  created_at    DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime           @updatedAt @db.Timestamptz(6)
   version       Int                @default(1)
-
-  reviewer User? @relation("ReviewedByAdmin", fields: [reviewed_by], references: [id])
+  reviewer      User?              @relation("ReviewedByAdmin", fields: [reviewed_by], references: [id])
 
   @@map("provider_verification_documents")
 }

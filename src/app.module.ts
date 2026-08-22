@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HealthModule } from './health/health.module';
 import { IdentityAuthModule } from './modules/identity-auth/identity-auth.module';
+import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from './modules/provider-directory/provider-directory.module';
 import { SchedulingAppointmentsModule } from './modules/scheduling-appointments/scheduling-appointments.module';
 import { AppConfigModule } from './shared/config/config.module';
@@ -27,6 +28,7 @@ import { RedisModule } from './shared/kernel/redis/redis.module';
     IdentityAuthModule,
     ProviderDirectoryModule,
     SchedulingAppointmentsModule,
+    PrescriptionsModule,
   ],
 })
 export class AppModule {}

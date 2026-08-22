@@ -1,6 +1,65 @@
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["prismaSchemaFolder", "postgresqlExtensions"]
+  previewFeatures = ["postgresqlExtensions", "prismaSchemaFolder"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pg_trgm]
+}
+
+model PolicyConfig {
+  id             String     @id @default(uuid()) @db.Uuid
+  region_code    String
+  policy_type    PolicyType
+  value          Json
+  effective_from DateTime   @default(now()) @db.Timestamptz(6)
+  created_by     String?    @db.Uuid
+  created_at     DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime   @updatedAt @db.Timestamptz(6)
+  version        Int        @default(1)
+  creator        User?      @relation("CreatedByPolicyConfig", fields: [created_by], references: [id])
+
+  @@map("policy_configs")
+}
+
+model WebhookEvent {
+  id                 String    @id @default(uuid()) @db.Uuid
+  provider           String
+  event_type         String
+  payload            Json
+  signature_verified Boolean   @default(false)
+  idempotency_key    String    @unique
+  processed_at       DateTime? @db.Timestamptz(6)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @updatedAt @db.Timestamptz(6)
+  version            Int       @default(1)
+
+  @@map("webhook_events")
+}
+
+/// Transactional outbox (File 11 Part 20). A row is written in the SAME
+/// transaction as the business change that produced the event; the worker
+/// process (Part 27) drains PENDING rows with SELECT ... FOR UPDATE SKIP LOCKED.
+/// `status`/`attempts`/`last_error` are additive columns beyond File 11's own
+/// table sketch, needed to implement the retry/dead-letter behavior Part 20
+/// describes in prose — see File 12 Part 07.
+model OutboxEvent {
+  id           String            @id @default(uuid()) @db.Uuid
+  event_name   String
+  payload      Json
+  status       OutboxEventStatus @default(PENDING)
+  attempts     Int               @default(0)
+  last_error   String?
+  processed_at DateTime?         @db.Timestamptz(6)
+  created_at   DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime          @updatedAt @db.Timestamptz(6)
+  version      Int               @default(1)
+
+  @@index([status, created_at])
+  @@map("outbox_events")
 }
 
 /// File 11 Part 22 / File 12 Part 32.17: `postgis` backs the doctor-search
@@ -8,17 +67,6 @@ generator client {
 /// typo-tolerant name/specialty matching — both declared here so
 /// `prisma migrate` manages enabling them instead of a hand-written
 /// `CREATE EXTENSION` migration.
-datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
-  extensions = [postgis, pg_trgm]
-}
-
-// ==========================================
-// SHARED ENUMS (Native PostgreSQL Enums)
-// ==========================================
-
 enum UserStatus {
   ACTIVE
   SUSPENDED
@@ -306,61 +354,4 @@ enum OutboxEventStatus {
   FAILED
 
   @@map("outbox_events_status_enum")
-}
-
-// ==========================================
-// SHARED MODELS
-// ==========================================
-
-model PolicyConfig {
-  id             String     @id @default(uuid()) @db.Uuid
-  region_code    String
-  policy_type    PolicyType
-  value          Json
-  effective_from DateTime   @default(now()) @db.Timestamptz
-  created_by     String?    @db.Uuid
-  created_at     DateTime   @default(now()) @db.Timestamptz
-  updated_at     DateTime   @updatedAt @db.Timestamptz
-  version        Int        @default(1)
-
-  creator User? @relation("CreatedByPolicyConfig", fields: [created_by], references: [id])
-
-  @@map("policy_configs")
-}
-
-model WebhookEvent {
-  id                 String    @id @default(uuid()) @db.Uuid
-  provider           String
-  event_type         String
-  payload            Json
-  signature_verified Boolean   @default(false)
-  idempotency_key    String    @unique
-  processed_at       DateTime? @db.Timestamptz
-  created_at         DateTime  @default(now()) @db.Timestamptz
-  updated_at         DateTime  @updatedAt @db.Timestamptz
-  version            Int       @default(1)
-
-  @@map("webhook_events")
-}
-
-/// Transactional outbox (File 11 Part 20). A row is written in the SAME
-/// transaction as the business change that produced the event; the worker
-/// process (Part 27) drains PENDING rows with SELECT ... FOR UPDATE SKIP LOCKED.
-/// `status`/`attempts`/`last_error` are additive columns beyond File 11's own
-/// table sketch, needed to implement the retry/dead-letter behavior Part 20
-/// describes in prose — see File 12 Part 07.
-model OutboxEvent {
-  id           String            @id @default(uuid()) @db.Uuid
-  event_name   String
-  payload      Json
-  status       OutboxEventStatus @default(PENDING)
-  attempts     Int               @default(0)
-  last_error   String?
-  processed_at DateTime?         @db.Timestamptz
-  created_at   DateTime          @default(now()) @db.Timestamptz
-  updated_at   DateTime          @updatedAt @db.Timestamptz
-  version      Int               @default(1)
-
-  @@index([status, created_at])
-  @@map("outbox_events")
 }
