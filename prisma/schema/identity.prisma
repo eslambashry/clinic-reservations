@@ -6,6 +6,12 @@ model User {
   id         String     @id @default(uuid()) @db.Uuid
   phone      String     @unique
   email      String?    @unique
+  /// File 12 Part 32.1: nullable — OTP-only signup collects no name; this is
+  /// the display-name source for both Patient profile (File 11 05.2) and
+  /// Doctor search/detail (05.4), neither of which had anywhere else to
+  /// store one.
+  first_name String?
+  last_name  String?
   status     UserStatus @default(ACTIVE)
   created_at DateTime   @default(now()) @db.Timestamptz
   updated_at DateTime   @updatedAt @db.Timestamptz

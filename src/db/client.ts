@@ -8,6 +8,11 @@ dotenv.config();
  *
  * App runtime queries use DATABASE_URL (pooled via PgBouncer with sslmode=require).
  * Migrations use DIRECT_URL (direct connection to Neon Postgres).
+ *
+ * For standalone scripts only (`db:seed`) that run outside the Nest DI
+ * container — the Nest app itself (API + worker processes) uses
+ * `PrismaService` (`src/shared/kernel/prisma/prisma.service.ts`) instead,
+ * per File 12 Part 05.
  */
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
@@ -21,38 +26,4 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
-/**
- * Helper function for optimistic locking pattern.
- * Compares and increments entity version column on update.
- *
- * @param model Prisma model delegate with updateMany support
- * @param id Entity UUID
- * @param currentVersion Expected current version
- * @param data Fields to update
- * @returns Updated record count (1 if successful, 0 if version conflict occurred)
- */
-export async function updateWithOptimisticLock<T extends { updateMany: Function }>(
-  model: T,
-  id: string,
-  currentVersion: number,
-  data: Record<string, any>
-): Promise<number> {
-  const result = await model.updateMany({
-    where: {
-      id,
-      version: currentVersion,
-    },
-    data: {
-      ...data,
-      version: {
-        increment: 1,
-      },
-    },
-  });
-
-  if (result.count === 0) {
-    throw new Error(`Optimistic locking conflict: Record ${id} has been modified concurrently (expected version ${currentVersion}).`);
-  }
-
-  return result.count;
-}
+export { updateWithOptimisticLock } from '../shared/kernel/prisma/optimistic-lock';
