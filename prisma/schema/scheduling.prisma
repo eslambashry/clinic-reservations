@@ -33,22 +33,32 @@ model AppointmentSlot {
   holds       AppointmentHold[]
   appointment Appointment?
 
-  @@index([doctor_clinic_affiliation_id, start_at])
+  @@unique([doctor_clinic_affiliation_id, start_at])
   @@map("appointment_slots")
 }
 
+/// DB-only invariant (File 12 Part 35.2-35.3, migration
+/// `add_appointment_hold_active_partial_unique_index`): a partial unique
+/// index on (slot_id) WHERE status='ACTIVE' enforces at most one active hold
+/// per slot. Not representable here — Prisma has no filtered `@@unique`.
 model AppointmentHold {
   id         String     @id @default(uuid()) @db.Uuid
   slot_id    String     @db.Uuid
   patient_id String     @db.Uuid
   expires_at DateTime   @db.Timestamptz
   status     HoldStatus @default(ACTIVE)
-  created_at DateTime   @default(now()) @db.Timestamptz
-  updated_at DateTime   @updatedAt @db.Timestamptz
-  version    Int        @default(1)
+  /// File 12 Part 35.13: set only when this hold was created by
+  /// `POST .../reschedule` — lets `ConfirmAppointmentUseCase` propagate the
+  /// link onto the new `Appointment.rescheduled_from_appointment_id` at
+  /// confirm time (Part 35.10 — the new appointment doesn't exist until then).
+  rescheduled_from_appointment_id String?  @db.Uuid
+  created_at                      DateTime @default(now()) @db.Timestamptz
+  updated_at                      DateTime @updatedAt @db.Timestamptz
+  version                         Int      @default(1)
 
-  slot    AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)
-  patient User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  slot                         AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)
+  patient                      User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  rescheduled_from_appointment Appointment?    @relation("HoldReschedulesAppointment", fields: [rescheduled_from_appointment_id], references: [id])
 
   @@index([slot_id, status])
   @@map("appointment_holds")
@@ -76,6 +86,12 @@ model Appointment {
   rescheduled_from Appointment?            @relation("RescheduledFrom", fields: [rescheduled_from_appointment_id], references: [id])
   rescheduled_to   Appointment[]           @relation("RescheduledFrom")
   encounters       Encounter[]
+  rescheduling_holds AppointmentHold[]     @relation("HoldReschedulesAppointment")
 
+  /// Backs `AppointmentRepository.listForPatient` ("My Appointments",
+  /// File 12 Part 35.14/35.15) — filtered by `patient_id` and optionally
+  /// `status`, ordered via the joined slot's `start_at`. Without this, every
+  /// call is a full sequential scan of `appointments`.
+  @@index([patient_id, status])
   @@map("appointments")
 }
