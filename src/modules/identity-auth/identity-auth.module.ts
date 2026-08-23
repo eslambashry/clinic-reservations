@@ -1,12 +1,17 @@
 import { Module } from '@nestjs/common';
 import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
 import { IdentityAuthController } from './api/identity-auth.controller';
+import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
 import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
+import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
 import { RefreshTokenUseCase } from './application/refresh-token.use-case';
 import { RequestOtpUseCase } from './application/request-otp.use-case';
+import { ResetPasswordUseCase } from './application/reset-password.use-case';
+import { SetPasswordUseCase } from './application/set-password.use-case';
 import { VerifyOtpUseCase } from './application/verify-otp.use-case';
+import { VerifyResetCodeUseCase } from './application/verify-reset-code.use-case';
 import { LoggingOtpSender } from './infrastructure/logging-otp-sender';
 import { OtpRequestRepository } from './infrastructure/otp-request.repository';
 import { PermissionRepository } from './infrastructure/permission.repository';
@@ -32,6 +37,11 @@ import { UserRepository } from './infrastructure/user.repository';
     RefreshTokenUseCase,
     LogoutUseCase,
     GetCurrentUserUseCase,
+    SetPasswordUseCase,
+    LoginWithPasswordUseCase,
+    ForgotPasswordUseCase,
+    ResetPasswordUseCase,
+    VerifyResetCodeUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,

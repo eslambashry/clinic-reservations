@@ -14,4 +14,11 @@ export class UserRepository {
   create(db: Prisma.TransactionClient, phone: string): Promise<User> {
     return db.user.create({ data: { phone } });
   }
+
+  setPassword(db: Prisma.TransactionClient, id: string, passwordHash: string): Promise<User> {
+    return db.user.update({
+      where: { id },
+      data: { password_hash: passwordHash, password_updated_at: new Date() },
+    });
+  }
 }
