@@ -12,6 +12,8 @@ model User {
   /// store one.
   first_name String?
   last_name  String?
+  password_hash        String?
+  password_updated_at  DateTime?  @db.Timestamptz(6)
   status     UserStatus @default(ACTIVE)
   created_at DateTime   @default(now()) @db.Timestamptz
   updated_at DateTime   @updatedAt @db.Timestamptz
