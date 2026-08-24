@@ -15,13 +15,26 @@ import { OTP_CONSTANTS } from '../domain/otp.constants';
 export class PhoneRateLimiterService {
   constructor(@Inject(RedisService) private readonly redis: RedisService) {}
 
-  /** Returns true if the request is allowed (and counts it); false if the phone is over its window limit. */
-  async consume(phone: string): Promise<boolean> {
-    const key = `otp-rate:${phone}`;
+  /**
+   * Returns true if the request is allowed (and counts it); false if the
+   * phone is over its window limit. Defaults preserve the original
+   * OTP-request behavior (`otp-rate:` prefix, OTP_CONSTANTS' limits) —
+   * pass `opts` to rate-limit a different phone-keyed action (e.g.
+   * password-login attempts) under its own key/window/max.
+   */
+  async consume(
+    phone: string,
+    opts?: { keyPrefix?: string; maxRequests?: number; windowSeconds?: number },
+  ): Promise<boolean> {
+    const keyPrefix = opts?.keyPrefix ?? 'otp-rate';
+    const maxRequests = opts?.maxRequests ?? OTP_CONSTANTS.RATE_LIMIT_MAX_REQUESTS;
+    const windowSeconds = opts?.windowSeconds ?? OTP_CONSTANTS.RATE_LIMIT_WINDOW_SECONDS;
+
+    const key = `${keyPrefix}:${phone}`;
     const count = await this.redis.client.incr(key);
     if (count === 1) {
-      await this.redis.client.expire(key, OTP_CONSTANTS.RATE_LIMIT_WINDOW_SECONDS);
+      await this.redis.client.expire(key, windowSeconds);
     }
-    return count <= OTP_CONSTANTS.RATE_LIMIT_MAX_REQUESTS;
+    return count <= maxRequests;
   }
 }
