@@ -9,6 +9,9 @@ function doctor(overrides: Partial<any> = {}) {
     photo_url: null,
     rating_avg: 4.5,
     rating_count: 10,
+    bio: null,
+    degree: null,
+    experience_years: null,
     user: { first_name: 'Mona', last_name: 'Hassan' },
     specialty: { code: 'CARDIOLOGY', name_en: 'Cardiology' },
     ...overrides,
@@ -88,5 +91,17 @@ describe('GetDoctorUseCase', () => {
     expect(result.name).toBe('Mona Hassan');
     expect(result.affiliations).toHaveLength(1);
     expect(result.affiliations[0].clinicBranchId).toBe('branch-1');
+  });
+
+  it('exposes bio/degree/experienceYears from the Doctor row (ADR-005 Part 34.2)', async () => {
+    const { doctors, affiliations, useCase } = setup();
+    doctors.findByIdWithUser.mockResolvedValue(doctor({ bio: 'Cardiologist.', degree: 'MBBCh, MD', experience_years: 12 }));
+    affiliations.findByDoctorId.mockResolvedValue([]);
+
+    const result = await useCase.execute('d1', undefined);
+
+    expect(result.bio).toBe('Cardiologist.');
+    expect(result.degree).toBe('MBBCh, MD');
+    expect(result.experienceYears).toBe(12);
   });
 });

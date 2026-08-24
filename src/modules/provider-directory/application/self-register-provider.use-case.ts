@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
+import { UpdateUserProfileUseCase } from '../../identity-auth/application/update-user-profile.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -12,6 +13,13 @@ import { DoctorRepository } from '../infrastructure/doctor.repository';
 import { SpecialtyRepository } from '../infrastructure/specialty.repository';
 import { SubmitProviderRegistrationDto } from '../api/dto/submit-provider-registration.dto';
 import { translateCreateDoctorError } from './create-doctor.use-case';
+
+/** `full_name` arrives as one free-text string; `User` splits it first/last (File 12 Part 32.1). First token is the first name, the rest (if any) is the last name. */
+function splitFullName(fullName: string): { firstName: string; lastName?: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const [firstName, ...rest] = parts;
+  return { firstName, lastName: rest.length > 0 ? rest.join(' ') : undefined };
+}
 
 /**
  * ADR-005 (`docs/decisions/ADR-005-PROVIDER-SELF-REGISTRATION.md`, FILE_12
@@ -31,15 +39,22 @@ export interface SelfRegisterProviderResult {
   notPersisted: string[];
 }
 
-/** ADR-005: fields the frontend already sends that have no persisted destination yet — echoed back, never silently dropped. */
+/**
+ * ADR-005: fields the frontend already sends that still have no persisted
+ * destination — echoed back, never silently dropped. `full_name`/`email`/
+ * `degree`/`experience_years`/`bio` used to be here too until Part 34.2
+ * added `Doctor.degree`/`bio`/`experience_years` and wired `full_name`/
+ * `email` through `UpdateUserProfileUseCase` onto `User`.
+ * `photo_data_uri`/`documents` stay here — persisting either needs a real
+ * object-storage upload step that doesn't exist yet (same DEC-009 gap as
+ * `ProviderVerificationDocument.file_url`). `specialty_label`/`city_label`
+ * are display-only duplicates of `specialty`/`city` and were never meant to
+ * be persisted. `working_days` stays here deliberately — Part 33.1 keeps
+ * real `ScheduleTemplate` creation Admin-only, not part of self-registration.
+ */
 export const SELF_REGISTRATION_NOT_PERSISTED_FIELDS = [
-  'full_name',
   'specialty_label',
-  'degree',
-  'email',
   'photo_data_uri',
-  'experience_years',
-  'bio',
   'documents',
   'city_label',
   'working_days',
@@ -56,6 +71,7 @@ export class SelfRegisterProviderUseCase {
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
     @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(UpdateUserProfileUseCase) private readonly updateUserProfile: UpdateUserProfileUseCase,
   ) {}
 
   async execute(dto: SubmitProviderRegistrationDto, actor: AccessTokenPayload): Promise<SelfRegisterProviderResult> {
@@ -92,9 +108,22 @@ export class SelfRegisterProviderUseCase {
           specialtyCode: dto.specialty,
           licenseNumber: dto.license_number,
           regionCode: dto.region_code,
+          degree: dto.degree,
+          bio: dto.bio,
+          experienceYears: dto.experience_years,
         });
       } catch (error) {
         throw translateCreateDoctorError(error, actor.sub);
+      }
+
+      if (dto.full_name !== undefined || dto.email !== undefined) {
+        const { firstName, lastName } = dto.full_name !== undefined ? splitFullName(dto.full_name) : { firstName: undefined, lastName: undefined };
+        await this.updateUserProfile.execute(tx, {
+          userId: actor.sub,
+          firstName,
+          lastName,
+          email: dto.email,
+        });
       }
 
       const affiliation = await this.affiliations.create(tx, {
