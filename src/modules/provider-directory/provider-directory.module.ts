@@ -56,6 +56,7 @@ import { PharmacyBranchRepository } from './infrastructure/pharmacy-branch.repos
 import { SpecialtyRepository } from './infrastructure/specialty.repository';
 import { VerificationDocumentRepository } from './infrastructure/verification-document.repository';
 import { AuditModule } from '../audit/audit.module';
+import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 
 /**
  * File 11 Part 03: owns `doctors`, `clinics`, `clinic_branches`,
@@ -70,7 +71,7 @@ import { AuditModule } from '../audit/audit.module';
  * `payments` to read an affiliation's consult fee inside its own transaction.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, IdentityAuthModule],
   controllers: [
     DoctorsController,
     AffiliationsController,
