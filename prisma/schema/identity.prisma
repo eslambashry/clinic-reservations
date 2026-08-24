@@ -11,8 +11,20 @@ model User {
   /// the display-name source for both Patient profile (File 11 05.2) and
   /// Doctor search/detail (05.4), neither of which had anywhere else to
   /// store one.
-  first_name                      String?
-  last_name                       String?
+  first_name String?
+  last_name  String?
+  password_hash        String?
+  password_updated_at  DateTime?  @db.Timestamptz(6)
+  status     UserStatus @default(ACTIVE)
+  created_at DateTime   @default(now()) @db.Timestamptz
+  updated_at DateTime   @updatedAt @db.Timestamptz
+  deleted_at DateTime?  @db.Timestamptz
+  version    Int        @default(1)
+
+  role_memberships                RoleMembership[]
+  devices                         Device[]
+  refresh_tokens                  RefreshToken[]
+  doctor                          Doctor?
   appointment_holds               AppointmentHold[]
   cancelled_appointments          Appointment[]                  @relation("CancelledAppointments")
   appointments                    Appointment[]                  @relation("PatientAppointments")

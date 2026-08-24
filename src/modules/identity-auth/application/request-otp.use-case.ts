@@ -11,6 +11,8 @@ export interface RequestOtpInput {
   phone: string;
   /** For the File 10 §2.3 security log (request attempt: phone, ip, timestamp) — not stored in `otp_requests`. */
   ip?: string;
+  /** Defaults to the unified login/signup purpose — pass 'PASSWORD_RESET' for `ForgotPasswordUseCase`. */
+  purpose?: string;
 }
 
 export interface RequestOtpResult {
@@ -50,7 +52,7 @@ export class RequestOtpUseCase {
     const otpRequest = await this.otpRequests.create(this.prisma, {
       phone: input.phone,
       codeHash,
-      purpose: OTP_PURPOSE,
+      purpose: input.purpose ?? OTP_PURPOSE,
       expiresAt,
     });
 
