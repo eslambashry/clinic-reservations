@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Patch, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -11,6 +11,7 @@ import { RefreshTokenResult, RefreshTokenUseCase } from '../application/refresh-
 import { RequestOtpResult, RequestOtpUseCase } from '../application/request-otp.use-case';
 import { ResetPasswordUseCase } from '../application/reset-password.use-case';
 import { SetPasswordUseCase } from '../application/set-password.use-case';
+import { UpdateCurrentUserUseCase } from '../application/update-current-user.use-case';
 import { VerifyOtpResult, VerifyOtpUseCase } from '../application/verify-otp.use-case';
 import { VerifyResetCodeResult, VerifyResetCodeUseCase } from '../application/verify-reset-code.use-case';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -20,6 +21,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
+import { UpdateMeDto } from './dto/update-me.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
 
@@ -45,6 +47,7 @@ export class IdentityAuthController {
     @Inject(ForgotPasswordUseCase) private readonly forgotPassword: ForgotPasswordUseCase,
     @Inject(ResetPasswordUseCase) private readonly resetPassword: ResetPasswordUseCase,
     @Inject(VerifyResetCodeUseCase) private readonly verifyResetCode: VerifyResetCodeUseCase,
+    @Inject(UpdateCurrentUserUseCase) private readonly updateCurrentUser: UpdateCurrentUserUseCase,
   ) {}
 
   @Public()
@@ -75,6 +78,16 @@ export class IdentityAuthController {
   @Get('me')
   me(@CurrentUser() payload: AccessTokenPayload): Promise<GetCurrentUserResult> {
     return this.getCurrentUser.execute({ userId: payload.sub, activeRoleCode: payload.roleCode });
+  }
+
+  @Patch('me')
+  updateMe(@CurrentUser() payload: AccessTokenPayload, @Body() dto: UpdateMeDto): Promise<GetCurrentUserResult> {
+    return this.updateCurrentUser.execute({
+      userId: payload.sub,
+      activeRoleCode: payload.roleCode,
+      displayName: dto.display_name,
+      email: dto.email,
+    });
   }
 
   @Post('password/set')
