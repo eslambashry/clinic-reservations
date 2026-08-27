@@ -15,11 +15,6 @@ model User {
   last_name  String?
   password_hash        String?
   password_updated_at  DateTime?  @db.Timestamptz(6)
-  status     UserStatus @default(ACTIVE)
-  created_at DateTime   @default(now()) @db.Timestamptz
-  updated_at DateTime   @updatedAt @db.Timestamptz
-  deleted_at DateTime?  @db.Timestamptz
-  version    Int        @default(1)
 
   role_memberships                RoleMembership[]
   devices                         Device[]
@@ -30,8 +25,6 @@ model User {
   appointments                    Appointment[]                  @relation("PatientAppointments")
   audit_logs                      AuditLog[]                     @relation("ActorUser")
   consents                        Consent[]
-  devices                         Device[]
-  doctor                          Doctor?
   health_record                   HealthRecord?
   notification_preferences        NotificationPreference[]
   notifications                   Notification[]
@@ -42,9 +35,7 @@ model User {
   prescriptions_authored          Prescription[]                 @relation("DoctorPrescriptions")
   prescriptions                   Prescription[]                 @relation("PatientPrescriptions")
   provider_verifications_reviewed ProviderVerificationDocument[] @relation("ReviewedByAdmin")
-  refresh_tokens                  RefreshToken[]
   reviews                         Review[]
-  role_memberships                RoleMembership[]
   substitutions_proposed          Substitution[]
 
   @@map("users")
