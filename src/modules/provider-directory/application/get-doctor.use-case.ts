@@ -15,9 +15,10 @@ export interface DoctorAffiliationSummary {
 
 /**
  * Flat, camelCase shape for `GET /v1/doctors/{id}` — only fields that
- * actually exist in the schema (File 12 Part 32: no bio/qualifications/
- * fellowships/languages/experienceYears/isOnline columns exist yet;
- * availableDays comes from the separate `/slots` endpoint, not here).
+ * actually exist in the schema. `bio`/`degree`/`experienceYears` were added
+ * by ADR-005 Part 34.2 (previously null-only placeholders here); no
+ * qualifications/fellowships/languages/isOnline columns exist yet.
+ * `availableDays` comes from the separate `/slots` endpoint, not here.
  */
 export interface DoctorDetail {
   id: string;
@@ -28,6 +29,9 @@ export interface DoctorDetail {
   reviewCount: number;
   photoUrl: string | null;
   isVerified: boolean;
+  bio: string | null;
+  degree: string | null;
+  experienceYears: number | null;
   clinicBranchId: string | null;
   clinicName: string | null;
   consultationFee: string | null;
@@ -79,6 +83,9 @@ export class GetDoctorUseCase {
       reviewCount: doctor.rating_count,
       photoUrl: doctor.photo_url,
       isVerified: doctor.status === 'VERIFIED',
+      bio: doctor.bio,
+      degree: doctor.degree,
+      experienceYears: doctor.experience_years,
       clinicBranchId: primary?.clinicBranchId ?? null,
       clinicName: primary?.clinicName ?? null,
       consultationFee: primary?.consultationFee ?? null,

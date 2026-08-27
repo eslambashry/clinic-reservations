@@ -8,6 +8,9 @@ export interface CreateDoctorInput {
   licenseNumber: string;
   regionCode?: string;
   photoUrl?: string;
+  degree?: string;
+  bio?: string;
+  experienceYears?: number;
 }
 
 export interface UpdateDoctorInput {
@@ -30,6 +33,9 @@ export class DoctorRepository {
         license_number: input.licenseNumber,
         region_code: input.regionCode,
         photo_url: input.photoUrl,
+        degree: input.degree,
+        bio: input.bio,
+        experience_years: input.experienceYears,
       },
     });
   }

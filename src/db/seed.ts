@@ -239,6 +239,91 @@ async function main() {
     }
   }
 
+  // Demo pharmacies + branches — same shape as the clinic seed above, so the
+  // Flutter app's pharmacy-detail/pharmacy-branch-detail screens (wired to
+  // GET /v1/pharmacies/:id and GET /v1/pharmacy-branches/:id) have real data
+  // to render against in local dev. Fixed (not auto-generated) ids so the
+  // Flutter `pharmacy_booking` feature's own mock pharmacy list
+  // (`mockPharmacies` in `pharmacy_search_providers.dart`, still hardcoded —
+  // there's no GET /v1/pharmacies/search endpoint yet) can hardcode these
+  // same UUIDs as its `id` field and actually resolve against this real
+  // backend, instead of the placeholder `'ph1'`/`'ph2'`/`'ph3'` strings that
+  // fail `ParseUUIDPipe` validation.
+  const demoPharmacies = [
+    {
+      id: '00000000-0000-0000-0000-000000000101',
+      legalName: 'Nile Pharma LLC (Seed)',
+      brandName: 'Nile Pharmacy',
+      branchId: '00000000-0000-0000-0000-000000000111',
+      addressId: '00000000-0000-0000-0000-000000000121',
+      addressLine1: '5 Zamalek Ave',
+      phone: '+20221230001',
+      deliveryCapable: true,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000102',
+      legalName: 'Al Ezaby Pharmaceuticals Co. (Seed)',
+      brandName: 'Al Ezaby Pharmacy',
+      branchId: '00000000-0000-0000-0000-000000000112',
+      addressId: '00000000-0000-0000-0000-000000000122',
+      addressLine1: '18 King Fahd Rd',
+      phone: '+20221230002',
+      deliveryCapable: true,
+    },
+    {
+      id: '00000000-0000-0000-0000-000000000103',
+      legalName: 'Community Pharma Group (Seed)',
+      brandName: 'Community Pharmacy',
+      branchId: '00000000-0000-0000-0000-000000000113',
+      addressId: '00000000-0000-0000-0000-000000000123',
+      addressLine1: '40 Al Olaya St',
+      phone: '+20221230003',
+      deliveryCapable: false,
+    },
+  ];
+
+  for (const p of demoPharmacies) {
+    await prisma.pharmacy.upsert({
+      where: { id: p.id },
+      update: {},
+      create: {
+        id: p.id,
+        legal_name: p.legalName,
+        brand_name: p.brandName,
+        region_code: DEFAULT_REGION,
+        status: 'VERIFIED',
+        verified_at: new Date(),
+      },
+    });
+
+    await prisma.address.upsert({
+      where: { id: p.addressId },
+      update: {},
+      create: {
+        id: p.addressId,
+        line1: p.addressLine1,
+        city: 'Cairo',
+        region_code: DEFAULT_REGION,
+        country_code: 'EG',
+      },
+    });
+
+    await prisma.pharmacyBranch.upsert({
+      where: { id: p.branchId },
+      update: {},
+      create: {
+        id: p.branchId,
+        pharmacy_id: p.id,
+        address_id: p.addressId,
+        phone: p.phone,
+        iana_timezone: 'Africa/Cairo',
+        delivery_capable: p.deliveryCapable,
+        status: 'VERIFIED',
+      },
+    });
+    console.log(`✅ Seeded demo pharmacy: ${p.brandName} (${p.id}), branch ${p.branchId}`);
+  }
+
   console.log('🎉 Database seed completed successfully!');
 }
 

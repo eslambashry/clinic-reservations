@@ -21,4 +21,19 @@ export class UserRepository {
       data: { password_hash: passwordHash, password_updated_at: new Date() },
     });
   }
+
+  updateProfile(
+    db: Prisma.TransactionClient,
+    id: string,
+    input: { firstName?: string; lastName?: string; email?: string },
+  ): Promise<User> {
+    return db.user.update({
+      where: { id },
+      data: {
+        ...(input.firstName !== undefined && { first_name: input.firstName }),
+        ...(input.lastName !== undefined && { last_name: input.lastName }),
+        ...(input.email !== undefined && { email: input.email }),
+      },
+    });
+  }
 }

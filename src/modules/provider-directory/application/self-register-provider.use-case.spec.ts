@@ -33,6 +33,7 @@ describe('SelfRegisterProviderUseCase', () => {
     const doctors = { create: jest.fn().mockResolvedValue({ id: 'doctor-1', status: 'PENDING' }) };
     const affiliations = { create: jest.fn().mockResolvedValue({ id: 'affiliation-1' }) };
     const audit = { record: jest.fn() };
+    const updateUserProfile = { execute: jest.fn() };
     const useCase = new SelfRegisterProviderUseCase(
       prisma as any,
       specialties as any,
@@ -42,8 +43,9 @@ describe('SelfRegisterProviderUseCase', () => {
       doctors as any,
       affiliations as any,
       audit as any,
+      updateUserProfile as any,
     );
-    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, useCase };
+    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, useCase };
   }
 
   it('rejects an unknown specialty before creating anything', async () => {
@@ -70,7 +72,7 @@ describe('SelfRegisterProviderUseCase', () => {
   });
 
   it('creates clinic, address, branch, doctor and affiliation in one transaction, audits it, and reports not-persisted fields', async () => {
-    const { tx, clinics, addresses, branches, doctors, affiliations, audit, useCase } = setup();
+    const { tx, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, useCase } = setup();
 
     const result = await useCase.execute(dto, actor);
 
@@ -92,7 +94,11 @@ describe('SelfRegisterProviderUseCase', () => {
       specialtyCode: dto.specialty,
       licenseNumber: dto.license_number,
       regionCode: dto.region_code,
+      degree: undefined,
+      bio: undefined,
+      experienceYears: undefined,
     });
+    expect(updateUserProfile.execute).not.toHaveBeenCalled();
     expect(affiliations.create).toHaveBeenCalledWith(tx, {
       doctorId: 'doctor-1',
       clinicBranchId: 'branch-1',
@@ -115,6 +121,35 @@ describe('SelfRegisterProviderUseCase', () => {
       affiliationId: 'affiliation-1',
       status: 'PENDING',
       notPersisted: [...SELF_REGISTRATION_NOT_PERSISTED_FIELDS],
+    });
+  });
+
+  it('persists degree/bio/experience_years onto Doctor and splits full_name/email through UpdateUserProfileUseCase', async () => {
+    const { tx, doctors, updateUserProfile, useCase } = setup();
+    const richDto = {
+      ...dto,
+      full_name: 'Amina El Sayed Hassan',
+      degree: 'MBBCh, MD',
+      email: 'amina@example.com',
+      experience_years: 12,
+      bio: 'Cardiologist with 12 years of experience.',
+    };
+
+    await useCase.execute(richDto, actor);
+
+    expect(doctors.create).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        degree: 'MBBCh, MD',
+        bio: 'Cardiologist with 12 years of experience.',
+        experienceYears: 12,
+      }),
+    );
+    expect(updateUserProfile.execute).toHaveBeenCalledWith(tx, {
+      userId: 'user-1',
+      firstName: 'Amina',
+      lastName: 'El Sayed Hassan',
+      email: 'amina@example.com',
     });
   });
 });

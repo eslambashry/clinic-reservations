@@ -10,6 +10,8 @@ import { RefreshTokenUseCase } from './application/refresh-token.use-case';
 import { RequestOtpUseCase } from './application/request-otp.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { SetPasswordUseCase } from './application/set-password.use-case';
+import { UpdateCurrentUserUseCase } from './application/update-current-user.use-case';
+import { UpdateUserProfileUseCase } from './application/update-user-profile.use-case';
 import { VerifyOtpUseCase } from './application/verify-otp.use-case';
 import { VerifyResetCodeUseCase } from './application/verify-reset-code.use-case';
 import { LoggingOtpSender } from './infrastructure/logging-otp-sender';
@@ -24,9 +26,12 @@ import { UserRepository } from './infrastructure/user.repository';
 /**
  * File 11 Part 03: owns `users`, `role_memberships`, `otp_requests`,
  * `refresh_tokens`, `devices` — no other module reaches into these tables
- * directly (File 12 Part 05); they call through use-cases exported below,
- * once a later phase needs to (e.g. Provider Directory verifying a Doctor's
- * `user_id`).
+ * directly (File 12 Part 05); they call through use-cases exported below.
+ * `UpdateUserProfileUseCase` is the first cross-module case this needed —
+ * Provider Directory's self-registration flow enriching the caller's own
+ * `User` row (ADR-005 Part 34.2) — and takes `tx` explicitly so it commits
+ * atomically with the caller's own transaction, mirroring how `payments`
+ * consumes Provider Directory's `GetAffiliationBillingInfoUseCase`.
  */
 @Module({
   imports: [AuthCoreModule],
@@ -42,6 +47,8 @@ import { UserRepository } from './infrastructure/user.repository';
     ForgotPasswordUseCase,
     ResetPasswordUseCase,
     VerifyResetCodeUseCase,
+    UpdateUserProfileUseCase,
+    UpdateCurrentUserUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
@@ -51,5 +58,6 @@ import { UserRepository } from './infrastructure/user.repository';
     PhoneRateLimiterService,
     { provide: OTP_SENDER, useClass: LoggingOtpSender },
   ],
+  exports: [UpdateUserProfileUseCase],
 })
 export class IdentityAuthModule {}

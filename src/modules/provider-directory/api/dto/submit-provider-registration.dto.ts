@@ -5,11 +5,14 @@ import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
  * ADR-005 (`docs/decisions/ADR-005-PROVIDER-SELF-REGISTRATION.md`, FILE_12 Part 34):
  * property names are deliberately `snake_case` — a scoped exception to Part
  * 09's `camelCase` API convention — to match the request body the Flutter
- * `provider_registration` feature already sends. Fields with no persisted
- * destination are still declared (and `@IsOptional()`) purely so the global
- * `forbidNonWhitelisted` ValidationPipe doesn't reject the frontend's
- * existing payload; `SelfRegisterProviderUseCase` never reads them, and the
- * response's `not_persisted` array names every one of them back explicitly.
+ * `provider_registration` feature already sends. Part 34.2 persists
+ * `full_name`/`degree`/`email`/`experience_years`/`bio`; the remaining
+ * optional fields below (`specialty_label`/`photo_data_uri`/`documents`/
+ * `city_label`/`working_days`) still have no persisted destination and stay
+ * declared (and `@IsOptional()`) purely so the global `forbidNonWhitelisted`
+ * ValidationPipe doesn't reject the frontend's existing payload —
+ * `SelfRegisterProviderUseCase` never reads them, and the response's
+ * `notPersisted` array names every one of them back explicitly.
  */
 export class SubmitProviderRegistrationDto {
   @ApiProperty({ description: 'Specialty.code — validated against the real specialties table' })
@@ -46,7 +49,7 @@ export class SubmitProviderRegistrationDto {
 
   // --- Accepted for forward-compatibility with the shipped frontend payload; NOT persisted (ADR-005). ---
 
-  @ApiPropertyOptional({ description: 'Not persisted — Doctor has no name column (ADR-005)' })
+  @ApiPropertyOptional({ description: 'Split into User.first_name/last_name on the first whitespace (ADR-005 Part 34.2)' })
   @IsOptional()
   @IsString()
   full_name?: string;
@@ -56,12 +59,12 @@ export class SubmitProviderRegistrationDto {
   @IsString()
   specialty_label?: string;
 
-  @ApiPropertyOptional({ description: 'Not persisted — no schema column exists yet (ADR-005)' })
+  @ApiPropertyOptional({ description: 'Doctor.degree (ADR-005 Part 34.2)' })
   @IsOptional()
   @IsString()
   degree?: string;
 
-  @ApiPropertyOptional({ description: 'Not persisted — no verified profile-update path exists yet (ADR-005)' })
+  @ApiPropertyOptional({ description: 'User.email — best-effort; a conflict with an existing account\'s email is swallowed rather than failing registration (ADR-005 Part 34.2)' })
   @IsOptional()
   @IsString()
   email?: string;
@@ -71,12 +74,12 @@ export class SubmitProviderRegistrationDto {
   @IsString()
   photo_data_uri?: string;
 
-  @ApiPropertyOptional({ description: 'Not persisted — no schema column exists yet (ADR-005)' })
+  @ApiPropertyOptional({ description: 'Doctor.experience_years (ADR-005 Part 34.2)' })
   @IsOptional()
   @IsNumber()
   experience_years?: number;
 
-  @ApiPropertyOptional({ description: 'Not persisted — no schema column exists yet (ADR-005)' })
+  @ApiPropertyOptional({ description: 'Doctor.bio (ADR-005 Part 34.2)' })
   @IsOptional()
   @IsString()
   bio?: string;
