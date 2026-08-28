@@ -389,6 +389,19 @@ process — is how a real, already-migrated 6-value `PrescriptionStatus` enum ma
    the review request must set `controlledSubstanceConfirmed: true` or the whole review is rejected
    with `422 CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED` — checked before the `PrescriptionReview`
    row is even created, so a rejected attempt leaves no partial record.
+10. **`itemCorrections` now also creates brand-new items, not only corrects existing ones — found and
+    closed while building Phase 7 (Part 39).** As shipped, no code path ever created a `PrescriptionItem`
+    with real drug/quantity data: `UploadPrescriptionUseCase` only creates items from OCR suggestions, and
+    `NoOpOcrExtractor` always returns zero (item 2 above); `itemCorrections` only ever set `drug_code` on an
+    item that already existed, via `findById`-or-`NotFoundError`, and never touched `quantity` at all. So an
+    `ACCEPTED` prescription could only ever have zero fulfillable items — directly contradicting `DEC-005`'s
+    stated MVP fallback, "manual pharmacist entry" when OCR isn't ready. **Decided:** `ItemCorrectionDto`'s
+    `prescriptionItemId` is now optional and `quantity` is now a required field alongside `drugCode` — when
+    `prescriptionItemId` is given, `PrescriptionItemRepository.setDrugCodeAndQuantity` corrects that item
+    (renamed from `setDrugCode`, now setting both fields in the one optimistic-lock update); when omitted,
+    `createReviewed` inserts a new item. Both still run after the `PrescriptionReview` row is created, inside
+    the same transaction — the trigger-ordering requirement (item 8 above) applies identically to `INSERT`
+    and `UPDATE`, and is unaffected by this change.
 
 ---
 
