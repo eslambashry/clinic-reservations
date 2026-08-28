@@ -404,3 +404,83 @@ No source doc documents a pharmacy-search contract at all — File 10/11 only sp
 5. **Visibility is 2-hop (`pharmacy_branches → pharmacies`), hardcoded into the search CTE's `WHERE`, not routed through `provider-visibility.rules.ts`.** `p.status = 'VERIFIED' AND p.deleted_at IS NULL AND pb.status = 'VERIFIED'` is the direct SQL equivalent of `isProviderEntityVisible`/`isBranchVisible` — doctor search does the same thing for its own (4-hop, affiliation-mediated) visibility chain rather than calling the shared rule functions, which exist for single-record detail's Admin-bypass check, not search. No new domain-rule code was added or needed.
 6. **Reuses existing shared infrastructure as-is, not reinvented:** `@OptionalAuth()` (Part 32.9), `src/shared/core/pagination/cursor.util.ts`'s `encodeCursor`/`decodeCursor` (Part 32.16) with an opaque `{ v: sortValue, b: branchId }` payload (branch id as the tiebreaker, since there's no affiliation row to key off like doctor search's `{ v, a }`).
 7. **Free-text `q` matches only `pharmacies.brand_name`** via `pg_trgm` `similarity(...) > 0.2` (same threshold doctor search uses) — no `legal_name`/address match, since brand name is what a patient actually recognizes and searches by.
+
+---
+
+## PART 39 — Phase 7 (Pharmacy Fulfillment) Decisions
+
+File 11 Part 14 (state machine), Part 09.3 (`pharmacy_order_broadcasts`/`substitutions` schema), and Part 07.2
+(masked-vs-full prescription access) specify Pharmacy Fulfillment in real detail; File 10 Part 3.5/6/7/8.1 and
+line 275/276/314/375 add the broadcast/substitution/refund product intent. What follows is closed here, before
+any Phase 7 code is written, mirroring Parts 32/33/35/36/37/38's process — this pass is decisions + a module
+shell only (File 12 Part 10's Phase 7 checklist item), not an implementation; see item 10.
+
+1. **No enum-reconciliation gap, unlike Phase 6.** `PharmacyOrderStatus`, `BroadcastResponse`,
+   `PharmacyOrderItemStatus`, and `SubstitutionDecision` (`prisma/schema/shared.prisma`) already match File 11
+   Part 14's state diagram and Part 09.3's substitution/broadcast description exactly — ten `PharmacyOrderStatus`
+   values, `TIMEOUT` already present on `BroadcastResponse`. Stated explicitly so a future implementation pass
+   doesn't re-spend the effort Part 37.1 needed to reconcile Prescription's enum against File 10's diagram.
+2. **Broadcast targeting reuses `SearchPharmacyBranchesUseCase` (Part 38), not a new query.** Order creation will
+   call provider-directory's existing branch-search use-case — once exported from `ProviderDirectoryModule`,
+   which does not yet export it — with the relevant location and default radius, sorted `distance:asc`, taking
+   the top N verified branches as broadcast targets (N is a new named constant, registered in Part 08's registry
+   when written, not a bare literal). `DEC-002` (Maps/geocoding vendor, still `Open`) is not a blocker: distance
+   search already runs on stored `addresses.geo_lat/geo_lng` via PostGIS, the same reasoning Part 38 item 1
+   already established for pharmacy-branch search itself.
+3. **Prescriptions needs a new tx-scoped export it does not have today.** `PrescriptionsModule` currently exports
+   nothing (`src/modules/prescriptions/prescriptions.module.ts`). Order creation needs to read an `ACCEPTED`
+   prescription's items (`drug_code`, `quantity`) inside its own transaction to build `PharmacyOrderItem` rows —
+   the existing `GetPrescriptionUseCase` is HTTP-shaped (takes an `actor: AccessTokenPayload`, does its own
+   owner/staff masking, opens no `tx`) and is the wrong tool for an internal cross-module read. **Decided:** a
+   new, narrowly-scoped, tx-parameterized read use-case will be added to Prescriptions' exports when order
+   creation is implemented — the exact shape `GetAffiliationBillingInfoUseCase` already established (Part 36.3)
+   for the same "another module needs a transactional internal read" problem. Not built in this pass.
+4. **Broadcast timeout is a new `policy_configs`-tunable duration plus a worker cron, not a DB-level expiry.**
+   Follows `HoldExpiryJob`/`ExpireHoldsUseCase`'s exact shape (Part 33/35.9): a future `BroadcastExpiryJob`
+   (`@Cron`, worker-process-only, registered the same way in whatever module owns it) sweeps unanswered
+   `pharmacy_order_broadcasts` rows past their TTL and sets `response = TIMEOUT`. The accept-side concurrency
+   guarantee is unrelated and needs no new migration: it is the plain optimistic-lock update File 11 line 456
+   already specifies — `UPDATE pharmacy_orders SET pharmacy_branch_id=?, version=version+1 WHERE id=? AND
+   version=? AND pharmacy_branch_id IS NULL` — unlike appointment holds, which needed a partial unique index
+   because multiple *simultaneous* holds must be impossible; multiple simultaneous *broadcasts* on one order are
+   the expected, normal state.
+5. **Branch-scoped pharmacy-staff authorization will be a contained repository lookup inside pharmacy-fulfillment,
+   not a JWT-claims or shared-`Guard` change.** `AccessTokenPayload` (`src/shared/core/auth/jwt-payload.interface.ts`)
+   carries `sub`/`roleMembershipId`/`roleCode`/`contextType`/`permissions` — no `contextId` — so there is no
+   existing primitive for "which branch does this staff member belong to," the identical gap CLAUDE.md and Part
+   35.8 already flag as blocking clinic-staff appointment access. Two shapes were considered: (a) add `contextId`
+   to the token claims and teach `RbacGuard` to compare it against the resource, which would also unblock Part
+   35.8's gap; (b) a one-line `role_memberships` lookup by `context_id` inside pharmacy-fulfillment's own
+   use-case/domain-rule code, scoped to this module only. **Decided: (b) for now** — the same anti-premature-
+   primitive reasoning Part 37.4 already used for Phase 6's own deferred branch-scoping. Two modules independently
+   needing the same shape of check is a real signal, but still only two data points; centralize it into a shared
+   primitive if a third module needs it, rather than guessing the right shared abstraction from two call sites.
+6. **`OUT_FOR_DELIVERY` stays unreachable this phase.** Reaching it requires creating a `delivery_orders` row
+   (File 11 Part 17), and Delivery is Phase 9, unbuilt. Same precedent as `AppointmentStatus.HELD`/`EXPIRED`
+   (Part 35.1) and `PrescriptionStatus.CANCELLED` (Part 37.1): the enum value exists for forward-compatibility,
+   no code path produces it yet. Whether `fulfillment_type = DELIVERY` orders are rejected outright at creation
+   or simply get stuck at `PREPARING` until Phase 9 ships is left to the implementation pass, not decided here.
+7. **Payment capture reuses `CapturePayAtClinicPaymentUseCase` (`payments` module) as-is — no pharmacy-specific
+   clone.** It already takes `payableType`/`payableId`/`providerType`/`providerId` as plain input fields, and
+   `PayableType.PHARMACY_ORDER`/`ProviderType.PHARMACY` already exist in `shared.prisma`'s enums — Phase 7's
+   `ACCEPTED → PAID` transition calls it exactly the way `ConfirmAppointmentUseCase` does today, inside its own
+   transaction. The use-case's name staying appointment-flavored despite serving two modules is a cosmetic
+   question for whoever implements this transition, not a blocker.
+8. **Partial refund on substitution-driven price reduction needs a new payments-module sibling to
+   `ProcessCancellationRefundUseCase`.** File 10 line 375 states this is "a realistic MVP scenario, not an edge
+   case to defer" — a patient approving a cheaper substitution after capture must trigger a real partial refund.
+   Not designed in detail here (the exact split/reversal math belongs with whoever implements the substitution-
+   approval transition); flagged as required scope for that pass, following the existing tx-scoped-use-case shape.
+9. **`DEC-016` (controlled-substance policy) tension is inherited, not re-litigated.** File 10's suggested MVP
+   default is a hard block on controlled substances anywhere in the patient-uploaded flow; Phase 6 already
+   shipped a confirm-and-allow path instead (Part 37.9: `controlledSubstanceConfirmed` flag). **Decided:**
+   Pharmacy Fulfillment dispenses whatever Phase 6's review already accepted — it does not add a second, stricter
+   check that would silently contradict behavior already shipped. This is a flagged product/legal gap (`DEC-016`
+   remains `Open`), not something engineering resolves by fiat in this module.
+10. **This pass is decisions + a module shell only — no business logic.** `PharmacyFulfillmentModule` is created
+    empty and is *not* registered in `AppModule` yet (nothing to wire). Order creation + broadcast fan-out,
+    broadcast accept/decline + its concurrency test, substitution propose/approve/reject, payment-capture wiring,
+    the timeout job, and branch-scoped RBAC are each their own follow-up pass — matching how Phase 4
+    (hold → confirm → cancel → reschedule) and Phase 5 were themselves built incrementally rather than as one
+    commit, and avoiding this codebase's own "no half-finished implementations" rule (File 12 Part 12) by never
+    landing a placeholder controller/use-case with an empty body.
