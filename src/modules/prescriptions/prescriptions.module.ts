@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrescriptionsController } from './api/prescriptions.controller';
+import { GetAcceptedPrescriptionForOrderUseCase } from './application/get-accepted-prescription-for-order.use-case';
 import { GetPrescriptionUseCase } from './application/get-prescription.use-case';
 import { ListPrescriptionsUseCase } from './application/list-prescriptions.use-case';
 import { OCR_EXTRACTOR } from './application/ports/ocr-extractor.port';
@@ -22,6 +23,10 @@ import { AuditModule } from '../audit/audit.module';
  * are POSTPONE, per this module's README). No OCR/image-quality vendor and
  * no object storage are wired — `QualityCheckerPort`/`OcrExtractorPort` bind
  * to stub adapters here, same pattern as `identity-auth`'s `OtpSenderPort`.
+ *
+ * File 12 Part 39.3: exports `GetAcceptedPrescriptionForOrderUseCase` for
+ * `pharmacy-fulfillment` to read an `ACCEPTED` prescription's fulfillable
+ * items inside its own order-creation transaction.
  */
 @Module({
   imports: [AuditModule],
@@ -40,6 +45,8 @@ import { AuditModule } from '../audit/audit.module';
     GetPrescriptionUseCase,
     ListPrescriptionsUseCase,
     ReviewPrescriptionUseCase,
+    GetAcceptedPrescriptionForOrderUseCase,
   ],
+  exports: [GetAcceptedPrescriptionForOrderUseCase],
 })
 export class PrescriptionsModule {}
