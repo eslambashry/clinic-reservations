@@ -27,6 +27,7 @@ import { ListVerificationDocumentsUseCase } from './application/list-verificatio
 import { RejectVerificationDocumentUseCase } from './application/reject-verification-document.use-case';
 import { ResolveAffiliationForSchedulingUseCase } from './application/resolve-affiliation-for-scheduling.use-case';
 import { SearchDoctorsUseCase } from './application/search-doctors.use-case';
+import { SearchPharmacyBranchesUseCase } from './application/search-pharmacy-branches.use-case';
 import { SelfRegisterProviderUseCase } from './application/self-register-provider.use-case';
 import { SuspendClinicBranchUseCase } from './application/suspend-clinic-branch.use-case';
 import { SuspendClinicUseCase } from './application/suspend-clinic.use-case';
@@ -53,6 +54,7 @@ import { DoctorRepository } from './infrastructure/doctor.repository';
 import { DoctorSearchRepository } from './infrastructure/doctor-search.repository';
 import { PharmacyRepository } from './infrastructure/pharmacy.repository';
 import { PharmacyBranchRepository } from './infrastructure/pharmacy-branch.repository';
+import { PharmacyBranchSearchRepository } from './infrastructure/pharmacy-branch-search.repository';
 import { SpecialtyRepository } from './infrastructure/specialty.repository';
 import { VerificationDocumentRepository } from './infrastructure/verification-document.repository';
 import { AuditModule } from '../audit/audit.module';
@@ -95,6 +97,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     AffiliationRepository,
     VerificationDocumentRepository,
     DoctorSearchRepository,
+    PharmacyBranchSearchRepository,
     // application
     CreateDoctorUseCase,
     UpdateDoctorUseCase,
@@ -122,6 +125,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     VerifyPharmacyBranchUseCase,
     SuspendPharmacyBranchUseCase,
     GetPharmacyBranchUseCase,
+    SearchPharmacyBranchesUseCase,
     CreateAffiliationUseCase,
     UpdateAffiliationUseCase,
     UploadVerificationDocumentUseCase,

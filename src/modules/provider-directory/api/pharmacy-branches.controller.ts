@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { GetPharmacyBranchUseCase } from '../application/get-pharmacy-branch.use-case';
+import { SearchPharmacyBranchesResult, SearchPharmacyBranchesUseCase } from '../application/search-pharmacy-branches.use-case';
 import { SuspendPharmacyBranchUseCase } from '../application/suspend-pharmacy-branch.use-case';
 import { UpdatePharmacyBranchUseCase } from '../application/update-pharmacy-branch.use-case';
 import { VerifyPharmacyBranchUseCase } from '../application/verify-pharmacy-branch.use-case';
@@ -10,6 +11,7 @@ import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { OptionalAuth } from '../../../shared/core/auth/optional-auth.decorator';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
+import { PharmacyBranchSearchQueryDto } from './dto/pharmacy-branch-search-query.dto';
 import { UpdatePharmacyBranchDto } from './dto/update-pharmacy-branch.dto';
 
 @ApiTags('pharmacy-branches')
@@ -20,7 +22,15 @@ export class PharmacyBranchesController {
     @Inject(VerifyPharmacyBranchUseCase) private readonly verifyBranch: VerifyPharmacyBranchUseCase,
     @Inject(SuspendPharmacyBranchUseCase) private readonly suspendBranch: SuspendPharmacyBranchUseCase,
     @Inject(GetPharmacyBranchUseCase) private readonly getBranch: GetPharmacyBranchUseCase,
+    @Inject(SearchPharmacyBranchesUseCase) private readonly searchBranches: SearchPharmacyBranchesUseCase,
   ) {}
+
+  @OptionalAuth()
+  @Get('search')
+  @ApiOperation({ summary: 'Public pharmacy branch search (File 12 Part 37) — text/location/delivery filter, cursor-paginated' })
+  search(@Query() query: PharmacyBranchSearchQueryDto): Promise<SearchPharmacyBranchesResult> {
+    return this.searchBranches.execute(query);
+  }
 
   @OptionalAuth()
   @Get(':branchId')
