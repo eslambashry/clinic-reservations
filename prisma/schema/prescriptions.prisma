@@ -1,63 +1,62 @@
-// ==========================================
-// PRESCRIPTIONS MODULE SCHEMA
-// ==========================================
-
 model DrugCatalog {
-  code                  String   @id
+  code                  String              @id
   generic_name          String
-  controlled_substance  Boolean  @default(false)
-  requires_prescription Boolean  @default(true)
-  created_at            DateTime @default(now()) @db.Timestamptz
-  updated_at            DateTime @updatedAt @db.Timestamptz
-  version               Int      @default(1)
-
-  prescription_items   PrescriptionItem[]
-  pharmacy_order_items PharmacyOrderItem[]
-  substitutions_orig   Substitution[]      @relation("OriginalDrug")
-  substitutions_sub    Substitution[]      @relation("SubstitutedDrug")
+  controlled_substance  Boolean             @default(false)
+  requires_prescription Boolean             @default(true)
+  created_at            DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime            @updatedAt @db.Timestamptz(6)
+  version               Int                 @default(1)
+  pharmacy_order_items  PharmacyOrderItem[]
+  prescription_items    PrescriptionItem[]
+  substitutions_orig    Substitution[]      @relation("OriginalDrug")
+  substitutions_sub     Substitution[]      @relation("SubstitutedDrug")
 
   @@map("drug_catalog")
 }
 
 model Prescription {
-  id           String             @id @default(uuid()) @db.Uuid
-  encounter_id String?            @db.Uuid
-  patient_id   String             @db.Uuid
-  doctor_id    String?            @db.Uuid
-  source       PrescriptionSource
-  status       PrescriptionStatus @default(UPLOADED)
-  expires_at   DateTime?          @db.Timestamptz
-  created_at   DateTime           @default(now()) @db.Timestamptz
-  updated_at   DateTime           @updatedAt @db.Timestamptz
-  version      Int                @default(1)
-
+  id              String               @id @default(uuid()) @db.Uuid
+  encounter_id    String?              @db.Uuid
+  patient_id      String               @db.Uuid
+  doctor_id       String?              @db.Uuid
+  source          PrescriptionSource
+  status          PrescriptionStatus   @default(UPLOADED)
+  expires_at      DateTime?            @db.Timestamptz(6)
+  created_at      DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime             @updatedAt @db.Timestamptz(6)
+  version         Int                  @default(1)
+  pharmacy_orders PharmacyOrder[]
+  images          PrescriptionImage[]
+  items           PrescriptionItem[]
+  reviews         PrescriptionReview[]
+  doctor          User?                @relation("DoctorPrescriptions", fields: [doctor_id], references: [id])
   encounter       Encounter?           @relation(fields: [encounter_id], references: [id])
   patient         User                 @relation("PatientPrescriptions", fields: [patient_id], references: [id])
-  doctor          User?                @relation("DoctorPrescriptions", fields: [doctor_id], references: [id])
-  items           PrescriptionItem[]
-  images          PrescriptionImage[]
-  reviews         PrescriptionReview[]
-  pharmacy_orders PharmacyOrder[]
 
   @@map("prescriptions")
 }
 
+/// DB-only invariant (File 10 §7.3 / File 12 Part 37, migration
+/// `add_prescription_item_drug_code_review_trigger`): a trigger blocks any
+/// INSERT/UPDATE setting `drug_code` unless a `prescription_reviews` row
+/// already exists for the parent prescription — "OCR-never-trusted-alone" is
+/// enforced at the DB level, not just application discipline. Not
+/// representable here — Prisma has no trigger support.
 model PrescriptionItem {
-  id                  String   @id @default(uuid()) @db.Uuid
-  prescription_id     String   @db.Uuid
-  drug_code           String?
-  drug_name_free_text String?
-  dose                String?
-  frequency           String?
-  duration_days       Int?
-  quantity            Int?
-  created_at          DateTime @default(now()) @db.Timestamptz
-  updated_at          DateTime @updatedAt @db.Timestamptz
-  version             Int      @default(1)
-
-  prescription         Prescription        @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
-  drug                 DrugCatalog?        @relation(fields: [drug_code], references: [code])
+  id                   String              @id @default(uuid()) @db.Uuid
+  prescription_id      String              @db.Uuid
+  drug_code            String?
+  drug_name_free_text  String?
+  dose                 String?
+  frequency            String?
+  duration_days        Int?
+  quantity             Int?
+  created_at           DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime            @updatedAt @db.Timestamptz(6)
+  version              Int                 @default(1)
   pharmacy_order_items PharmacyOrderItem[]
+  drug                 DrugCatalog?        @relation(fields: [drug_code], references: [code])
+  prescription         Prescription        @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
 
   @@map("prescription_items")
 }
@@ -68,11 +67,10 @@ model PrescriptionImage {
   file_url             String
   quality_check_status QualityCheckStatus @default(PENDING)
   blur_score           Decimal?           @db.Decimal(5, 2)
-  created_at           DateTime           @default(now()) @db.Timestamptz
-  updated_at           DateTime           @updatedAt @db.Timestamptz
+  created_at           DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime           @updatedAt @db.Timestamptz(6)
   version              Int                @default(1)
-
-  prescription Prescription @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  prescription         Prescription       @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
 
   @@map("prescription_images")
 }
@@ -84,13 +82,12 @@ model PrescriptionReview {
   decision                       PrescriptionReviewDecision
   reason_code                    String?
   controlled_substance_confirmed Boolean                    @default(false)
-  reviewed_at                    DateTime                   @default(now()) @db.Timestamptz
-  created_at                     DateTime                   @default(now()) @db.Timestamptz
-  updated_at                     DateTime                   @updatedAt @db.Timestamptz
+  reviewed_at                    DateTime                   @default(now()) @db.Timestamptz(6)
+  created_at                     DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at                     DateTime                   @updatedAt @db.Timestamptz(6)
   version                        Int                        @default(1)
-
-  prescription Prescription @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
-  pharmacist   User         @relation(fields: [pharmacist_user_id], references: [id])
+  pharmacist                     User                       @relation(fields: [pharmacist_user_id], references: [id])
+  prescription                   Prescription               @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
 
   @@map("prescription_reviews")
 }

@@ -1,7 +1,3 @@
-// ==========================================
-// AUDIT MODULE SCHEMA
-// ==========================================
-
 model AuditLog {
   id                       String   @id @default(uuid()) @db.Uuid
   actor_user_id            String?  @db.Uuid
@@ -13,12 +9,11 @@ model AuditLog {
   reason_code              String?
   correlation_id           String?
   source_ip                String?
-  occurred_at              DateTime @default(now()) @db.Timestamptz
-  created_at               DateTime @default(now()) @db.Timestamptz
-  updated_at               DateTime @updatedAt @db.Timestamptz
+  occurred_at              DateTime @default(now()) @db.Timestamptz(6)
+  created_at               DateTime @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime @updatedAt @db.Timestamptz(6)
   version                  Int      @default(1)
-
-  actor User? @relation("ActorUser", fields: [actor_user_id], references: [id])
+  actor                    User?    @relation("ActorUser", fields: [actor_user_id], references: [id])
 
   @@map("audit_logs")
 }

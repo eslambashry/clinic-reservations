@@ -122,6 +122,27 @@ async function main() {
     console.log(`✅ Granted ADMIN role_membership to ${adminUser.phone}`);
   }
 
+  // Phase 6 (Prescriptions, File 12 Part 37): a Pharmacy Staff test user, so
+  // there's someone who can actually call the review queue/review endpoints
+  // — pharmacy-staff role_memberships are Admin-provisioned, no self-service
+  // signup exists (same pattern as the ADMIN seed above).
+  let pharmacyStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000003' } });
+  if (!pharmacyStaffUser) {
+    pharmacyStaffUser = await prisma.user.create({
+      data: { phone: '+201000000003', first_name: 'Youssef', last_name: 'Adel' },
+    });
+    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone}`);
+  }
+  const pharmacyStaffMembership = await prisma.roleMembership.findFirst({
+    where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
+  });
+  if (!pharmacyStaffMembership) {
+    await prisma.roleMembership.create({
+      data: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
+    });
+    console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone}`);
+  }
+
   // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
   // this is what makes the Phase 2 Definition of Done runnable end-to-end
   // (File 11 Part 28 Phase 2 exit criterion): once an Admin verifies this

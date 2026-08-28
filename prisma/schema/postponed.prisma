@@ -1,17 +1,11 @@
-// ==========================================
-// POSTPONED MODULES SCHEMA (SCHEMA ONLY — NO FEATURE LOGIC IN MVP)
-// Per File 11 line 336: defined for forward-compatibility
-// ==========================================
-
 model HealthRecord {
-  id         String   @id @default(uuid()) @db.Uuid
-  patient_id String   @unique @db.Uuid
-  created_at DateTime @default(now()) @db.Timestamptz
-  updated_at DateTime @updatedAt @db.Timestamptz
-  version    Int      @default(1)
-
-  patient    User        @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  id         String      @id @default(uuid()) @db.Uuid
+  patient_id String      @unique @db.Uuid
+  created_at DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at DateTime    @updatedAt @db.Timestamptz(6)
+  version    Int         @default(1)
   encounters Encounter[]
+  patient    User        @relation(fields: [patient_id], references: [id], onDelete: Cascade)
 
   @@map("health_records")
 }
@@ -24,16 +18,15 @@ model Encounter {
   encounter_type   String
   notes_encrypted  Bytes?
   status           EncounterStatus @default(OPEN)
-  occurred_at      DateTime        @default(now()) @db.Timestamptz
-  created_at       DateTime        @default(now()) @db.Timestamptz
-  updated_at       DateTime        @updatedAt @db.Timestamptz
+  occurred_at      DateTime        @default(now()) @db.Timestamptz(6)
+  created_at       DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime        @updatedAt @db.Timestamptz(6)
   version          Int             @default(1)
-
-  health_record HealthRecord   @relation(fields: [health_record_id], references: [id], onDelete: Cascade)
-  appointment   Appointment?   @relation(fields: [appointment_id], references: [id])
-  doctor        Doctor         @relation(fields: [doctor_id], references: [id])
-  prescriptions Prescription[]
-  reviews       Review[]
+  appointment      Appointment?    @relation(fields: [appointment_id], references: [id])
+  doctor           Doctor          @relation(fields: [doctor_id], references: [id])
+  health_record    HealthRecord    @relation(fields: [health_record_id], references: [id], onDelete: Cascade)
+  prescriptions    Prescription[]
+  reviews          Review[]
 
   @@map("encounters")
 }
@@ -43,13 +36,12 @@ model Consent {
   patient_id   String    @db.Uuid
   consent_type String
   granted      Boolean
-  granted_at   DateTime  @default(now()) @db.Timestamptz
-  revoked_at   DateTime? @db.Timestamptz
-  created_at   DateTime  @default(now()) @db.Timestamptz
-  updated_at   DateTime  @updatedAt @db.Timestamptz
+  granted_at   DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_at   DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @updatedAt @db.Timestamptz(6)
   version      Int       @default(1)
-
-  patient User @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  patient      User      @relation(fields: [patient_id], references: [id], onDelete: Cascade)
 
   @@map("consents")
 }
@@ -63,12 +55,11 @@ model Review {
   rating       Int
   comment      String?
   status       String       @default("PENDING")
-  created_at   DateTime     @default(now()) @db.Timestamptz
-  updated_at   DateTime     @updatedAt @db.Timestamptz
+  created_at   DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime     @updatedAt @db.Timestamptz(6)
   version      Int          @default(1)
-
-  patient   User      @relation(fields: [patient_id], references: [id], onDelete: Cascade)
-  encounter Encounter @relation(fields: [encounter_id], references: [id])
+  encounter    Encounter    @relation(fields: [encounter_id], references: [id])
+  patient      User         @relation(fields: [patient_id], references: [id], onDelete: Cascade)
 
   @@map("reviews")
 }
@@ -80,8 +71,8 @@ model FraudFlag {
   flag_type    String
   severity     String
   status       String   @default("OPEN")
-  created_at   DateTime @default(now()) @db.Timestamptz
-  updated_at   DateTime @updatedAt @db.Timestamptz
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @updatedAt @db.Timestamptz(6)
   version      Int      @default(1)
 
   @@map("fraud_flags")
@@ -96,13 +87,12 @@ model DeliveryOrder {
   otp_code_hash         String?
   proof_of_delivery_url String?
   fee                   Decimal        @db.Decimal(10, 2)
-  eta_at                DateTime?      @db.Timestamptz
-  created_at            DateTime       @default(now()) @db.Timestamptz
-  updated_at            DateTime       @updatedAt @db.Timestamptz
+  eta_at                DateTime?      @db.Timestamptz(6)
+  created_at            DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime       @updatedAt @db.Timestamptz(6)
   version               Int            @default(1)
-
-  pharmacy_order PharmacyOrder @relation(fields: [pharmacy_order_id], references: [id], onDelete: Cascade)
-  address        Address       @relation(fields: [address_id], references: [id])
+  address               Address        @relation(fields: [address_id], references: [id])
+  pharmacy_order        PharmacyOrder  @relation(fields: [pharmacy_order_id], references: [id], onDelete: Cascade)
 
   @@map("delivery_orders")
 }

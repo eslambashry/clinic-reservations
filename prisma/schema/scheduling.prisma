@@ -1,37 +1,31 @@
-// ==========================================
-// SCHEDULING MODULE SCHEMA
-// ==========================================
-
 model ScheduleTemplate {
-  id                           String   @id @default(uuid()) @db.Uuid
-  doctor_clinic_affiliation_id String   @db.Uuid
+  id                           String                  @id @default(uuid()) @db.Uuid
+  doctor_clinic_affiliation_id String                  @db.Uuid
   weekday                      Int
   start_time                   String
   end_time                     String
   slot_duration_minutes        Int
-  buffer_minutes               Int      @default(0)
-  created_at                   DateTime @default(now()) @db.Timestamptz
-  updated_at                   DateTime @updatedAt @db.Timestamptz
-  version                      Int      @default(1)
-
-  affiliation DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id], onDelete: Cascade)
+  buffer_minutes               Int                     @default(0)
+  created_at                   DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime                @updatedAt @db.Timestamptz(6)
+  version                      Int                     @default(1)
+  affiliation                  DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id], onDelete: Cascade)
 
   @@map("schedule_templates")
 }
 
 model AppointmentSlot {
-  id                           String     @id @default(uuid()) @db.Uuid
-  doctor_clinic_affiliation_id String     @db.Uuid
-  start_at                     DateTime   @db.Timestamptz
-  end_at                       DateTime   @db.Timestamptz
-  status                       SlotStatus @default(OPEN)
-  created_at                   DateTime   @default(now()) @db.Timestamptz
-  updated_at                   DateTime   @updatedAt @db.Timestamptz
-  version                      Int        @default(1)
-
-  affiliation DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id], onDelete: Cascade)
-  holds       AppointmentHold[]
-  appointment Appointment?
+  id                           String                  @id @default(uuid()) @db.Uuid
+  doctor_clinic_affiliation_id String                  @db.Uuid
+  start_at                     DateTime                @db.Timestamptz(6)
+  end_at                       DateTime                @db.Timestamptz(6)
+  status                       SlotStatus              @default(OPEN)
+  created_at                   DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                   DateTime                @updatedAt @db.Timestamptz(6)
+  version                      Int                     @default(1)
+  holds                        AppointmentHold[]
+  affiliation                  DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id], onDelete: Cascade)
+  appointment                  Appointment?
 
   @@unique([doctor_clinic_affiliation_id, start_at])
   @@map("appointment_slots")
@@ -42,56 +36,50 @@ model AppointmentSlot {
 /// index on (slot_id) WHERE status='ACTIVE' enforces at most one active hold
 /// per slot. Not representable here — Prisma has no filtered `@@unique`.
 model AppointmentHold {
-  id         String     @id @default(uuid()) @db.Uuid
-  slot_id    String     @db.Uuid
-  patient_id String     @db.Uuid
-  expires_at DateTime   @db.Timestamptz
-  status     HoldStatus @default(ACTIVE)
+  id                              String          @id @default(uuid()) @db.Uuid
+  slot_id                         String          @db.Uuid
+  patient_id                      String          @db.Uuid
+  expires_at                      DateTime        @db.Timestamptz(6)
+  status                          HoldStatus      @default(ACTIVE)
+  created_at                      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime        @updatedAt @db.Timestamptz(6)
+  version                         Int             @default(1)
   /// File 12 Part 35.13: set only when this hold was created by
   /// `POST .../reschedule` — lets `ConfirmAppointmentUseCase` propagate the
   /// link onto the new `Appointment.rescheduled_from_appointment_id` at
   /// confirm time (Part 35.10 — the new appointment doesn't exist until then).
-  rescheduled_from_appointment_id String?  @db.Uuid
-  created_at                      DateTime @default(now()) @db.Timestamptz
-  updated_at                      DateTime @updatedAt @db.Timestamptz
-  version                         Int      @default(1)
-
-  slot                         AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)
-  patient                      User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
-  rescheduled_from_appointment Appointment?    @relation("HoldReschedulesAppointment", fields: [rescheduled_from_appointment_id], references: [id])
+  rescheduled_from_appointment_id String?         @db.Uuid
+  patient                         User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  rescheduled_from_appointment    Appointment?    @relation("HoldReschedulesAppointment", fields: [rescheduled_from_appointment_id], references: [id])
+  slot                            AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)
 
   @@index([slot_id, status])
   @@map("appointment_holds")
 }
 
 model Appointment {
-  id                              String            @id @default(uuid()) @db.Uuid
-  slot_id                         String            @unique @db.Uuid
-  patient_id                      String            @db.Uuid
-  doctor_clinic_affiliation_id    String            @db.Uuid
-  status                          AppointmentStatus @default(HELD)
-  payment_intent_id               String?           @db.Uuid
-  cancelled_by                    String?           @db.Uuid
+  id                              String                  @id @default(uuid()) @db.Uuid
+  slot_id                         String                  @unique @db.Uuid
+  patient_id                      String                  @db.Uuid
+  doctor_clinic_affiliation_id    String                  @db.Uuid
+  status                          AppointmentStatus       @default(HELD)
+  payment_intent_id               String?                 @db.Uuid
+  cancelled_by                    String?                 @db.Uuid
   cancelled_reason                String?
-  rescheduled_from_appointment_id String?           @db.Uuid
-  created_at                      DateTime          @default(now()) @db.Timestamptz
-  updated_at                      DateTime          @updatedAt @db.Timestamptz
-  version                         Int               @default(1)
+  rescheduled_from_appointment_id String?                 @db.Uuid
+  created_at                      DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime                @updatedAt @db.Timestamptz(6)
+  version                         Int                     @default(1)
+  rescheduling_holds              AppointmentHold[]       @relation("HoldReschedulesAppointment")
+  canceller                       User?                   @relation("CancelledAppointments", fields: [cancelled_by], references: [id])
+  affiliation                     DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id])
+  patient                         User                    @relation("PatientAppointments", fields: [patient_id], references: [id])
+  payment_intent                  PaymentIntent?          @relation(fields: [payment_intent_id], references: [id])
+  rescheduled_from                Appointment?            @relation("RescheduledFrom", fields: [rescheduled_from_appointment_id], references: [id])
+  rescheduled_to                  Appointment[]           @relation("RescheduledFrom")
+  slot                            AppointmentSlot         @relation(fields: [slot_id], references: [id])
+  encounters                      Encounter[]
 
-  slot             AppointmentSlot         @relation(fields: [slot_id], references: [id])
-  patient          User                    @relation("PatientAppointments", fields: [patient_id], references: [id])
-  affiliation      DoctorClinicAffiliation @relation(fields: [doctor_clinic_affiliation_id], references: [id])
-  payment_intent   PaymentIntent?          @relation(fields: [payment_intent_id], references: [id])
-  canceller        User?                   @relation("CancelledAppointments", fields: [cancelled_by], references: [id])
-  rescheduled_from Appointment?            @relation("RescheduledFrom", fields: [rescheduled_from_appointment_id], references: [id])
-  rescheduled_to   Appointment[]           @relation("RescheduledFrom")
-  encounters       Encounter[]
-  rescheduling_holds AppointmentHold[]     @relation("HoldReschedulesAppointment")
-
-  /// Backs `AppointmentRepository.listForPatient` ("My Appointments",
-  /// File 12 Part 35.14/35.15) — filtered by `patient_id` and optionally
-  /// `status`, ordered via the joined slot's `start_at`. Without this, every
-  /// call is a full sequential scan of `appointments`.
   @@index([patient_id, status])
   @@map("appointments")
 }

@@ -293,4 +293,99 @@ File 10 §5.1/§5.3 and File 11 Part 13 specify the `PaymentIntent` state machin
 10. **`Appointment.payment_intent_id === null` is a valid, handled case in `CancelAppointmentUseCase`**, not an error — appointments confirmed before this change (or any future path that legitimately produces one) fall through to the pre-Phase-5 `refundAmount: 0, feeApplied: 0` behavior rather than throwing.
 11. **Settlement-batch aggregation (`settlements` table) is untouched — still OPEN per Part 07.** Nothing in this phase reads or writes a `settlements` table; the `payment_splits`/`provider_ledger_entries` rows this phase writes are exactly the inputs a future settlement-batch job would aggregate, not a schema pre-guess of that job itself.
 12. **`ProcessCancellationRefundUseCase` derives the reversed commission amount from the original `ProviderLedgerEntry` row (`entry_type = COMMISSION_DEDUCTION`), not from `PaymentSplit`.** Both tables record the same $ amount at capture time, but only the ledger row already carries `provider_type`/`provider_id`, which the reversal entry needs — reading it from there avoids a second repository/lookup with no added correctness benefit.
-13. **`ConfirmAppointmentUseCase`/`CancelAppointmentUseCase`'s `$transaction` calls now pass an explicit `{ timeout: 15000 }`, up from Prisma's 5000ms default.** Both transactions grew by roughly half a dozen sequential round trips (payment-intent create, commission-rate read, capture, two splits, one ledger write — and, on cancel, the mirrored refund/reversal writes), all of which must stay inside the same atomic transaction as the appointment state change (File 11 Part 11 — never two separate commits). Verified empirically: the concurrent-confirm integration test (`appointment-hold-concurrency.integration.spec.ts`) was intermittently failing under the default timeout against this environment's real Postgres round-trip latency, and passed reliably once raised. 15000ms is a generous multiple of the observed worst case, not a tightly-tuned number — revisit if this transaction grows further.
+13. **`ConfirmAppointmentUseCase`/`CancelAppointmentUseCase`'s `$transaction` calls now pass an explicit `{ timeout: 15000 }`, up from Prisma's 5000ms default.** Both transactions grew by roughly half a dozen sequential round trips (payment-intent create, commission-rate read, capture, two splits, one ledger write — and, on cancel, the mirrored refund/reversal writes), all of which must stay inside the same atomic transaction as the appointment state change (File 11 Part 11 — never two separate commits). Verified empirically: the concurrent-confirm integration test (`appointment-hold-concurrency.integration.spec.ts`) was intermittently failing under the default timeout against this environment's real Postgres round-trip latency, and passed reliably once raised. 15000ms is a generous multiple of the observed worst case, not a tightly-tuned number — revisit if this transaction grows further. **Found again during Phase 6 manual verification:** `VerifyOtpUseCase`'s transaction (Phase 1, predates this pattern) hit the same 5000ms default under this environment's latency (observed 6262ms, `P2028`) and got the identical `{ timeout: 15000 }` fix — this is an environment-latency characteristic, not specific to payments, so any other transaction that starts failing this way should get the same treatment rather than a bespoke workaround.
+
+---
+
+## PART 37 — Phase 6 (Prescriptions) Decisions
+
+File 10 §7.1-7.3 and File 11 Part 09.3/15 specify the prescription state machine, the OCR
+"assist-only, never trusted alone" hard rule, and the review-record schema in real detail. What
+they leave open — closed here before Phase 6 code was written, mirroring Parts 32/33/35/36's
+process — is how a real, already-migrated 6-value `PrescriptionStatus` enum maps onto File 10's
+8-state diagram, and several vendor/authorization gaps File 10/11 never assign an owner to.
+
+1. **State-machine reconciliation.** File 10 §7.1's diagram has 8 states
+   (`UPLOADED→PROCESSING→QUALITY_CHECK→READY_FOR_REVIEW→UNDER_REVIEW→{ACCEPTED,REJECTED,NEEDS_CLARIFICATION}`).
+   The actual, already-migrated `PrescriptionStatus` enum has 6 values: `UPLOADED,
+   QUALITY_CHECK_PASSED, QUALITY_CHECK_FAILED, ACCEPTED, REJECTED, CANCELLED` — no
+   `PROCESSING`/`READY_FOR_REVIEW`/`UNDER_REVIEW`/`NEEDS_CLARIFICATION` at the `Prescription` row
+   level. **Decided:** `NEEDS_CLARIFICATION` lives on `PrescriptionReviewDecision` instead (a
+   review-*row* decision, already in the schema) — a `NEEDS_CLARIFICATION` review leaves
+   `Prescription.status` unchanged at `QUALITY_CHECK_PASSED` (still awaiting a final decision;
+   multiple review rows accumulate as an audit trail, matching File 11 line 381's stated purpose).
+   `QUALITY_CHECK_FAILED` is terminal for that row — "patient must re-upload" (File 10's diagram)
+   means a new `POST /prescriptions/upload` call, the same "FAILED is terminal, client creates a
+   new one" pattern already established for `PaymentIntent` (Part 36). `CANCELLED` exists in the
+   enum but no endpoint targets it this phase — left unproduced, same precedent as
+   `AppointmentStatus.HELD`/`EXPIRED` (Part 35.1).
+2. **No OCR vendor (`DEC-005`), no image-quality vendor (unnamed in any source doc), no object
+   storage (`DEC-009`-gated S3) — three separate open/deferred decisions, all given the exact
+   treatment `identity-auth` already established for `OtpSenderPort`/`LoggingOtpSender`**: a port
+   interface + a stub adapter, never presented as the real thing. `QualityCheckerPort` →
+   `PassthroughQualityChecker` (always `PASSED`, logs a dev-only warning). `OcrExtractorPort` →
+   `NoOpOcrExtractor` (always returns zero suggestions — matches `DEC-005`'s own text: "MVP
+   prescription flow works with manual pharmacist entry if OCR isn't ready"). File storage reuses
+   the exact `ProviderVerificationDocument.file_url` pattern (Part 32.7): `UploadPrescriptionDto`
+   takes `fileUrls: string[]` (pre-hosted, max 5), not real multipart upload. **Because both stub
+   calls are synchronous, zero-latency stand-ins**, quality-check + OCR run inline inside
+   `UploadPrescriptionUseCase`'s transaction — no cron job, no `PROCESSING` intermediate status, no
+   worker involvement. Building async job infrastructure for a synchronous stub would be the
+   premature architecture Part 12 warns against; swapping the DI binding later (as already
+   described for `OtpSenderPort`) is what reintroduces real async processing, a future decision.
+3. **Pharmacist "license number" has no schema backing.** File 10 line 289 says review requires
+   "licensed (license number on their `role_membership` profile)" — but `RoleMembership` has no
+   license column, and there's no `pharmacy_staff` entity table the way `Doctor.license_number`
+   exists for physicians. **Decided:** an `ACTIVE` `PHARMACY_STAFF` `role_membership` (i.e., passing
+   `@Roles(PHARMACY_STAFF)`) is the enforceable proxy for "licensed" — the same trust model already
+   implicit everywhere else in this codebase (nothing re-verifies a role grant's real-world basis
+   at request time; Admin provisions the membership). Flagged as a known gap, not fabricated schema.
+4. **Phase 6/7 sequencing tension.** File 11 05.7 scopes pharmacy-staff read/review access to "only
+   once routed to their branch" — but branch routing (`pharmacy_order_broadcasts`) is Phase 7
+   (Pharmacy Fulfillment), not built yet, while File 10 line 766 still names Phase 6's exit
+   criterion as "a prescription reaches `ACCEPTED` via a real pharmacist review call." **Decided:**
+   same deferral shape Part 35.8 already used for clinic-staff branch-scoped appointment access —
+   building a branch-scoped authorization primitive now, ahead of the phase that actually needs it
+   broadly, is the premature-primitive mistake Part 12 warns against. For Phase 6: any `ACTIVE`
+   `PHARMACY_STAFF` member can see/review any `QUALITY_CHECK_PASSED` prescription (open queue,
+   unscoped by branch) — tighten once Phase 7 introduces real routing.
+5. **`GET /v1/prescriptions` (pharmacy-staff review queue) is not named in File 11's endpoint
+   table** (only `POST .../upload` and `GET .../{id}` are documented), but a pharmacist needs some
+   way to discover prescriptions to review. **Decided:** add it — cursor-paginated, oldest-first
+   (File 10 §7.2's stated queue ordering), filtered server-side to `status='QUALITY_CHECK_PASSED'`.
+   Same "undocumented but workflow-necessary, RBAC-gated, no `/admin`-style prefix" precedent
+   already used for `GET /provider-verification-documents` (Part 32) and schedule-template CRUD
+   (Part 33.1).
+6. **Admin's documented PHI-read access (File 11 07.2) requires "every such read is itself
+   audit-logged with a mandatory reason code"** — no reason-code-*required* audit variant exists
+   anywhere in this codebase (`AuditService.record()`'s `reasonCode` is optional, never enforced).
+   Building a new mandatory-reason-code primitive for one call site is out of scope this phase
+   (same anti-premature-primitive reasoning as item 4). **Decided:** Admin can still read
+   `GET /prescriptions/{id}` (documented auth includes Admin), audited the same way every other
+   read-adjacent call in this codebase is — the *mandatory* enforcement is a flagged gap, not
+   silently built.
+7. **`NEEDS_CLARIFICATION`'s "patient responds" loop (File 10 §7.1) has no endpoint anywhere in
+   File 11's contract list.** Not built — a patient sees the `NEEDS_CLARIFICATION` review row via
+   `GET /prescriptions/{id}`, but no endpoint exists yet for them to respond to it. Consistent with
+   "don't invent an endpoint no doc names."
+8. **The OCR-never-trusted-alone rule is enforced by a real DB trigger, not just application-layer
+   discipline** — File 12 Part 10 requires this explicitly ("must be enforced by a real DB
+   constraint/check"). Postgres `CHECK` constraints can't reference another table, so the mechanism
+   is a `BEFORE INSERT OR UPDATE` trigger on `prescription_items`
+   (`enforce_prescription_item_drug_code_requires_review`, migration
+   `add_prescription_item_drug_code_review_trigger`) that raises an exception if `drug_code` is
+   being set with no `prescription_reviews` row yet existing for that prescription — hand-written,
+   same reason as the `appointment_holds` partial-unique-index migration (Prisma has no trigger
+   support). This is why `ReviewPrescriptionUseCase` must create the `PrescriptionReview` row
+   *before* applying any `itemCorrections` in the same transaction — Postgres trigger visibility
+   only sees the transaction's own prior writes, so the ordering is load-bearing, not incidental.
+   The upload path never sets `drug_code` at all (the OCR stub only populates
+   `drug_name_free_text`), so it never touches the trigger. Proven by a dedicated integration test
+   that attempts the forbidden write directly against the DB with no use-case in between — the
+   whole point of a trigger is that it holds even if a future code path forgets the rule.
+9. **The controlled-substance hard block** (File 10 §7.3: "anything involving a controlled
+   substance always routes to `UNDER_REVIEW` with a mandatory pharmacist ... stamp") is implemented
+   as: if any `itemCorrections` entry maps to a `DrugCatalog` row with `controlled_substance=true`,
+   the review request must set `controlledSubstanceConfirmed: true` or the whole review is rejected
+   with `422 CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED` — checked before the `PrescriptionReview`
+   row is even created, so a rejected attempt leaves no partial record.

@@ -1,0 +1,45 @@
+import { Module } from '@nestjs/common';
+import { PrescriptionsController } from './api/prescriptions.controller';
+import { GetPrescriptionUseCase } from './application/get-prescription.use-case';
+import { ListPrescriptionsUseCase } from './application/list-prescriptions.use-case';
+import { OCR_EXTRACTOR } from './application/ports/ocr-extractor.port';
+import { QUALITY_CHECKER } from './application/ports/quality-checker.port';
+import { ReviewPrescriptionUseCase } from './application/review-prescription.use-case';
+import { UploadPrescriptionUseCase } from './application/upload-prescription.use-case';
+import { DrugCatalogRepository } from './infrastructure/drug-catalog.repository';
+import { NoOpOcrExtractor } from './infrastructure/no-op-ocr-extractor.service';
+import { PassthroughQualityChecker } from './infrastructure/passthrough-quality-checker.service';
+import { PrescriptionImageRepository } from './infrastructure/prescription-image.repository';
+import { PrescriptionItemRepository } from './infrastructure/prescription-item.repository';
+import { PrescriptionRepository } from './infrastructure/prescription.repository';
+import { PrescriptionReviewRepository } from './infrastructure/prescription-review.repository';
+import { AuditModule } from '../audit/audit.module';
+
+/**
+ * File 11 Part 03: owns `drug_catalog`, `prescriptions`, `prescription_items`,
+ * `prescription_images`, `prescription_reviews` (File 12 Part 37 — patient
+ * upload, quality-check gate, pharmacist review; doctor-issued prescriptions
+ * are POSTPONE, per this module's README). No OCR/image-quality vendor and
+ * no object storage are wired — `QualityCheckerPort`/`OcrExtractorPort` bind
+ * to stub adapters here, same pattern as `identity-auth`'s `OtpSenderPort`.
+ */
+@Module({
+  imports: [AuditModule],
+  controllers: [PrescriptionsController],
+  providers: [
+    // infrastructure
+    PrescriptionRepository,
+    PrescriptionImageRepository,
+    PrescriptionItemRepository,
+    PrescriptionReviewRepository,
+    DrugCatalogRepository,
+    { provide: QUALITY_CHECKER, useClass: PassthroughQualityChecker },
+    { provide: OCR_EXTRACTOR, useClass: NoOpOcrExtractor },
+    // application
+    UploadPrescriptionUseCase,
+    GetPrescriptionUseCase,
+    ListPrescriptionsUseCase,
+    ReviewPrescriptionUseCase,
+  ],
+})
+export class PrescriptionsModule {}

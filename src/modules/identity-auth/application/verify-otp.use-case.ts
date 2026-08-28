@@ -72,6 +72,12 @@ export class VerifyOtpUseCase {
       throw new DomainError(400, 'INVALID_CODE', 'The provided code is invalid.');
     }
 
+    // Explicit timeout (Prisma's default is 5000ms) — same reasoning as
+    // ConfirmAppointmentUseCase/CancelAppointmentUseCase (File 12 Part
+    // 36.13): this transaction's several sequential writes (consume OTP,
+    // find/create user, find/create role membership, issue tokens, emit
+    // outbox) were observed exceeding the default under this environment's
+    // real Postgres round-trip latency.
     return this.prisma.$transaction(async (tx) => {
       await this.otpRequests.markConsumed(tx, otpRequest.id);
 
@@ -117,6 +123,6 @@ export class VerifyOtpUseCase {
         userId: user.id,
         isNewUser,
       };
-    });
+    }, { timeout: 15000 });
   }
 }
