@@ -1,25 +1,20 @@
 model User {
-  id                              String                         @id @default(uuid()) @db.Uuid
-  phone                           String                         @unique
-  email                           String?                        @unique
-  status                          UserStatus                     @default(ACTIVE)
-  created_at                      DateTime                       @default(now()) @db.Timestamptz(6)
-  updated_at                      DateTime                       @updatedAt @db.Timestamptz(6)
-  deleted_at                      DateTime?                      @db.Timestamptz(6)
-  version                         Int                            @default(1)
+  id                   String     @id @default(uuid()) @db.Uuid
+  phone                String     @unique
+  email                String?    @unique
   /// File 12 Part 32.1: nullable — OTP-only signup collects no name; this is
   /// the display-name source for both Patient profile (File 11 05.2) and
   /// Doctor search/detail (05.4), neither of which had anywhere else to
   /// store one.
-  first_name String?
-  last_name  String?
+  first_name           String?
+  last_name            String?
   password_hash        String?
   password_updated_at  DateTime?  @db.Timestamptz(6)
-  status     UserStatus @default(ACTIVE)
-  created_at DateTime   @default(now()) @db.Timestamptz
-  updated_at DateTime   @updatedAt @db.Timestamptz
-  deleted_at DateTime?  @db.Timestamptz
-  version    Int        @default(1)
+  status               UserStatus @default(ACTIVE)
+  created_at           DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime   @updatedAt @db.Timestamptz(6)
+  deleted_at           DateTime?  @db.Timestamptz(6)
+  version              Int        @default(1)
 
   role_memberships                RoleMembership[]
   devices                         Device[]
@@ -30,8 +25,6 @@ model User {
   appointments                    Appointment[]                  @relation("PatientAppointments")
   audit_logs                      AuditLog[]                     @relation("ActorUser")
   consents                        Consent[]
-  devices                         Device[]
-  doctor                          Doctor?
   health_record                   HealthRecord?
   notification_preferences        NotificationPreference[]
   notifications                   Notification[]
@@ -42,9 +35,7 @@ model User {
   prescriptions_authored          Prescription[]                 @relation("DoctorPrescriptions")
   prescriptions                   Prescription[]                 @relation("PatientPrescriptions")
   provider_verifications_reviewed ProviderVerificationDocument[] @relation("ReviewedByAdmin")
-  refresh_tokens                  RefreshToken[]
   reviews                         Review[]
-  role_memberships                RoleMembership[]
   substitutions_proposed          Substitution[]
 
   @@map("users")

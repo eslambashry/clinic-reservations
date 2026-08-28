@@ -39,13 +39,6 @@ model Doctor {
   license_number      String
   license_verified_at DateTime?                 @db.Timestamptz(6)
   status              DoctorStatus              @default(PENDING)
-  rating_avg          Decimal                   @default(0) @db.Decimal(2, 1)
-  rating_count        Int                       @default(0)
-  region_code         String?
-  deleted_at          DateTime?                 @db.Timestamptz(6)
-  created_at          DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime                  @updatedAt @db.Timestamptz(6)
-  version             Int                       @default(1)
   /// File 12 Part 32.1 — nullable, no upload flow yet (Part 19 deferred);
   /// a pre-hosted URL only, matching `ProviderVerificationDocument.file_url`.
   photo_url           String?
