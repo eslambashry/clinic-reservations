@@ -2,12 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { computeOrderTotal } from '../domain/pharmacy-order-quote.rules';
-import { SubstitutionRepository } from '../infrastructure/substitution.repository';
-import { PharmacyOrderItemRepository } from '../infrastructure/pharmacy-order-item.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
 
 export interface ApprovePharmacyOrderResult {
@@ -18,27 +14,28 @@ export interface ApprovePharmacyOrderResult {
   currency: string;
 }
 
-const APPROVABLE_STATUSES = ['ACCEPTED', 'SUBSTITUTION_PROPOSED'] as const;
+const APPROVABLE_STATUS = 'ACCEPTED';
 
 /**
  * File 10 line 205 `POST /v1/pharmacy-orders/{orderId}/approve` / File 10
  * Part 8.1 ("approval and payment-intent-creation are the same moment, not
- * decoupled") / File 11 Part 14 (`SUBSTITUTION_PROPOSED --> ACCEPTED` and
- * `ACCEPTED --> PAID`, both hops in this one call). Reuses
- * `CapturePayAtClinicPaymentUseCase` as-is (Part 39.7) — no pharmacy-
- * specific clone. `providerId` is the pharmacy *branch* id, not the parent
- * `Pharmacy` — the branch is the operationally-distinct unit that actually
- * won the broadcast and quoted the order, mirroring `ClinicBranch`'s role
- * for appointments (Part 39, documented assumption — no existing CLINIC-
- * ledger precedent settles this either way).
+ * decoupled"). Reuses `CapturePayAtClinicPaymentUseCase` as-is (Part 39.7).
+ * `providerId` is the pharmacy *branch* id (Part 39.21).
+ *
+ * 2026-08-29 rewrite: captures `order.total_price`/`order.currency` directly
+ * (set by the flat quote step) instead of summing `PharmacyOrderItem`
+ * unit prices. `SUBSTITUTION_PROPOSED` is dropped from the approvable-status
+ * set — the flat quote flow can never produce it (see
+ * `submit-pharmacy-order-quote.use-case.ts`), so the pending-substitution
+ * resolution this use-case used to do first has no trigger left, same
+ * "left unproduced" reasoning already used elsewhere in this module (Part
+ * 39.23).
  */
 @Injectable()
 export class ApprovePharmacyOrderUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PharmacyOrderRepository) private readonly pharmacyOrders: PharmacyOrderRepository,
-    @Inject(PharmacyOrderItemRepository) private readonly pharmacyOrderItems: PharmacyOrderItemRepository,
-    @Inject(SubstitutionRepository) private readonly substitutions: SubstitutionRepository,
     @Inject(CapturePayAtClinicPaymentUseCase) private readonly capturePayment: CapturePayAtClinicPaymentUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
@@ -49,22 +46,14 @@ export class ApprovePharmacyOrderUseCase {
       if (!order || order.patient_id !== actor.sub) {
         throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
       }
-      if (!APPROVABLE_STATUSES.includes(order.status as (typeof APPROVABLE_STATUSES)[number])) {
+      if (order.status !== APPROVABLE_STATUS || !order.total_price || !order.currency) {
         throw new BusinessRuleError('PHARMACY_ORDER_NOT_APPROVABLE', 'This order is not awaiting approval.');
       }
-      // order.pharmacy_branch_id is guaranteed non-null here: reaching ACCEPTED/SUBSTITUTION_PROPOSED
+      // order.pharmacy_branch_id is guaranteed non-null here: reaching ACCEPTED
       // requires having gone through claimForBranch (File 11 line 456), which always sets it.
       const branchId = order.pharmacy_branch_id!;
-
-      if (order.status === 'SUBSTITUTION_PROPOSED') {
-        await this.substitutions.approveAllPendingForOrder(tx, pharmacyOrderId);
-      }
-
-      const items = await this.pharmacyOrderItems.findByOrderId(tx, pharmacyOrderId);
-      const totalAmount = computeOrderTotal(
-        items.map((item) => ({ status: item.status, unitPrice: item.unit_price?.toString() ?? null, quantity: item.quantity })),
-      );
-      const currency = PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY;
+      const totalAmount = order.total_price.toString();
+      const currency = order.currency;
 
       const capture = await this.capturePayment.execute(tx, {
         payerUserId: actor.sub,

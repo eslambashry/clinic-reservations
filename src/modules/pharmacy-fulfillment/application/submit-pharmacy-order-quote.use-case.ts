@@ -1,46 +1,53 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PharmacyOrderItemStatus } from '@prisma/client';
 import { GetDrugCatalogControlledStatusUseCase } from '../../prescriptions/application/get-drug-catalog-controlled-status.use-case';
 import { GetPrescriptionItemDrugCodesUseCase } from '../../prescriptions/application/get-prescription-item-drug-codes.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
-import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { assertValidQuoteItemInput, computeOrderTotal, requiresControlledSubstanceConfirmationForQuote, resolveQuoteOutcome } from '../domain/pharmacy-order-quote.rules';
-import { NewSubstitution, SubstitutionRepository } from '../infrastructure/substitution.repository';
+import { assertValidFlatQuoteInput } from '../domain/pharmacy-order-quote.rules';
+import { PharmacyOrderBroadcastRepository } from '../infrastructure/pharmacy-order-broadcast.repository';
 import { PharmacyOrderItemRepository } from '../infrastructure/pharmacy-order-item.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
 
-export interface SubmitPharmacyOrderQuoteItemInput {
-  prescriptionItemId: string;
-  status: PharmacyOrderItemStatus;
-  substituteDrugCode?: string;
-  unitPrice?: string;
-}
-
 export interface SubmitPharmacyOrderQuoteInput {
-  items: SubmitPharmacyOrderQuoteItemInput[];
+  totalPrice: string;
+  estimatedReadyMinutes: number;
+  note?: string;
   controlledSubstanceConfirmed?: boolean;
 }
 
 export interface SubmitPharmacyOrderQuoteResult {
   pharmacyOrderId: string;
-  status: 'ACCEPTED' | 'SUBSTITUTION_PROPOSED';
+  status: 'ACCEPTED';
   totalPrice: string;
   currency: string;
 }
 
 /**
- * File 10 lines 191-195 `POST /v1/pharmacy-orders/{orderId}/quote` / File
- * 11 Part 14 (`UNDER_REVIEW --> ACCEPTED|SUBSTITUTION_PROPOSED`). Only the
- * branch that won the broadcast (Part 39.13) may quote, and only while the
- * order is `UNDER_REVIEW` — same branch-resolution shape as
- * accept/decline. `estimatedReadyMinutes` (File 10's request) is
- * deliberately not accepted — no column exists to persist it, and adding
- * one is a schema decision for a future pass, not silently invented here.
+ * 2026-08-29 rewrite (File 12 Part 39 follow-up, `docs/PROPOSED_CONTRACT.md`
+ * §1 resolved in `medsuper-pharmacy-dashboard`'s favor over the original
+ * item-by-item quote contract): the pharmacist types one total, one ETA, and
+ * an optional note — no `PharmacyOrderItem` pricing, no substitution
+ * proposals. `SUBSTITUTION_PROPOSED` stays in the schema for forward-compat
+ * but no code path here produces it any more (same "unreachable enum
+ * member" precedent as `AppointmentStatus.HELD`).
+ *
+ * Also folds in the accept/claim step: the dashboard's UI never had a
+ * separate "accept this broadcast" action — a pharmacist quotes (or rejects,
+ * see `reject-pharmacy-order.use-case.ts`) directly on a `RECEIVED` order,
+ * same as on an already-claimed `UNDER_REVIEW` one. So when the order is
+ * still unclaimed, this use-case claims it first (the same first-accept-wins
+ * conditional update `AcceptPharmacyOrderBroadcastUseCase` uses, File 11 line
+ * 456) and then quotes it, inside one transaction — the intermediate
+ * `UNDER_REVIEW` hop is real but never separately observable, same "not
+ * decoupled" reasoning File 10 Part 8.1 already established for `approve`'s
+ * two hops. `AcceptPharmacyOrderBroadcastUseCase`/`.../accept` still exist
+ * as a documented, separately-callable primitive — just unused by this
+ * console.
  */
 @Injectable()
 export class SubmitPharmacyOrderQuoteUseCase {
@@ -48,7 +55,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PharmacyOrderRepository) private readonly pharmacyOrders: PharmacyOrderRepository,
     @Inject(PharmacyOrderItemRepository) private readonly pharmacyOrderItems: PharmacyOrderItemRepository,
-    @Inject(SubstitutionRepository) private readonly substitutions: SubstitutionRepository,
+    @Inject(PharmacyOrderBroadcastRepository) private readonly broadcasts: PharmacyOrderBroadcastRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(GetPrescriptionItemDrugCodesUseCase) private readonly getDrugCodes: GetPrescriptionItemDrugCodesUseCase,
     @Inject(GetDrugCatalogControlledStatusUseCase) private readonly getControlledStatus: GetDrugCatalogControlledStatusUseCase,
@@ -57,90 +64,71 @@ export class SubmitPharmacyOrderQuoteUseCase {
   ) {}
 
   async execute(pharmacyOrderId: string, input: SubmitPharmacyOrderQuoteInput, actor: AccessTokenPayload): Promise<SubmitPharmacyOrderQuoteResult> {
+    assertValidFlatQuoteInput(input);
+
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
     if (!membership || !membership.contextId) {
       throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
     }
     const branchId = membership.contextId;
 
-    for (const item of input.items) {
-      assertValidQuoteItemInput(item);
-    }
-
     return this.prisma.$transaction(async (tx) => {
       const order = await this.pharmacyOrders.findById(tx, pharmacyOrderId);
-      if (!order || order.pharmacy_branch_id !== branchId) {
+      if (!order) {
         throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
       }
-      if (order.status !== 'UNDER_REVIEW') {
+
+      let currentVersion = order.version;
+      let status = order.status;
+
+      if (order.pharmacy_branch_id === null) {
+        // Unclaimed — this branch must have been a broadcast target, and
+        // claiming it here folds in what used to be a separate `accept` call.
+        const broadcast = await this.broadcasts.findByOrderAndBranch(tx, pharmacyOrderId, branchId);
+        if (!broadcast || broadcast.response !== null) {
+          throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
+        }
+        const claimed = await this.pharmacyOrders.claimForBranch(tx, pharmacyOrderId, order.version, branchId);
+        if (!claimed) {
+          throw new ConflictError('ORDER_ALREADY_CLAIMED', 'Another pharmacy branch already claimed this order.');
+        }
+        await this.broadcasts.markResponded(tx, broadcast.id, 'ACCEPTED');
+        await this.outbox.emit(tx, 'PharmacyOrderAccepted', { pharmacyOrderId, pharmacyBranchId: branchId });
+        currentVersion += 1;
+        status = 'UNDER_REVIEW';
+      } else if (order.pharmacy_branch_id !== branchId) {
+        throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
+      }
+
+      if (status !== 'UNDER_REVIEW') {
         throw new BusinessRuleError('PHARMACY_ORDER_NOT_UNDER_REVIEW', 'This order is not awaiting a quote.');
       }
 
+      // File 10 line 541: still enforced even without per-item substitution —
+      // check the order's ORIGINAL prescribed drugs (no substitute path exists
+      // in the flat-quote flow) and require explicit confirmation if any is
+      // controlled.
       const orderItems = await this.pharmacyOrderItems.findByOrderId(tx, pharmacyOrderId);
-      const orderItemByPrescriptionItemId = new Map(orderItems.map((item) => [item.prescription_item_id, item]));
-
-      const isBijection =
-        input.items.length === orderItems.length && input.items.every((item) => orderItemByPrescriptionItemId.has(item.prescriptionItemId));
-      if (!isBijection) {
-        throw new BusinessRuleError('QUOTE_ITEMS_MISMATCH', "The quote must cover exactly this order's items, no more and no fewer.");
-      }
-
-      const originalDrugCodes = await this.getDrugCodes.execute(
+      const drugCodesByPrescriptionItemId = await this.getDrugCodes.execute(
         tx,
         orderItems.map((item) => item.prescription_item_id),
       );
-      const effectiveDrugCodeByPrescriptionItemId = new Map(
-        input.items.map((item) => [
-          item.prescriptionItemId,
-          item.status === 'SUBSTITUTED' ? item.substituteDrugCode! : (originalDrugCodes.get(item.prescriptionItemId) ?? ''),
-        ]),
-      );
-      const controlledByCode = await this.getControlledStatus.execute(tx, [...effectiveDrugCodeByPrescriptionItemId.values()]);
-
-      const needsConfirmation = requiresControlledSubstanceConfirmationForQuote(
-        input.items.map((item) => ({ status: item.status, effectiveDrugCode: effectiveDrugCodeByPrescriptionItemId.get(item.prescriptionItemId)! })),
-        controlledByCode,
-      );
-      if (needsConfirmation && !input.controlledSubstanceConfirmed) {
+      const controlledByCode = await this.getControlledStatus.execute(tx, [...drugCodesByPrescriptionItemId.values()]);
+      const includesControlledSubstance = [...drugCodesByPrescriptionItemId.values()].some((code) => controlledByCode.get(code) ?? false);
+      if (includesControlledSubstance && !input.controlledSubstanceConfirmed) {
         throw new BusinessRuleError(
           'CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED',
           'This order includes a controlled substance — controlledSubstanceConfirmed must be explicitly true to quote it.',
         );
       }
 
-      const outcome = resolveQuoteOutcome(input.items);
-
-      const newSubstitutions: NewSubstitution[] = [];
-      for (const item of input.items) {
-        const orderItem = orderItemByPrescriptionItemId.get(item.prescriptionItemId)!;
-        await this.pharmacyOrderItems.updateQuote(tx, orderItem.id, orderItem.version, {
-          status: item.status,
-          unitPrice: item.status === 'UNAVAILABLE' ? null : (item.unitPrice ?? null),
-          substitutedDrugCode: item.status === 'SUBSTITUTED' ? (item.substituteDrugCode ?? null) : null,
-        });
-
-        if (item.status === 'SUBSTITUTED') {
-          newSubstitutions.push({
-            pharmacyOrderItemId: orderItem.id,
-            originalDrugCode: originalDrugCodes.get(item.prescriptionItemId) ?? '',
-            substitutedDrugCode: item.substituteDrugCode!,
-            proposedByUserId: actor.sub,
-          });
-        }
-      }
-      if (newSubstitutions.length > 0) {
-        await this.substitutions.createMany(tx, newSubstitutions);
-      }
-
-      const totalPrice = computeOrderTotal(
-        input.items.map((item) => ({
-          status: item.status,
-          unitPrice: item.unitPrice ?? null,
-          quantity: orderItemByPrescriptionItemId.get(item.prescriptionItemId)!.quantity,
-        })),
-      );
-
-      await this.pharmacyOrders.setStatus(tx, pharmacyOrderId, order.version, outcome);
+      const currency = PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY;
+      await this.pharmacyOrders.submitQuote(tx, pharmacyOrderId, currentVersion, {
+        totalPrice: input.totalPrice,
+        currency,
+        estimatedReadyMinutes: input.estimatedReadyMinutes,
+        note: input.note ?? null,
+      });
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,
@@ -150,16 +138,9 @@ export class SubmitPharmacyOrderQuoteUseCase {
         resourceId: pharmacyOrderId,
       });
 
-      if (outcome === 'SUBSTITUTION_PROPOSED') {
-        await this.outbox.emit(tx, 'SubstitutionProposed', { pharmacyOrderId });
-      }
+      await this.outbox.emit(tx, 'PharmacyOrderQuoted', { pharmacyOrderId, totalPrice: input.totalPrice, currency });
 
-      return {
-        pharmacyOrderId,
-        status: outcome,
-        totalPrice,
-        currency: PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY,
-      };
+      return { pharmacyOrderId, status: 'ACCEPTED' as const, totalPrice: input.totalPrice, currency };
     });
   }
 }

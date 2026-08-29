@@ -1,43 +1,36 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
+import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { SubstitutionRepository } from '../infrastructure/substitution.repository';
-import { PharmacyOrderItemRepository } from '../infrastructure/pharmacy-order-item.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
+import { buildPharmacyOrderDetail, PharmacyOrderDetail } from './pharmacy-order-detail.mapper';
 
-export interface PharmacyOrderDetail {
-  pharmacyOrderId: string;
-  status: string;
-  fulfillmentType: string;
-  pharmacyBranchId: string | null;
-  items: { id: string; prescriptionItemId: string; status: string; substitutedDrugCode: string | null; unitPrice: string | null; quantity: number }[];
-  substitutions: {
-    id: string;
-    pharmacyOrderItemId: string;
-    originalDrugCode: string;
-    substitutedDrugCode: string;
-    patientDecision: string;
-  }[];
-}
+export type { PharmacyOrderDetail };
 
 /**
- * File 11 05.8 `GET /v1/pharmacy-orders/{orderId}` — documented but not yet
- * built until this pass, needed for a patient to actually see a proposed
- * substitution before approving/rejecting it. `NotFoundError` for anyone
- * not entitled (hides existence), same pattern as `GetPrescriptionUseCase`.
- * No Admin bypass — File 11 05.8 names only "owning patient or the assigned
- * pharmacy branch staff", unlike prescriptions' equivalent endpoint.
+ * File 11 05.8 `GET /v1/pharmacy-orders/{orderId}` — owning patient or the
+ * assigned pharmacy branch staff. No Admin bypass (File 11 05.8 names only
+ * those two). `NotFoundError` for anyone not entitled (hides existence).
+ *
+ * 2026-08-29 reshape: the response now matches
+ * `medsuper-pharmacy-dashboard`'s `PharmacyOrder` type exactly (flat quote,
+ * patient/prescription projections) instead of the original
+ * items[]/substitutions[] shape, which stopped being meaningful once quoting
+ * went flat (see `submit-pharmacy-order-quote.use-case.ts`). Mapping itself
+ * lives in `pharmacy-order-detail.mapper.ts`, shared with
+ * `ListPharmacyOrdersUseCase`.
  */
 @Injectable()
 export class GetPharmacyOrderUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PharmacyOrderRepository) private readonly pharmacyOrders: PharmacyOrderRepository,
-    @Inject(PharmacyOrderItemRepository) private readonly pharmacyOrderItems: PharmacyOrderItemRepository,
-    @Inject(SubstitutionRepository) private readonly substitutions: SubstitutionRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
+    @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
+    @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
   ) {}
 
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<PharmacyOrderDetail> {
@@ -56,31 +49,22 @@ export class GetPharmacyOrderUseCase {
       throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
     }
 
-    const [items, substitutions] = await Promise.all([
-      this.pharmacyOrderItems.findByOrderId(this.prisma, pharmacyOrderId),
-      this.substitutions.findByOrderId(this.prisma, pharmacyOrderId),
+    const [patient, prescription] = await Promise.all([
+      this.getUserSummary.execute(this.prisma, order.patient_id),
+      this.getPrescriptionSummary.execute(this.prisma, order.prescription_id),
     ]);
+    if (!patient || !prescription) {
+      // Both rows are FK-guaranteed to exist by the time an order exists — a
+      // miss here means data corruption, not a legitimate 404 for the caller.
+      throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
+    }
 
-    return {
-      pharmacyOrderId: order.id,
-      status: order.status,
-      fulfillmentType: order.fulfillment_type,
-      pharmacyBranchId: order.pharmacy_branch_id,
-      items: items.map((item) => ({
-        id: item.id,
-        prescriptionItemId: item.prescription_item_id,
-        status: item.status,
-        substitutedDrugCode: item.substituted_drug_code,
-        unitPrice: item.unit_price?.toString() ?? null,
-        quantity: item.quantity,
-      })),
-      substitutions: substitutions.map((substitution) => ({
-        id: substitution.id,
-        pharmacyOrderItemId: substitution.pharmacy_order_item_id,
-        originalDrugCode: substitution.original_drug_code,
-        substitutedDrugCode: substitution.substituted_drug_code,
-        patientDecision: substitution.patient_decision,
-      })),
-    };
+    let doctorName: string | null = null;
+    if (prescription.doctorId) {
+      const doctor = await this.getUserSummary.execute(this.prisma, prescription.doctorId);
+      doctorName = doctor ? [doctor.firstName, doctor.lastName].filter(Boolean).join(' ') || null : null;
+    }
+
+    return buildPharmacyOrderDetail(order, patient, prescription, doctorName);
   }
 }

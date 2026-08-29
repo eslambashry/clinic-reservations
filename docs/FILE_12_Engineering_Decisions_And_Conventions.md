@@ -582,3 +582,80 @@ shell only (File 12 Part 10's Phase 7 checklist item), not an implementation; se
     require a *second* substitution round discovered after `PAID` (e.g. an item goes out of stock during
     `PREPARING`), which is new state-machine surface no source doc specifies — flagged as a real gap for whoever
     eventually needs post-capture order modification, not speculatively built against an unmodeled scenario.
+
+## PART 40 — Pharmacy Console Contract Reconciliation (2026-08-29)
+
+`medsuper-pharmacy-dashboard` (the Next.js pharmacy-staff console, ADR-006) was built end-to-end against its
+own, never-agreed contract (`docs/PROPOSED_CONTRACT.md` in that repo) while Part 39 built the real backend
+against File 10 §2.3's item-by-item contract, in parallel, with neither side checked against the other until
+this pass. Reconciling them found the two genuinely incompatible at the product level, not just the wire level
+— closed here, per the same "add the decision to File 12 first" rule (Part 12) that governs any divergence from
+an already-closed decision (items 14–16 below, specifically).
+
+1. **Item 14–16's item-by-item quote contract is reopened and replaced with a flat one — a deliberate
+   product-priority call, not an oversight.** The dashboard's "this console holds no drug data" design (its own
+   `docs/PROPOSED_CONTRACT.md` §0) is incompatible with a `unitPrice`-per-`PharmacyOrderItem` contract: pricing
+   an item requires knowing what it is, which is exactly the data this console was designed to never hold.
+   **Decided: the backend accepts what the console already sends** — `{ totalPrice, estimatedReadyMinutes, note }`
+   on `SubmitPharmacyOrderQuoteDto`, one total instead of per-item ones. New `pharmacy_orders` columns
+   (`total_price`, `currency`, `estimated_ready_minutes`, `staff_note`, `quoted_at`) replace reading
+   `computeOrderTotal` off `PharmacyOrderItem` rows for both the quote response and `approve`'s payment-capture
+   amount (item 22's shared-derivation guarantee now holds between the order row and the capture call instead of
+   between the item rows and both). `PharmacyOrderItem.status`/`unit_price` are left in place, unwritten by this
+   flow — the same "unreachable but present" precedent as `AppointmentStatus.HELD` (Part 35.1).
+2. **`SUBSTITUTION_PROPOSED` is now unreachable through this module, full stop — not just through this console.**
+   This module is the only caller of `SubmitPharmacyOrderQuoteUseCase` in the whole system (ADR-006: no other
+   pharmacy-staff surface exists), so removing the per-item substitution path from the quote use-case makes the
+   status genuinely unreachable everywhere, not just from one client. Kept in `shared.prisma` regardless — same
+   forward-compat reasoning as `PrescriptionStatus.CANCELLED` (Part 37.1). `RejectPharmacyOrderSubstitutionUseCase`
+   (patient-initiated, `SUBSTITUTION_PROPOSED --> REJECTED`) is correspondingly dead code in practice but left
+   registered and callable, not deleted — it's still correct given the state it names, there's just no way to
+   reach that state through this console any more.
+3. **The dashboard's UI never had a separate "accept this broadcast" step — quoting and rejecting now fold the
+   accept/decline decision in.** `SubmitPharmacyOrderQuoteUseCase`, given an unclaimed order, claims it first
+   (the exact `PharmacyOrderRepository.claimForBranch` conditional update item 13 already specifies) before
+   quoting, inside the same transaction — the `RECEIVED --> UNDER_REVIEW` hop is real but never separately
+   observable, the same "not decoupled" framing File 10 Part 8.1 already established for `approve`'s two hops
+   (item 20). `RejectPharmacyOrderUseCase` mirrors this: given an unresponded broadcast, it declines it (item 13's
+   `markResponded`) rather than rejecting a claimed order. Keyed off the *broadcast row's* own state, not the
+   order's current claim, so a branch that never got around to responding can still decline even after another
+   branch won the race — same behavior the original `DeclinePharmacyOrderBroadcastUseCase` always had.
+   `AcceptPharmacyOrderBroadcastUseCase`/`DeclinePharmacyOrderBroadcastUseCase` and their routes (item 11) remain
+   exactly as built — valid, separately-callable primitives, simply unused by this particular console.
+4. **`RejectPharmacyOrderUseCase` (new) also accepts `ACCEPTED`, not only `UNDER_REVIEW`** — the dashboard's own
+   `REJECTABLE` set already allowed staff to pull back an already-quoted order (e.g. an unresponsive patient), a
+   real operational need item 14's original "reject only reaches `REJECTED` via `NO_ITEMS_AVAILABLE`" framing
+   never had to consider.
+5. **New `FulfillPharmacyOrderUseCase`/`CompletePharmacyOrderUseCase`, closing a real gap item 6 flagged but never
+   resolved.** `PAID --> READY_FOR_PICKUP`/`OUT_FOR_DELIVERY` and `--> FULFILLED` had no endpoint at all before
+   this pass — the state-diagram hops existed in `shared.prisma` but no code path produced them. Built now because
+   the console genuinely needs *some* way to close an order; `DELIVERED` was still declined (item 6's own
+   reasoning stands unchanged) — `complete` accepts `OUT_FOR_DELIVERY` directly, taking the dashboard's own
+   documented fallback for that scenario. This does **not** mean Delivery (Phase 9) shipped — no courier
+   assignment/tracking exists, only the status flag.
+6. **New `ListPharmacyOrdersUseCase` (`GET /pharmacy-orders`), the queue listing item 11 named as a future pass
+   and never built.** Placed at `GET /pharmacy-orders` rather than the `GET /pharmacy-branches/{branchId}/orders`
+   File 11 05.8 named — no `branchId` in the URL, matching this controller's own "branch resolved server-side"
+   convention every other route here already uses, and exactly what the console already called. Returns a
+   patient's own orders, or — for `PHARMACY_STAFF` — orders the caller's branch has claimed *plus* orders
+   currently broadcast to it with no response yet (`PharmacyOrderRepository.findForBranch`, a Prisma `OR` across
+   the `pharmacy_branch_id` column and the `broadcasts` relation — no query for this "claimed-or-incoming" set
+   existed anywhere before). Each row is enriched to the same shape `GET .../{orderId}` returns (patient/
+   prescription projections, flat quote) via a new shared `pharmacy-order-detail.mapper.ts` — an accepted N+1 (one
+   extra patient + prescription lookup per row) for an MVP staff console, not a performance target.
+7. **New cross-module exports this pass needed and didn't have: `identity-auth`'s `GetUserSummaryUseCase`
+   (plain `id -> {firstName, lastName, phoneMasked}` lookup) and `prescriptions`' `GetPrescriptionSummaryUseCase`
+   (plain tx-scoped prescription+images read).** Both follow the same "plain lookup, no ownership check — the
+   caller already legitimately owns this id via its own rows" shape `GetPrescriptionItemDrugCodesUseCase` (item
+   17) already established. Phone masking has no prior art anywhere in this codebase to reuse; `GetUserSummaryUseCase`
+   introduces the first one (last 3 digits visible) rather than inventing a second convention if a real
+   requirement for a different mask shape shows up later.
+8. **`PharmacyOrder.notes` (upload-time patient instruction, `UploadPrescriptionUseCase`'s DTO) is still not
+   persisted anywhere — a pre-existing gap, not something this pass introduced or closed.** The dashboard's
+   `patientNote` field is documented as always `null` in live mode until a future pass adds a column, the same
+   `not_persisted[]` precedent ADR-005 already established for accepted-but-discarded fields.
+9. **The patient-notification log and audit-trail feed (`medsuper-pharmacy-dashboard`'s
+   `docs/PROPOSED_CONTRACT.md` §3/§6) are explicitly out of scope for this pass and remain mock-only.** Both need
+   a real product decision (a notification channel for the former, DEC-003 still open; an audit-store read-API
+   design for the latter) this reconciliation pass deliberately did not make unilaterally — silently inventing
+   either would be exactly the kind of gap-filling File 12 Part 12 already warns against.
