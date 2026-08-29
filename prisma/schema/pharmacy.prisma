@@ -31,6 +31,10 @@ model PharmacyOrder {
   pharmacy_branch          PharmacyBranch?               @relation(fields: [pharmacy_branch_id], references: [id])
   prescription              Prescription                 @relation(fields: [prescription_id], references: [id])
 
+  /// Backs `PharmacyOrderRepository.findForPatient` ("my orders", 2026-08-29).
+  @@index([patient_id, status])
+  /// Backs `PharmacyOrderRepository.findForBranch` (branch queue, 2026-08-29).
+  @@index([pharmacy_branch_id, status])
   @@map("pharmacy_orders")
 }
 
@@ -47,6 +51,10 @@ model PharmacyOrderBroadcast {
   pharmacy_branch    PharmacyBranch     @relation(fields: [pharmacy_branch_id], references: [id])
   pharmacy_order     PharmacyOrder      @relation(fields: [pharmacy_order_id], references: [id], onDelete: Cascade)
 
+  /// Backs `findByOrderAndBranch` — hit on every quote/reject/accept/decline (2026-08-29).
+  @@index([pharmacy_order_id, pharmacy_branch_id])
+  /// Backs the branch-queue's "incoming, unresponded" subquery (2026-08-29).
+  @@index([pharmacy_branch_id, response])
   @@map("pharmacy_order_broadcasts")
 }
 

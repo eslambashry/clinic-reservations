@@ -659,3 +659,53 @@ an already-closed decision (items 14–16 below, specifically).
    a real product decision (a notification channel for the former, DEC-003 still open; an audit-store read-API
    design for the latter) this reconciliation pass deliberately did not make unilaterally — silently inventing
    either would be exactly the kind of gap-filling File 12 Part 12 already warns against.
+
+## PART 41 — Pharmacy Console Integration Audit & Hardening (2026-08-29)
+
+Senior-level end-to-end audit of the Part 40 reconciliation, treating backend + dashboard as one system: workflow
+reconstruction, contract cross-check (every field, both directions), authorization/IDOR review, concurrency review,
+and a mock-vs-live parity check. Confirmed correct and unchanged: branch scoping (every use-case resolves
+`branchId` server-side from `GetActiveRoleMembershipUseCase`, never from a client-supplied id — no IDOR found),
+optimistic-lock/first-accept-wins concurrency (`updateWithOptimisticLock` / `claimForBranch` / `markResponded`
+conditional updates), the error envelope, and the notifications/audit mock isolation (§11 of the audit brief —
+both surfaces correctly report a 501/error in live mode rather than faking success). Two real gaps found and
+fixed:
+
+1. **`pharmacy_orders`/`pharmacy_order_broadcasts` had no index beyond their primary key** — the 20260829120000
+   migration only added columns. `PharmacyOrderRepository.findForPatient`/`findForBranch` (Part 40 item 6) filter
+   on `patient_id`/`pharmacy_branch_id` (+ optional `status`) and would run full sequential scans as the tables
+   grow, the identical gap `20260819120000_add_appointment_patient_id_status_index` already fixed once for
+   `appointments`. `findByOrderAndBranch` also went from an occasional lookup to a hot path this pass — Part 40
+   item 3 means `quote`/`reject` call it on every single request now, not just `accept`/`decline`. Fixed in
+   `20260829130000_add_pharmacy_order_queue_indexes`: `pharmacy_orders(patient_id, status)`,
+   `pharmacy_orders(pharmacy_branch_id, status)`, `pharmacy_order_broadcasts(pharmacy_order_id, pharmacy_branch_id)`,
+   `pharmacy_order_broadcasts(pharmacy_branch_id, response)`. Not deployed (`db:migrate:deploy` still requires an
+   explicit decision to run against a real database — unchanged from Part 40's own scope limit).
+2. **Test coverage gap on the two newest use-cases**: `fulfill-pharmacy-order.use-case.spec.ts` and
+   `complete-pharmacy-order.use-case.spec.ts` covered the happy paths and the one business-rule rejection each, but
+   neither had a wrong-branch (IDOR) case, a no-membership 403, or an optimistic-lock-conflict propagation case —
+   coverage every other mutating use-case in this module already had. Added (4 cases each, 300/300 unit tests now
+   passing, up from 292).
+
+**Pre-existing gaps noted, not fixed this pass** (real, but not introduced or intensified by this pass, so left
+alone per the "don't modify unrelated modules" rule): `pharmacy_orders.prescription_id` (hit by
+`findLatestByPrescriptionId` on every order-creation call) and `pharmacy_order_items.pharmacy_order_id` (hit by
+`findByOrderId` on every quote) are likewise unindexed — both predate Part 39, not something this reconciliation
+touched.
+
+**Frontend — mock/live parity fixes** (`medsuper-pharmacy-dashboard`, mirrored in that repo's own docs):
+`order-detail-pane.tsx`'s `REJECTABLE` set and `mock-service.ts`'s `assertTerminalMutable` both still listed
+`SUBSTITUTION_PROPOSED` as reject-able — dead per item 2 above (unreachable through this console, and the real
+`RejectPharmacyOrderUseCase` 422s a reject attempt against it), so the button/mock both promised an action the
+live backend would refuse. `mock-service.ts`'s `fulfillOrder` also accepted `ACCEPTED`, which the real
+`assertOrderIsPaid` never does (`fulfill` requires exactly `PAID`) — the UI's own `readyable` gate already never
+exposed this path, so it was latent, not reachable through normal use, but still a live/mock divergence per §10 of
+the audit brief. All three now match the backend exactly.
+
+**Verification**: backend `db:generate` ✅, `build` ✅, `lint` ✅ (0 errors, 1 pre-existing unrelated warning),
+`test` — 300/300 unit tests ✅, the same 5 pre-existing `*.integration.spec.ts` suites (`doctor-search.repository`,
+`prescription-drug-code-trigger`, `pharmacy-order-broadcast-concurrency`, `appointment-slot.repository`,
+`appointment-hold-concurrency`) fail for lack of a local Postgres — environment limitation, not a regression, same
+failure set as before this pass. Dashboard: `tsc --noEmit` ✅, `lint` ✅, `next build` ✅. No browser/E2E
+click-through — still the user's explicit "code + automated tests only" choice from the original reconciliation
+request, unchanged for this follow-up pass.

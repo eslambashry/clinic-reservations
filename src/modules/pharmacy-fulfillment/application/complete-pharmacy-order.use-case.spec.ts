@@ -45,4 +45,36 @@ describe('CompletePharmacyOrderUseCase', () => {
       httpStatus: 422,
     });
   });
+
+  it('403s when the caller has no active pharmacy branch assignment', async () => {
+    const { getActiveRoleMembership, useCase } = setup();
+    getActiveRoleMembership.execute.mockResolvedValue(null);
+
+    await expect(useCase.execute('order-1', actor)).rejects.toMatchObject({ httpStatus: 403 });
+  });
+
+  it("404s when the order was claimed by a different branch (IDOR guard)", async () => {
+    const { pharmacyOrders, getActiveRoleMembership, useCase } = setup();
+    getActiveRoleMembership.execute.mockResolvedValue(membership);
+    pharmacyOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'READY_FOR_PICKUP', pharmacy_branch_id: 'some-other-branch' });
+
+    await expect(useCase.execute('order-1', actor)).rejects.toMatchObject({ httpStatus: 404 });
+  });
+
+  it('404s when the order does not exist', async () => {
+    const { pharmacyOrders, getActiveRoleMembership, useCase } = setup();
+    getActiveRoleMembership.execute.mockResolvedValue(membership);
+    pharmacyOrders.findById.mockResolvedValue(null);
+
+    await expect(useCase.execute('order-1', actor)).rejects.toMatchObject({ httpStatus: 404 });
+  });
+
+  it('propagates an optimistic-lock conflict when the order changed between read and write', async () => {
+    const { pharmacyOrders, getActiveRoleMembership, useCase } = setup();
+    getActiveRoleMembership.execute.mockResolvedValue(membership);
+    pharmacyOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'READY_FOR_PICKUP', pharmacy_branch_id: 'branch-1' });
+    pharmacyOrders.setStatus.mockRejectedValue({ code: 'OPTIMISTIC_LOCK_CONFLICT', httpStatus: 409 });
+
+    await expect(useCase.execute('order-1', actor)).rejects.toMatchObject({ code: 'OPTIMISTIC_LOCK_CONFLICT', httpStatus: 409 });
+  });
 });

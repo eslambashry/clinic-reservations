@@ -48,3 +48,12 @@ call, documented as a new decision in `docs/FILE_12_Engineering_Decisions_And_Co
   MVP staff console, not a performance target).
 - New `identity-auth` export `GetUserSummaryUseCase` and `prescriptions`
   export `GetPrescriptionSummaryUseCase` back the above.
+
+**2026-08-29 — integration audit & hardening pass** (`docs/FILE_12_Engineering_Decisions_And_Conventions.md`
+Part 41). Full workflow reconstruction + contract cross-check against the dashboard found authorization,
+concurrency, and mock/live parity all sound except two real gaps, both fixed: `pharmacy_orders`/
+`pharmacy_order_broadcasts` had no index beyond their primary key (added in
+`20260829130000_add_pharmacy_order_queue_indexes` — the branch-queue queries and the now-hot
+`findByOrderAndBranch` lookup needed one), and `fulfill`/`complete`'s test coverage was missing the
+wrong-branch/no-membership/conflict cases every other use-case here already had (added, 300/300 unit tests
+passing). No behavior change from Part 40's contract itself.
