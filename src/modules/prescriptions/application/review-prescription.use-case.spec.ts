@@ -14,7 +14,7 @@ describe('ReviewPrescriptionUseCase', () => {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const prescriptions = { findById: jest.fn(), setStatus: jest.fn() };
-    const items = { findById: jest.fn(), setDrugCode: jest.fn() };
+    const items = { findById: jest.fn(), setDrugCodeAndQuantity: jest.fn(), createReviewed: jest.fn() };
     const reviews = { create: jest.fn() };
     const drugCatalog = { findManyByCode: jest.fn() };
     const audit = { record: jest.fn() };
@@ -50,18 +50,39 @@ describe('ReviewPrescriptionUseCase', () => {
       callOrder.push('review.create');
       return { id: 'review-1' };
     });
-    items.setDrugCode.mockImplementation(async () => {
-      callOrder.push('items.setDrugCode');
+    items.setDrugCodeAndQuantity.mockImplementation(async () => {
+      callOrder.push('items.setDrugCodeAndQuantity');
     });
 
-    const result = await useCase.execute('prescription-1', { decision: 'ACCEPTED', itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'PARA500' }] }, actor);
+    const result = await useCase.execute(
+      'prescription-1',
+      { decision: 'ACCEPTED', itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'PARA500', quantity: 20 }] },
+      actor,
+    );
 
-    expect(callOrder).toEqual(['review.create', 'items.setDrugCode']);
-    expect(items.setDrugCode).toHaveBeenCalledWith(tx, 'item-1', 1, 'PARA500');
+    expect(callOrder).toEqual(['review.create', 'items.setDrugCodeAndQuantity']);
+    expect(items.setDrugCodeAndQuantity).toHaveBeenCalledWith(tx, 'item-1', 1, { drugCode: 'PARA500', quantity: 20 });
     expect(prescriptions.setStatus).toHaveBeenCalledWith(tx, 'prescription-1', 1, 'ACCEPTED');
     expect(result).toEqual({ status: 'ACCEPTED' });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'prescriptions.prescription.review' }));
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'PrescriptionAccepted', expect.objectContaining({ prescriptionId: 'prescription-1' }));
+  });
+
+  it('creates a brand-new item when itemCorrections omits prescriptionItemId (File 12 Part 37.10)', async () => {
+    const { tx, prescriptions, items, drugCatalog, reviews, useCase } = setup();
+    prescriptions.findById.mockResolvedValue(prescription);
+    drugCatalog.findManyByCode.mockResolvedValue([{ code: 'AMOX250', controlled_substance: false }]);
+    reviews.create.mockResolvedValue({ id: 'review-1' });
+
+    const result = await useCase.execute(
+      'prescription-1',
+      { decision: 'ACCEPTED', itemCorrections: [{ drugCode: 'AMOX250', quantity: 14 }] },
+      actor,
+    );
+
+    expect(items.findById).not.toHaveBeenCalled();
+    expect(items.createReviewed).toHaveBeenCalledWith(tx, 'prescription-1', { drugCode: 'AMOX250', quantity: 14 });
+    expect(result).toEqual({ status: 'ACCEPTED' });
   });
 
   it('leaves the prescription status unchanged and emits no outbox event on NEEDS_CLARIFICATION', async () => {
@@ -82,7 +103,7 @@ describe('ReviewPrescriptionUseCase', () => {
     drugCatalog.findManyByCode.mockResolvedValue([{ code: 'TRAMADOL50', controlled_substance: true }]);
 
     await expect(
-      useCase.execute('prescription-1', { decision: 'ACCEPTED', itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'TRAMADOL50' }] }, actor),
+      useCase.execute('prescription-1', { decision: 'ACCEPTED', itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'TRAMADOL50', quantity: 10 }] }, actor),
     ).rejects.toMatchObject({ code: 'CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED', httpStatus: 422 });
     expect(reviews.create).not.toHaveBeenCalled();
   });
@@ -96,7 +117,7 @@ describe('ReviewPrescriptionUseCase', () => {
 
     const result = await useCase.execute(
       'prescription-1',
-      { decision: 'ACCEPTED', controlledSubstanceConfirmed: true, itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'TRAMADOL50' }] },
+      { decision: 'ACCEPTED', controlledSubstanceConfirmed: true, itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'TRAMADOL50', quantity: 10 }] },
       actor,
     );
 
@@ -112,7 +133,7 @@ describe('ReviewPrescriptionUseCase', () => {
     items.findById.mockResolvedValue({ ...item, prescription_id: 'some-other-prescription' });
 
     await expect(
-      useCase.execute('prescription-1', { decision: 'ACCEPTED', itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'PARA500' }] }, actor),
+      useCase.execute('prescription-1', { decision: 'ACCEPTED', itemCorrections: [{ prescriptionItemId: 'item-1', drugCode: 'PARA500', quantity: 20 }] }, actor),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

@@ -55,6 +55,17 @@ export const REGION_CONSTANTS = {
 } as const;
 
 /**
+ * File 12 Part 39.2: order creation broadcasts to the nearest N verified
+ * pharmacy branches within this radius, reusing `SearchPharmacyBranchesUseCase`
+ * (Part 38) rather than a new query. Radius matches that endpoint's own
+ * default (Part 38 item 3) for consistency between search and broadcast.
+ */
+export const PHARMACY_CONSTANTS = {
+  BROADCAST_FANOUT_COUNT: 5,
+  BROADCAST_RADIUS_KM: 15,
+} as const;
+
+/**
  * `DEC-B09` — explicitly delegated to engineering discretion. This is the
  * global fallback only; endpoints with a documented stricter need (e.g.
  * `/otp/request`, File 11 Part 05.1) override it per-route with `@Throttle()`

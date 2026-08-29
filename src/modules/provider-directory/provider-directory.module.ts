@@ -71,6 +71,8 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
  * pair and check visibility — never its `infrastructure/`. File 12 Part
  * 36.3 adds a third export, `GetAffiliationBillingInfoUseCase`, used by
  * `payments` to read an affiliation's consult fee inside its own transaction.
+ * File 12 Part 39.2 adds a fourth, `SearchPharmacyBranchesUseCase`, reused
+ * as-is by `pharmacy-fulfillment` for broadcast-target selection.
  */
 @Module({
   imports: [AuditModule, IdentityAuthModule],
@@ -138,6 +140,6 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     SelfRegisterProviderUseCase,
     GetAffiliationBillingInfoUseCase,
   ],
-  exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase, GetAffiliationBillingInfoUseCase],
+  exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase, GetAffiliationBillingInfoUseCase, SearchPharmacyBranchesUseCase],
 })
 export class ProviderDirectoryModule {}
