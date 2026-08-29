@@ -220,6 +220,16 @@ enum PharmacyOrderStatus {
   @@map("pharmacy_orders_status_enum")
 }
 
+/// 2026-08-29 addition (see pharmacy_orders.rejection_reason) — mirrors the
+/// dashboard's own `RejectionReason` union exactly.
+enum PharmacyOrderRejectionReason {
+  OUT_OF_STOCK
+  CANNOT_FULFILL
+  OTHER
+
+  @@map("pharmacy_orders_rejection_reason_enum")
+}
+
 enum FulfillmentType {
   PICKUP
   DELIVERY

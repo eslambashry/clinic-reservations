@@ -4,6 +4,7 @@ import { IdentityAuthController } from './api/identity-auth.controller';
 import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
 import { GetActiveRoleMembershipUseCase } from './application/get-active-role-membership.use-case';
 import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
+import { GetUserSummaryUseCase } from './application/get-user-summary.use-case';
 import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
@@ -35,7 +36,10 @@ import { UserRepository } from './infrastructure/user.repository';
  * consumes Provider Directory's `GetAffiliationBillingInfoUseCase`.
  * File 12 Part 39 adds `GetActiveRoleMembershipUseCase` — a generic,
  * `contextType`-parameterized lookup `pharmacy-fulfillment` uses to resolve
- * which branch a `PHARMACY_STAFF` caller belongs to.
+ * which branch a `PHARMACY_STAFF` caller belongs to. 2026-08-29 adds
+ * `GetUserSummaryUseCase` — a plain, tx-scoped `id -> {firstName, lastName,
+ * phoneMasked}` lookup, the same shape need `pharmacy-fulfillment`'s
+ * order-detail response now has for its patient/doctor projections.
  */
 @Module({
   imports: [AuthCoreModule],
@@ -54,6 +58,7 @@ import { UserRepository } from './infrastructure/user.repository';
     UpdateUserProfileUseCase,
     UpdateCurrentUserUseCase,
     GetActiveRoleMembershipUseCase,
+    GetUserSummaryUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
@@ -63,6 +68,6 @@ import { UserRepository } from './infrastructure/user.repository';
     PhoneRateLimiterService,
     { provide: OTP_SENDER, useClass: LoggingOtpSender },
   ],
-  exports: [UpdateUserProfileUseCase, GetActiveRoleMembershipUseCase],
+  exports: [UpdateUserProfileUseCase, GetActiveRoleMembershipUseCase, GetUserSummaryUseCase],
 })
 export class IdentityAuthModule {}

@@ -3,6 +3,7 @@ import { PrescriptionsController } from './api/prescriptions.controller';
 import { GetAcceptedPrescriptionForOrderUseCase } from './application/get-accepted-prescription-for-order.use-case';
 import { GetDrugCatalogControlledStatusUseCase } from './application/get-drug-catalog-controlled-status.use-case';
 import { GetPrescriptionItemDrugCodesUseCase } from './application/get-prescription-item-drug-codes.use-case';
+import { GetPrescriptionSummaryUseCase } from './application/get-prescription-summary.use-case';
 import { GetPrescriptionUseCase } from './application/get-prescription.use-case';
 import { ListPrescriptionsUseCase } from './application/list-prescriptions.use-case';
 import { OCR_EXTRACTOR } from './application/ports/ocr-extractor.port';
@@ -33,7 +34,9 @@ import { AuditModule } from '../audit/audit.module';
  * items pharmacy-fulfillment already owns via its own `PharmacyOrderItem`
  * rows, needed to build a `Substitution.original_drug_code`) and
  * `GetDrugCatalogControlledStatusUseCase` (since `drug_catalog` is also
- * owned here).
+ * owned here). 2026-08-29 adds `GetPrescriptionSummaryUseCase` — a plain
+ * tx-scoped prescription+images read for `pharmacy-fulfillment`'s
+ * order-detail response.
  */
 @Module({
   imports: [AuditModule],
@@ -55,7 +58,13 @@ import { AuditModule } from '../audit/audit.module';
     GetAcceptedPrescriptionForOrderUseCase,
     GetPrescriptionItemDrugCodesUseCase,
     GetDrugCatalogControlledStatusUseCase,
+    GetPrescriptionSummaryUseCase,
   ],
-  exports: [GetAcceptedPrescriptionForOrderUseCase, GetPrescriptionItemDrugCodesUseCase, GetDrugCatalogControlledStatusUseCase],
+  exports: [
+    GetAcceptedPrescriptionForOrderUseCase,
+    GetPrescriptionItemDrugCodesUseCase,
+    GetDrugCatalogControlledStatusUseCase,
+    GetPrescriptionSummaryUseCase,
+  ],
 })
 export class PrescriptionsModule {}
