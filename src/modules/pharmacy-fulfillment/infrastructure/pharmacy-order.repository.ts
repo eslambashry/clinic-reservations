@@ -161,4 +161,15 @@ export class PharmacyOrderRepository {
       take: page.limit,
     });
   }
+
+  /**
+   * Every order this branch currently owns, unpaginated — backs
+   * `ListPharmacyAuditUseCase` (2026-08-29), which needs the full set to
+   * enrich this branch's `audit_logs` rows against, not a queue page.
+   * MVP-scale query, same "not a performance target" tradeoff already
+   * documented on `ListPharmacyOrdersUseCase`'s per-row enrichment.
+   */
+  findAllForBranch(db: Prisma.TransactionClient, branchId: string): Promise<PharmacyOrder[]> {
+    return db.pharmacyOrder.findMany({ where: { pharmacy_branch_id: branchId } });
+  }
 }

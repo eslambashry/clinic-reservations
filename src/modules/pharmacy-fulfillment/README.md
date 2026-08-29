@@ -57,3 +57,28 @@ concurrency, and mock/live parity all sound except two real gaps, both fixed: `p
 `findByOrderAndBranch` lookup needed one), and `fulfill`/`complete`'s test coverage was missing the
 wrong-branch/no-membership/conflict cases every other use-case here already had (added, 300/300 unit tests
 passing). No behavior change from Part 40's contract itself.
+
+**2026-08-29 — real-Postgres production-readiness gate** (Part 42). Re-verified everything above against a real
+disposable local Postgres instead of mocks — found and fixed one real bug `.toString()`-on-a-mock had hidden
+(`GetPharmacyOrderUseCase`/`ListPharmacyOrdersUseCase`'s `quote.totalPrice` and `ApprovePharmacyOrderUseCase`'s
+`totalAmount` now use `.toFixed(2)`, not `.toString()` — real `Prisma.Decimal` strips trailing zeros in
+`.toString()`, which no unit-test mock had ever modeled). New
+`infrastructure/pharmacy-order-workflow.integration.spec.ts` proves the full workflow, 5 concurrency races, and 3
+IDOR cases against real Postgres with no mocks. `identity-auth`'s `GetCurrentUserUseCase` gained `contextId` (the
+caller's own branch id) so a real staff client can display which branch it's acting as — the one small addition
+this pass needed to build `medsuper-pharmacy-dashboard`'s real login (previously mock-only; the dashboard could not
+actually authenticate against this backend at all before this pass). Full workflow re-verified end-to-end through
+the actual browser with real credentials — see Part 42 for the complete account, including a separately-discovered
+tooling gap (`npm run start:dev` silently skips DTO validation; the compiled build does not — dev-only, does not
+affect production).
+
+**2026-08-29 — pharmacy audit trail read endpoint** (Part 43). Closed `docs/PROPOSED_CONTRACT.md` §6, the dashboard
+gap Part 42's own browser verification confirmed was still live-mode-501-only. New `GET /pharmacy-audit`
+(`PharmacyAuditController`/`ListPharmacyAuditUseCase`, `PHARMACY_STAFF` only), reading `audit_logs` through a new
+`AuditService.listByResource` — no new column or migration, since every use-case here already wrote to `audit_logs`
+on every transition; only a read path was missing. Raw actions map onto the dashboard's own `AuditAction` vocabulary
+(`fulfill` resolves to `MARKED_READY`/`HANDED_TO_COURIER` by `fulfillment_type`; broadcast accept/decline and
+`approve` are dropped, not mapped); `detail` is reconstructed from `quote`/`reject`'s existing flat columns, since
+each of those transitions is terminal. `search`/`action`/pagination run in memory over the branch's full history,
+same MVP tradeoff as `ListPharmacyOrdersUseCase`'s enrichment N+1. 112/112 unit+integration tests passing; not
+re-verified against real Postgres/browser this pass (see Part 43 for what was and wasn't checked).

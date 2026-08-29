@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PharmacyAuditController } from './api/pharmacy-audit.controller';
 import { PharmacyOrdersController } from './api/pharmacy-orders.controller';
 import { AcceptPharmacyOrderBroadcastUseCase } from './application/accept-pharmacy-order-broadcast.use-case';
 import { ApprovePharmacyOrderUseCase } from './application/approve-pharmacy-order.use-case';
@@ -7,6 +8,7 @@ import { CreatePharmacyOrderUseCase } from './application/create-pharmacy-order.
 import { DeclinePharmacyOrderBroadcastUseCase } from './application/decline-pharmacy-order-broadcast.use-case';
 import { FulfillPharmacyOrderUseCase } from './application/fulfill-pharmacy-order.use-case';
 import { GetPharmacyOrderUseCase } from './application/get-pharmacy-order.use-case';
+import { ListPharmacyAuditUseCase } from './application/list-pharmacy-audit.use-case';
 import { ListPharmacyOrdersUseCase } from './application/list-pharmacy-orders.use-case';
 import { RejectPharmacyOrderUseCase } from './application/reject-pharmacy-order.use-case';
 import { RejectPharmacyOrderSubstitutionUseCase } from './application/reject-pharmacy-order-substitution.use-case';
@@ -53,7 +55,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  */
 @Module({
   imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule, PaymentsModule],
-  controllers: [PharmacyOrdersController],
+  controllers: [PharmacyOrdersController, PharmacyAuditController],
   providers: [
     // infrastructure
     PharmacyOrderRepository,
@@ -72,6 +74,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     CompletePharmacyOrderUseCase,
     ListPharmacyOrdersUseCase,
     GetPharmacyOrderUseCase,
+    ListPharmacyAuditUseCase,
   ],
 })
 export class PharmacyFulfillmentModule {}

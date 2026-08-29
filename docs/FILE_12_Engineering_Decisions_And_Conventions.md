@@ -708,4 +708,163 @@ the audit brief. All three now match the backend exactly.
 `appointment-hold-concurrency`) fail for lack of a local Postgres — environment limitation, not a regression, same
 failure set as before this pass. Dashboard: `tsc --noEmit` ✅, `lint` ✅, `next build` ✅. No browser/E2E
 click-through — still the user's explicit "code + automated tests only" choice from the original reconciliation
+
+## PART 42 — Real-Postgres Production-Readiness Gate & Real-Auth Bridge (2026-08-29)
+
+Follow-up to Part 41, this time against a real disposable local Postgres (docker-compose, user-approved) instead of
+mocks — proved several things Part 41 could only reason about statically, found one real bug that unit-test mocks
+had hidden, and (mid-session, on the user's explicit direction — "no mock mode, real user/password, real
+experience") built the auth bridge this dashboard never had.
+
+1. **Real-Postgres verification, not just unit tests.** `20260829130000_add_pharmacy_order_queue_indexes` and the
+   flat-quote migration both apply cleanly (`prisma migrate deploy`); all 4 new indexes are physically present and
+   structurally usable (confirmed via `EXPLAIN` with `enable_seqscan=off` — the fixture tables are too small for the
+   planner to prefer them unforced, expected). New
+   `pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts` (17 cases, real DI, real
+   transactions, no mocks) proves the full workflow, 5 concurrency races (including two genuinely parallel raw HTTP
+   requests, not just parallel in-process calls), 3 IDOR cross-branch cases, and money precision at 4 boundary
+   amounts — all against real Postgres. Full suite: 330/332 passing; the 2 remaining failures
+   (`doctor-search.repository.integration.spec.ts`, missing `CREATE EXTENSION postgis`) are provider-directory,
+   unrelated, environment-only.
+2. **Real bug found that mocks had hidden: `Prisma.Decimal.toString()` strips trailing zeros
+   (`Decimal('120.00').toString() === '120'`); `.toFixed(2)` doesn't.** `pharmacy-order-detail.mapper.ts`'s
+   `quote.totalPrice` and `approve-pharmacy-order.use-case.ts`'s `totalAmount` both used `.toString()` — silently
+   correct for prices like `'150.00'` in every unit test (which mock `total_price` as `{ toString: () => '225.00' }`,
+   a shape no real `Decimal` has) but wrong the instant a real quote landed on Postgres with a trailing zero — which
+   is most quotes. Fixed to `.toFixed(2)` on both; both spec files' mocks now implement `toFixed` too (not just
+   `toString`), closing the exact gap that let this through. The dashboard's `http-service.ts` had a matching gap on
+   the read side: `getOrder`/`listOrders` cast the raw response straight to `PharmacyOrder` with no adapter mapping
+   (every mutation already converted `quote.totalPrice` string→number; these two didn't) — `order.quote.totalPrice`
+   held a string at runtime despite the type saying `number`, and `.toFixed(2)` on a string throws. Fixed with a
+   `toPharmacyOrder()` mapper mirroring `submitQuote`'s existing conversion. Found and confirmed via real HTTP
+   end-to-end, not code reading — `tsc`/unit tests never exercise a real `Decimal`.
+3. **`npm run start:dev` (tsx watch) silently skips all DTO validation; the compiled build (`tsc` + `node
+   dist/main.js`) does not.** Sent `{"totalPrice":"not-a-number", ...}` to a running `start:dev` instance —
+   `SubmitPharmacyOrderQuoteDto`'s `@IsDecimal` never fired; the request reached the domain layer and got a 422 from
+   `assertValidFlatQuoteInput` instead of the intended 400 `VALIDATION_ERROR`. The identical request against the
+   compiled build correctly 400s with the precise field message. Root cause: esbuild (which `tsx` wraps) has
+   incomplete `emitDecoratorMetadata` support for controller-method parameter types — NestJS's `ValidationPipe`
+   reads that metadata via reflection to know which DTO class to validate `@Body()` against, gets `Object` instead,
+   and its own `toValidate()` skips non-class metatypes by design. **Confirmed dev-tooling-only — the actual
+   production path (`npm run build && npm start`) is unaffected** — but every engineer's `start:dev` session
+   currently believes DTO validation works when the class-level rules (a wrong type, a missing required field) are
+   silently no-ops; only the domain-layer business rules underneath still catch mistakes, and only some of them
+   produce an equivalent error. Flagged here rather than fixed — the fix is a tooling choice (swap `start:dev`'s
+   transpiler, or accept the gap and always validate against a build before shipping) outside pharmacy-fulfillment's
+   own scope, and outside a single module's authority to decide unilaterally.
+4. **Real-auth bridge — `medsuper-pharmacy-dashboard` had never actually been able to authenticate against this
+   backend.** Discovered empirically: the dashboard's login (`MockAuthService`) has always been a fully separate,
+   self-contained demo layer with no path to a real backend JWT — confirmed live in the browser, where "live mode"
+   correctly showed a 401 "session expired" gate (the frontend's own error handling worked correctly; there was
+   simply never a real token to send). The user's direction was explicit: stop using mock, wire real credentials,
+   real experience — not a product decision this backend module gets to make alone, but a straightforward
+   plumbing gap once directed. Backend change needed for it, small and justified: `GetCurrentUserUseCase`
+   (`GET /v1/auth/me`) gained `contextId: string | null` — the caller's own active-membership scope id (a pharmacy
+   branch id for `PHARMACY_STAFF`), resolved from `roleMembershipId` already in the JWT via the same
+   `findActiveByUser` list the use-case already fetched. Not in the JWT itself by design (every use-case in this
+   module already re-resolves branch scope server-side via `GetActiveRoleMembershipUseCase`, never trusting a
+   claim) — this is purely a display convenience for a staff client's own "which branch am I" question, still just
+   an extra field on an existing, already-authenticated read. No new backend behavior invented beyond that: the
+   dashboard's `HttpAuthService` (frontend-side) is built entirely from existing, unmodified endpoints —
+   `POST /auth/password/login`, `GET/PATCH /auth/me`, `POST /auth/password/set` (bearer-authorized, no
+   old-password check — the JWT already proves identity, so "change password" and "set password" are the same
+   call), `POST /auth/password/forgot` + `/password/reset/verify-code` + `/password/reset` (real `requestId`+`code`
+   OTP-style flow, not the single-token magic-link shape the dashboard's UI was built around — bridged by
+   concatenating `requestId:code` into the one opaque `token` string the existing `AuthService` interface already
+   carries, plus one new code-input field on the reset page; a genuinely secondary flow, wired correctly but not
+   itself part of this pass's browser verification), `POST /auth/logout`, `POST /auth/token/refresh`,
+   `GET /pharmacy-branches/{id}` (branch/pharmacy display name). A real password was set on a real seeded
+   `PHARMACY_STAFF` account via the real `/auth/password/set` endpoint (not a DB script) for verification.
+5. **Verified end-to-end through the actual browser, real credentials, real backend, zero mock**: real
+   phone+password login → real dashboard (real staff name, real branch name/address, all from `/auth/me` +
+   `/pharmacy-branches/{id}`) → real queue (server-rendered, real bearer token attached server-side) → real quote
+   submitted through the actual `QuoteEditor` UI form (persisted `175.50` exactly, confirmed in Postgres) → real
+   patient approve/pay (`PAID`) → real fulfill via the actual UI button (`READY_FOR_PICKUP`) → real complete via the
+   actual UI button with its confirmation dialog (`FULFILLED`) → confirmed in Postgres. A full page refresh mid-flow
+   correctly showed the persisted `ACCEPTED` state (no frontend-only fake persistence). The audit page correctly
+   showed its honest "not implemented server-side yet, mock mode only" error rather than fabricating data.
+   Reject's business logic was proven correct via direct real HTTP (decline-unresponded-broadcast,
+   whole-order-reject-with-reason, and the required-reason 422) rather than the browser specifically — the same
+   `runMutation`/action-button code path already proven live for quote/fulfill/complete.
+
+**Verification (this pass)**: backend `build` ✅, `lint` ✅, unit+integration tests 330/332 ✅ (2 unrelated
+PostGIS environment failures), `tsc --noEmit` (frontend) ✅, `next build` (frontend) ✅ (including the new
+`/api/auth/refresh` route). Real backend HTTP: full workflow, 5 concurrency races, 3 IDOR cases, RBAC 403, 401/404
+paths — all real. Real browser: real login through real completion, one full cycle, plus the audit page's honest
+mock-only error state. Not run: reject through the browser specifically (covered via direct HTTP instead); a live
+SMS/email provider for the password-reset flow (dev-only, `LoggingOtpSender`-equivalent server-log code, same
+precedent as OTP login).
 request, unchanged for this follow-up pass.
+
+## PART 43 — Pharmacy Audit Trail Read Endpoint (2026-08-29)
+
+Closes `medsuper-pharmacy-dashboard/docs/PROPOSED_CONTRACT.md` §6, the last
+open gap Part 40/41/42 all left unaddressed: `GET /v1/pharmacy-audit` did not
+exist, so `HttpPharmacyOrdersService.listAuditTrail` threw a documented `501`
+and the dashboard's `/audit` page ran mock-only in live mode (confirmed by
+Part 42's own browser verification, item 5 above).
+
+1. **No new table, no migration.** Every `pharmacy-fulfillment` use-case
+   already calls `AuditService.record` on every state change (`create`,
+   `quote`, `reject`, `fulfill`, `complete`, broadcast accept/decline) — the
+   write side was complete since Part 39/40. Only a read path was missing.
+2. **`AuditService.listByResource(db, resourceType, resourceIds)`** (new,
+   `audit.service.ts`/`audit-log.repository.ts`) is the only sanctioned way
+   for another module to read `audit_logs` — Part 05's "no cross-module
+   infrastructure reach" rule means `pharmacy-fulfillment` was not allowed to
+   query `AuditLogRepository` directly, so the read method was added to the
+   `audit` module itself and exported, mirroring how `record` was already
+   exposed.
+3. **New `ListPharmacyAuditUseCase`/`PharmacyAuditController`**
+   (`pharmacy-fulfillment/application/`, `.../api/`), registered as a sibling
+   controller (`@Controller('pharmacy-audit')`) alongside
+   `PharmacyOrdersController`, not nested under it — matching the
+   dashboard's own contract path. `PHARMACY_STAFF` only: this console has no
+   patient-facing surface (ADR-006), so there is no patient-scoped branch to
+   support here, unlike `ListPharmacyOrdersUseCase`.
+4. **Raw `audit_logs.action` strings map onto the dashboard's own
+   `AuditAction` vocabulary**, not the reverse — `pharmacy-order.create` →
+   `ORDER_RECEIVED`, `.quote` → `QUOTE_SENT`, `.reject` → `ORDER_REJECTED`,
+   `.complete` → `COMPLETED`; `.fulfill` resolves to `MARKED_READY` or
+   `HANDED_TO_COURIER` from the order's `fulfillment_type` (not derivable
+   from the action string alone). Broadcast accept/decline and the patient's
+   `approve` are not part of that vocabulary and are dropped, not mapped —
+   same "unreachable/out of scope for this console" precedent as
+   `SUBSTITUTION_PROPOSED` (Part 40 item 1).
+5. **`detail` is reconstructed from the order's current row, not a stored
+   value**, because none was ever written: `audit_logs` has no free-text
+   column beyond `reason_code`, which no pharmacy-fulfillment use-case
+   populates. `quote`/`reject`'s own flat-quote and rejection columns
+   (`total_price`/`currency`, `rejection_reason`/`rejection_note`, all added
+   Part 40) already carry what a `QUOTE_SENT`/`ORDER_REJECTED` entry's detail
+   needs, and each transition is terminal (one quote, one rejection, ever,
+   per order) — so reading the current row is equivalent to having captured
+   the detail at write time. `MARKED_READY`/`HANDED_TO_COURIER`/`COMPLETED`
+   have no note column at all (`fulfill`/`complete` are pure status flips)
+   and correctly return `null` in live mode, a real (documented, not
+   accidental) mock/live divergence from the mock's optional `note` param.
+6. **`search`/`action` filtering and pagination happen in application
+   memory, not SQL**, over `findAllForBranch`'s full, unpaginated result for
+   the caller's branch: both depend on the enriched entry (patient name, an
+   order code computed from `orderId` the same way the frontend does,
+   per-action `detail`), not on any single indexed column either table
+   could filter on directly. Accepted MVP-scale tradeoff, same reasoning
+   already given for `ListPharmacyOrdersUseCase`'s per-row enrichment N+1
+   (Part 40).
+7. **The wire response has no `orderCode` field.** It stays a frontend-only
+   presentation value (`shortOrderCode`, dashboard `src/lib/utils/format.ts`)
+   — the backend derives the identical string server-side only to match
+   `search`, never to put it on the wire, so the two implementations can't
+   drift into disagreement about the format.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅, `eslint` ✅, full
+`pharmacy-fulfillment`+`audit` Jest suite 112/112 ✅ (16 suites, including a
+new `list-pharmacy-audit.use-case.spec.ts` covering the 403-no-membership
+case, action mapping/fulfillment-type resolution, action+search filtering,
+and offset-cursor pagination). Not run: a live-Postgres/browser check of this
+specific endpoint (Part 42's real-infrastructure pass above verified
+everything else in this module against a real database; this endpoint was
+added after that pass and inherits the same real schema/columns it already
+proved out, but wasn't itself re-verified live in this session) — flagged
+here rather than silently assumed, per this file's own "don't claim success
+without evidence" rule (`MEMORY.md` §14.5).
