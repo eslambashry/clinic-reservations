@@ -47,3 +47,20 @@ export function resolveQuoteOutcome(items: { status: PharmacyOrderItemStatus }[]
 export function requiresControlledSubstanceConfirmationForQuote(items: QuotedItem[], controlledByCode: Map<string, boolean>): boolean {
   return items.some((item) => item.status !== 'UNAVAILABLE' && (controlledByCode.get(item.effectiveDrugCode) ?? false));
 }
+
+/**
+ * Shared by the quote response's `totalPrice` and the approve step's
+ * payment-capture amount (File 12 Part 39) — both must compute the same
+ * number from the same source (the persisted `PharmacyOrderItem` rows'
+ * `unitPrice`/`quantity`), never two independent calculations that could
+ * silently drift apart. `UNAVAILABLE` items contribute nothing.
+ */
+export function computeOrderTotal(items: { status: PharmacyOrderItemStatus; unitPrice: string | null; quantity: number }[]): string {
+  let total = 0;
+  for (const item of items) {
+    if (item.status !== 'UNAVAILABLE' && item.unitPrice) {
+      total += Number(item.unitPrice) * item.quantity;
+    }
+  }
+  return total.toFixed(2);
+}

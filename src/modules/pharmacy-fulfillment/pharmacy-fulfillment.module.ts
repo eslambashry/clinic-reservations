@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PharmacyOrdersController } from './api/pharmacy-orders.controller';
 import { AcceptPharmacyOrderBroadcastUseCase } from './application/accept-pharmacy-order-broadcast.use-case';
+import { ApprovePharmacyOrderUseCase } from './application/approve-pharmacy-order.use-case';
 import { CreatePharmacyOrderUseCase } from './application/create-pharmacy-order.use-case';
 import { DeclinePharmacyOrderBroadcastUseCase } from './application/decline-pharmacy-order-broadcast.use-case';
 import { GetPharmacyOrderUseCase } from './application/get-pharmacy-order.use-case';
@@ -12,6 +13,7 @@ import { PharmacyOrderRepository } from './infrastructure/pharmacy-order.reposit
 import { SubstitutionRepository } from './infrastructure/substitution.repository';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
 
@@ -26,13 +28,15 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * (Part 39.2) — never those modules' `infrastructure/`. Broadcast
  * accept/decline calls `IdentityAuthModule`'s `GetActiveRoleMembershipUseCase`
  * to resolve which branch the caller belongs to (Part 39.5/39.12). The
- * quote (this pass) additionally calls `PrescriptionsModule`'s
+ * quote additionally calls `PrescriptionsModule`'s
  * `GetPrescriptionItemDrugCodesUseCase`/`GetDrugCatalogControlledStatusUseCase`.
- * Patient `approve` (fused with payment-intent creation, File 10 Part 8.1)
- * and the broadcast timeout job are each a separate follow-up pass.
+ * Patient `approve` (this pass) reuses `PaymentsModule`'s
+ * `CapturePayAtClinicPaymentUseCase` as-is (Part 39.7) — fused with
+ * payment-intent creation per File 10 Part 8.1. The broadcast timeout job
+ * remains a separate follow-up pass.
  */
 @Module({
-  imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule],
+  imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule, PaymentsModule],
   controllers: [PharmacyOrdersController],
   providers: [
     // infrastructure
@@ -46,6 +50,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     DeclinePharmacyOrderBroadcastUseCase,
     SubmitPharmacyOrderQuoteUseCase,
     RejectPharmacyOrderSubstitutionUseCase,
+    ApprovePharmacyOrderUseCase,
     GetPharmacyOrderUseCase,
   ],
 })

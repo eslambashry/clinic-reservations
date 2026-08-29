@@ -557,3 +557,28 @@ shell only (File 12 Part 10's Phase 7 checklist item), not an implementation; se
     reject it, making `reject` unusable in practice. Completing already-specified surface area directly needed by
     what's being built, not new invented scope. No Admin bypass, unlike `GetPrescriptionUseCase`'s equivalent —
     File 11 05.8 names only "owning patient or the assigned pharmacy branch staff."
+20. **`approve` is now built (item 18's deferral resolved) — `ApprovePharmacyOrderUseCase` reuses
+    `CapturePayAtClinicPaymentUseCase` exactly as Part 39.7 anticipated, no pharmacy-specific clone.** Both
+    state-diagram hops (`SUBSTITUTION_PROPOSED --> ACCEPTED`, `ACCEPTED --> PAID`) happen inside the one
+    transaction this call opens — approving pending substitutions (when present) and capturing payment are not
+    separately observable states, matching File 10 Part 8.1's "same moment" framing literally, not just at the
+    API-contract level.
+21. **`providerId` for the pharmacy-order payment capture is the pharmacy *branch* id, not the parent `Pharmacy`
+    entity — a documented assumption, not an existing precedent.** `ConfirmAppointmentUseCase` sets `providerId`
+    to `Doctor.id` (the person/legal earner) for `ProviderType.DOCTOR`; nothing in this codebase has yet captured
+    a `ProviderType.CLINIC` payment to say what a *branch-having* provider type should use. **Decided:** the branch
+    — the operationally-distinct, address-having unit that actually won the broadcast and submitted the quote —
+    mirroring the role `ClinicBranch` plays in appointments' own affiliation model (an affiliation is scoped to a
+    branch, not the parent `Clinic`). Revisit if a real `ProviderType.CLINIC` capture is ever built and picks
+    differently.
+22. **`computeOrderTotal` (`domain/pharmacy-order-quote.rules.ts`) is now shared between the quote response's
+    `totalPrice` and the actual payment-capture amount** — both must derive the charge from the same persisted
+    `PharmacyOrderItem` rows the same way, or a future edit to one could silently undercharge or overcharge
+    relative to what the patient was quoted.
+23. **File 10 line 375's "partial refund on substitution reduces order total after capture" scenario has no
+    trigger point in the modeled flow and is not built.** Substitution resolution always happens *before* capture
+    (item 20) — the amount captured already reflects any substitution's price change from the start, and MVP is
+    explicitly single-round (Part 09.3: no renegotiation after the pharmacist's one quote). A refund scenario would
+    require a *second* substitution round discovered after `PAID` (e.g. an item goes out of stock during
+    `PREPARING`), which is new state-machine surface no source doc specifies — flagged as a real gap for whoever
+    eventually needs post-capture order modification, not speculatively built against an unmodeled scenario.

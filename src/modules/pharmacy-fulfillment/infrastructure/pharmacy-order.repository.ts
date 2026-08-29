@@ -51,4 +51,19 @@ export class PharmacyOrderRepository {
   async setStatus(db: Prisma.TransactionClient, id: string, currentVersion: number, status: PharmacyOrderStatus): Promise<void> {
     await updateWithOptimisticLock(db.pharmacyOrder, id, currentVersion, { status });
   }
+
+  /**
+   * File 11 Part 14 (`ACCEPTED --> PAID: payment_intent captured`). A
+   * conditional `updateMany` rather than the shared optimistic-lock helper
+   * (which throws) — the caller (`ApprovePharmacyOrderUseCase`) needs a
+   * plain boolean to guard the same "patient double-clicks approve" race
+   * `ConfirmAppointmentUseCase` relies on `holds.markConverted` for.
+   */
+  async markPaid(db: Prisma.TransactionClient, id: string, currentVersion: number, paymentIntentId: string): Promise<boolean> {
+    const result = await db.pharmacyOrder.updateMany({
+      where: { id, version: currentVersion },
+      data: { status: 'PAID', payment_intent_id: paymentIntentId, version: { increment: 1 } },
+    });
+    return result.count === 1;
+  }
 }

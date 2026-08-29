@@ -1,4 +1,4 @@
-import { assertValidQuoteItemInput, requiresControlledSubstanceConfirmationForQuote, resolveQuoteOutcome } from './pharmacy-order-quote.rules';
+import { assertValidQuoteItemInput, computeOrderTotal, requiresControlledSubstanceConfirmationForQuote, resolveQuoteOutcome } from './pharmacy-order-quote.rules';
 
 describe('resolveQuoteOutcome', () => {
   it('returns ACCEPTED when every item is AVAILABLE', () => {
@@ -59,5 +59,27 @@ describe('assertValidQuoteItemInput', () => {
 
   it('allows a fully-specified SUBSTITUTED item', () => {
     expect(() => assertValidQuoteItemInput({ status: 'SUBSTITUTED', unitPrice: '10.00', substituteDrugCode: 'AMOX250' })).not.toThrow();
+  });
+});
+
+describe('computeOrderTotal', () => {
+  it('sums unitPrice * quantity across AVAILABLE and SUBSTITUTED items', () => {
+    const total = computeOrderTotal([
+      { status: 'AVAILABLE', unitPrice: '10.00', quantity: 20 },
+      { status: 'SUBSTITUTED', unitPrice: '5.00', quantity: 10 },
+    ]);
+    expect(total).toBe('250.00');
+  });
+
+  it('ignores UNAVAILABLE items even if they somehow carry a unitPrice', () => {
+    const total = computeOrderTotal([
+      { status: 'AVAILABLE', unitPrice: '10.00', quantity: 20 },
+      { status: 'UNAVAILABLE', unitPrice: '999.00', quantity: 5 },
+    ]);
+    expect(total).toBe('200.00');
+  });
+
+  it('returns "0.00" when there is nothing to total', () => {
+    expect(computeOrderTotal([{ status: 'UNAVAILABLE', unitPrice: null, quantity: 1 }])).toBe('0.00');
   });
 });

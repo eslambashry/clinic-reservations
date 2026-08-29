@@ -2,6 +2,7 @@ import { Controller, Body, Get, Inject, Param, ParseUUIDPipe, Post, UseIntercept
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { AcceptPharmacyOrderBroadcastResult, AcceptPharmacyOrderBroadcastUseCase } from '../application/accept-pharmacy-order-broadcast.use-case';
+import { ApprovePharmacyOrderResult, ApprovePharmacyOrderUseCase } from '../application/approve-pharmacy-order.use-case';
 import { CreatePharmacyOrderResult, CreatePharmacyOrderUseCase } from '../application/create-pharmacy-order.use-case';
 import { DeclinePharmacyOrderBroadcastResult, DeclinePharmacyOrderBroadcastUseCase } from '../application/decline-pharmacy-order-broadcast.use-case';
 import { GetPharmacyOrderUseCase, PharmacyOrderDetail } from '../application/get-pharmacy-order.use-case';
@@ -21,9 +22,10 @@ import { SubmitPharmacyOrderQuoteDto } from './dto/submit-pharmacy-order-quote.d
  * proposed substitution. `accept`/`decline`/`quote` take no `branchId` —
  * it's resolved server-side from the caller's own role membership (Part
  * 39), so a pharmacy-staff user can only ever act as their own branch.
- * `approve` (File 10 line 205) is not built yet — deferred to the
- * payment-capture pass since it's fused with `payment_intents` creation
- * (File 10 Part 8.1, Part 39).
+ * `approve` (File 10 line 205) fuses substitution resolution with payment
+ * capture in one call (File 10 Part 8.1, Part 39) — no `paymentMethod`
+ * body, unlike appointments' `confirm`, since pay-at-clinic/pharmacy is the
+ * only supported method (`DEC-001` still open).
  */
 @ApiTags('pharmacy-orders')
 @ApiBearerAuth()
@@ -35,6 +37,7 @@ export class PharmacyOrdersController {
     @Inject(DeclinePharmacyOrderBroadcastUseCase) private readonly declineBroadcast: DeclinePharmacyOrderBroadcastUseCase,
     @Inject(SubmitPharmacyOrderQuoteUseCase) private readonly submitQuote: SubmitPharmacyOrderQuoteUseCase,
     @Inject(RejectPharmacyOrderSubstitutionUseCase) private readonly rejectSubstitution: RejectPharmacyOrderSubstitutionUseCase,
+    @Inject(ApprovePharmacyOrderUseCase) private readonly approvePharmacyOrder: ApprovePharmacyOrderUseCase,
     @Inject(GetPharmacyOrderUseCase) private readonly getPharmacyOrder: GetPharmacyOrderUseCase,
   ) {}
 
@@ -89,6 +92,17 @@ export class PharmacyOrdersController {
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<RejectPharmacyOrderSubstitutionResult> {
     return this.rejectSubstitution.execute(pharmacyOrderId, user);
+  }
+
+  @Roles(RoleContextType.PATIENT)
+  @Post(':pharmacyOrderId/approve')
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({ summary: 'Approve (resolving any pending substitution) and pay — the same moment, not decoupled (File 10 Part 8.1)' })
+  approve(
+    @Param('pharmacyOrderId', ParseUUIDPipe) pharmacyOrderId: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<ApprovePharmacyOrderResult> {
+    return this.approvePharmacyOrder.execute(pharmacyOrderId, user);
   }
 
   @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF)

@@ -40,4 +40,12 @@ export class SubstitutionRepository {
       data: { patient_decision: 'REJECTED', decided_at: new Date() },
     });
   }
+
+  /** File 11 Part 14 (`SUBSTITUTION_PROPOSED --> ACCEPTED: patient approves`) — the mirror of `rejectAllPendingForOrder`. */
+  approveAllPendingForOrder(db: Prisma.TransactionClient, pharmacyOrderId: string): Promise<Prisma.BatchPayload> {
+    return db.substitution.updateMany({
+      where: { patient_decision: 'PENDING', pharmacy_order_item: { pharmacy_order_id: pharmacyOrderId } },
+      data: { patient_decision: 'APPROVED', decided_at: new Date() },
+    });
+  }
 }

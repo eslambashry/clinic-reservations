@@ -9,7 +9,7 @@ import { PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constant
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { assertValidQuoteItemInput, requiresControlledSubstanceConfirmationForQuote, resolveQuoteOutcome } from '../domain/pharmacy-order-quote.rules';
+import { assertValidQuoteItemInput, computeOrderTotal, requiresControlledSubstanceConfirmationForQuote, resolveQuoteOutcome } from '../domain/pharmacy-order-quote.rules';
 import { NewSubstitution, SubstitutionRepository } from '../infrastructure/substitution.repository';
 import { PharmacyOrderItemRepository } from '../infrastructure/pharmacy-order-item.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
@@ -110,7 +110,6 @@ export class SubmitPharmacyOrderQuoteUseCase {
 
       const outcome = resolveQuoteOutcome(input.items);
 
-      let totalPrice = 0;
       const newSubstitutions: NewSubstitution[] = [];
       for (const item of input.items) {
         const orderItem = orderItemByPrescriptionItemId.get(item.prescriptionItemId)!;
@@ -120,9 +119,6 @@ export class SubmitPharmacyOrderQuoteUseCase {
           substitutedDrugCode: item.status === 'SUBSTITUTED' ? (item.substituteDrugCode ?? null) : null,
         });
 
-        if (item.status !== 'UNAVAILABLE' && item.unitPrice) {
-          totalPrice += Number(item.unitPrice) * orderItem.quantity;
-        }
         if (item.status === 'SUBSTITUTED') {
           newSubstitutions.push({
             pharmacyOrderItemId: orderItem.id,
@@ -135,6 +131,14 @@ export class SubmitPharmacyOrderQuoteUseCase {
       if (newSubstitutions.length > 0) {
         await this.substitutions.createMany(tx, newSubstitutions);
       }
+
+      const totalPrice = computeOrderTotal(
+        input.items.map((item) => ({
+          status: item.status,
+          unitPrice: item.unitPrice ?? null,
+          quantity: orderItemByPrescriptionItemId.get(item.prescriptionItemId)!.quantity,
+        })),
+      );
 
       await this.pharmacyOrders.setStatus(tx, pharmacyOrderId, order.version, outcome);
 
@@ -153,7 +157,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
       return {
         pharmacyOrderId,
         status: outcome,
-        totalPrice: totalPrice.toFixed(2),
+        totalPrice,
         currency: PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY,
       };
     });
