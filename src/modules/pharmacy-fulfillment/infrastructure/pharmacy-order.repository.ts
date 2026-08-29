@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { FulfillmentType, PharmacyOrder, Prisma } from '@prisma/client';
+import { FulfillmentType, PharmacyOrder, PharmacyOrderStatus, Prisma } from '@prisma/client';
+import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
 
 export interface NewPharmacyOrder {
   prescriptionId: string;
@@ -44,5 +45,10 @@ export class PharmacyOrderRepository {
       data: { pharmacy_branch_id: branchId, status: 'UNDER_REVIEW', version: { increment: 1 } },
     });
     return result.count === 1;
+  }
+
+  /** Version-guarded — no concurrency race here (the pharmacist quote and patient reject/approve steps are each one actor acting once), so the generic optimistic-lock helper is sufficient. */
+  async setStatus(db: Prisma.TransactionClient, id: string, currentVersion: number, status: PharmacyOrderStatus): Promise<void> {
+    await updateWithOptimisticLock(db.pharmacyOrder, id, currentVersion, { status });
   }
 }

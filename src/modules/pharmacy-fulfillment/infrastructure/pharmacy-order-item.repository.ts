@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { PharmacyOrderItem, PharmacyOrderItemStatus, Prisma } from '@prisma/client';
+import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
 
 export interface NewPharmacyOrderItem {
   prescriptionItemId: string;
   quantity: number;
+}
+
+export interface QuoteUpdate {
+  status: PharmacyOrderItemStatus;
+  unitPrice: string | null;
+  substitutedDrugCode: string | null;
 }
 
 @Injectable()
@@ -15,6 +22,19 @@ export class PharmacyOrderItemRepository {
         prescription_item_id: item.prescriptionItemId,
         quantity: item.quantity,
       })),
+    });
+  }
+
+  findByOrderId(db: Prisma.TransactionClient, pharmacyOrderId: string): Promise<PharmacyOrderItem[]> {
+    return db.pharmacyOrderItem.findMany({ where: { pharmacy_order_id: pharmacyOrderId } });
+  }
+
+  /** No concurrency race here — a single pharmacist submits one quote — so the shared optimistic-lock helper (generic `409` on a stale version) is sufficient, unlike the first-accept-wins paths. */
+  async updateQuote(db: Prisma.TransactionClient, id: string, currentVersion: number, input: QuoteUpdate): Promise<void> {
+    await updateWithOptimisticLock(db.pharmacyOrderItem, id, currentVersion, {
+      status: input.status,
+      unit_price: input.unitPrice,
+      substituted_drug_code: input.substitutedDrugCode,
     });
   }
 }

@@ -523,3 +523,37 @@ shell only (File 12 Part 10's Phase 7 checklist item), not an implementation; se
     boolean, and the calling use-case decides which domain error it means (`ORDER_ALREADY_CLAIMED` vs
     `BROADCAST_ALREADY_RESPONDED`), the exact same division of responsibility `AppointmentSlotRepository.markHeld`
     /`CreateHoldUseCase` already established for the appointment-hold race (Part 35.2).
+14. **`/quote`'s response can only ever be `ACCEPTED`/`SUBSTITUTION_PROPOSED` — File 10 line 194 names no third
+    value.** So the "pharmacist rejects the whole order outright" transition (`UNDER_REVIEW --> REJECTED`, File 11
+    Part 14) has no path through this endpoint; submitting a quote where every item is `UNAVAILABLE` is instead a
+    `422 NO_ITEMS_AVAILABLE` business-rule error. Same "left unproduced" precedent already used for other diagram
+    states with no documented trigger (`AppointmentStatus.HELD`/`EXPIRED`, Part 35.1).
+15. **`estimatedReadyMinutes` (present in File 10 line 193's request example) is not accepted by
+    `SubmitPharmacyOrderQuoteDto`.** No column exists anywhere in `prisma/schema/pharmacy.prisma` to persist it,
+    and adding one is a schema decision (Part 12: "don't invent a migration inline") that belongs to whoever
+    actually needs to surface an ETA to the patient — silently accepting-and-discarding the field would be worse
+    than not accepting it at all. Flagged here as a documented-but-unbuilt piece of the contract, not a silent gap.
+16. **`totalPrice`'s `currency` in the `/quote` response reuses `PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY`
+    (`'EGP'`), not a new per-row column.** `PharmacyOrderItem.unit_price` has no paired currency column — this is
+    the same single-currency-region MVP assumption `payments` already relies on (File 12 Part 36's "single
+    currency per region"), reused rather than re-decided.
+17. **Building a `Substitution.original_drug_code` needed one more `prescriptions` export,
+    `GetPrescriptionItemDrugCodesUseCase`, alongside a new `GetDrugCatalogControlledStatusUseCase` for the
+    pharmacy-side controlled-substance re-check (File 10 line 541 — a separate confirmation from Phase 6's
+    review-time one, Part 37.9, tied to the *dispensing* branch's own license proxy).** `PharmacyOrderItem` has no
+    `drug_code`/controlled-substance data of its own, only the `prescription_item_id` FK, and both `drug_catalog`
+    and `prescription_items` are owned by `prescriptions` (File 12 Part 05) — neither can be queried directly.
+    Both exports are plain lookups with no ownership/status validation, unlike `GetAcceptedPrescriptionForOrderUseCase`
+    — the caller already legitimately owns these ids via its own rows, so there's no authorization boundary to
+    enforce here, only a table-ownership one.
+18. **Patient `approve` (File 10 line 205) is not built this pass — a deliberate scope decision, not an
+    oversight.** File 10 Part 8.1 states approval and `payment_intents` creation are "the same moment, not
+    decoupled," so a real `approve` endpoint needs the payment-capture wiring (Part 39.7) to exist first; building
+    a payment-free stand-in now would ship behavior that contradicts the documented rule. The payment-independent
+    half of the patient's decision — **reject** — has no such dependency and is built this pass
+    (`RejectPharmacyOrderSubstitutionUseCase`, `SUBSTITUTION_PROPOSED --> REJECTED`).
+19. **`GET /v1/pharmacy-orders/{orderId}` (File 11 05.8, documented but unbuilt until now) is built this pass**,
+    not deferred — without it a patient has no way to see a proposed substitution before deciding whether to
+    reject it, making `reject` unusable in practice. Completing already-specified surface area directly needed by
+    what's being built, not new invented scope. No Admin bypass, unlike `GetPrescriptionUseCase`'s equivalent —
+    File 11 05.8 names only "owning patient or the assigned pharmacy branch staff."

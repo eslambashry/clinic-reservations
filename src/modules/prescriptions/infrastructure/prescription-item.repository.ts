@@ -27,6 +27,13 @@ export class PrescriptionItemRepository {
     return db.prescriptionItem.findUnique({ where: { id } });
   }
 
+  findManyByIds(db: Prisma.TransactionClient, ids: string[]): Promise<PrescriptionItem[]> {
+    if (ids.length === 0) {
+      return Promise.resolve([]);
+    }
+    return db.prescriptionItem.findMany({ where: { id: { in: ids } } });
+  }
+
   /**
    * Version-guarded. Caller must ensure a `prescription_reviews` row for
    * this item's prescription already exists in the same transaction before
