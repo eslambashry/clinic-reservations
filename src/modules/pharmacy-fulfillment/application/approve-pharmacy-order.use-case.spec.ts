@@ -12,7 +12,12 @@ describe('ApprovePharmacyOrderUseCase', () => {
     status: 'ACCEPTED',
     patient_id: 'patient-1',
     pharmacy_branch_id: 'branch-1',
-    total_price: { toString: () => '200.00' },
+    // Real Prisma.Decimal implements both toString (strips trailing zeros)
+    // and toFixed (doesn't) — a mock with only toString let a real
+    // `.toFixed(2)` vs `.toString()` bug through unnoticed (2026-08-29
+    // production-readiness pass, found via real-Postgres integration
+    // testing).
+    total_price: { toString: () => '200', toFixed: (n: number) => (200).toFixed(n) },
     currency: 'EGP',
   };
 

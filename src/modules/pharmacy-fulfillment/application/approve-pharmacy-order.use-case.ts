@@ -52,7 +52,12 @@ export class ApprovePharmacyOrderUseCase {
       // order.pharmacy_branch_id is guaranteed non-null here: reaching ACCEPTED
       // requires having gone through claimForBranch (File 11 line 456), which always sets it.
       const branchId = order.pharmacy_branch_id!;
-      const totalAmount = order.total_price.toString();
+      // `.toFixed(2)`, not `.toString()` — decimal.js (which Prisma.Decimal
+      // wraps) strips trailing zeros in `.toString()` (`'120.00' -> '120'`),
+      // found via real-Postgres integration testing (2026-08-29). `amount`
+      // feeds both the API response and CapturePayAtClinicPaymentUseCase's
+      // ledger amount — keep it a proper fixed 2-decimal string throughout.
+      const totalAmount = order.total_price.toFixed(2);
       const currency = order.currency;
 
       const capture = await this.capturePayment.execute(tx, {

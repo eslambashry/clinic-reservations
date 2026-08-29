@@ -23,7 +23,12 @@ describe('GetPharmacyOrderUseCase', () => {
     pharmacy_branch_id: 'branch-1',
     created_at: new Date('2026-08-29T10:00:00Z'),
     updated_at: new Date('2026-08-29T10:05:00Z'),
-    total_price: { toString: () => '225.00' },
+    // Real Prisma.Decimal implements both — `.toString()` strips trailing
+    // zeros (decimal.js), `.toFixed(n)` doesn't. A mock with only
+    // `toString` let a real `.toFixed(2)` vs `.toString()` bug through
+    // unnoticed (2026-08-29 production-readiness pass) — kept both here so
+    // it can't happen again.
+    total_price: { toString: () => '225', toFixed: (n: number) => (225).toFixed(n) },
     currency: 'EGP',
     estimated_ready_minutes: 45,
     staff_note: 'all available',

@@ -56,7 +56,15 @@ export function buildPharmacyOrderDetail(
     quote:
       order.total_price && order.currency && order.quoted_at
         ? {
-            totalPrice: order.total_price.toString(),
+            // `.toFixed(2)`, not `.toString()` (2026-08-29 production-readiness
+            // pass, found via real-Postgres integration testing, not unit
+            // tests): Prisma's Decimal wraps decimal.js, whose `.toString()`
+            // strips trailing zeros — `Decimal('120.00').toString() ===
+            // '120'`. The frontend's HTTP adapter trusts this field is
+            // already a proper 2-decimal string (it converts string->number
+            // itself); a bare "120" would round-trip fine through `Number()`
+            // but silently drop the currency's declared precision on the wire.
+            totalPrice: order.total_price.toFixed(2),
             currency: order.currency,
             estimatedReadyMinutes: order.estimated_ready_minutes,
             note: order.staff_note,
