@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
 import { IdentityAuthController } from './api/identity-auth.controller';
 import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
+import { GetActiveRoleMembershipUseCase } from './application/get-active-role-membership.use-case';
 import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
 import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
@@ -32,6 +33,9 @@ import { UserRepository } from './infrastructure/user.repository';
  * `User` row (ADR-005 Part 34.2) — and takes `tx` explicitly so it commits
  * atomically with the caller's own transaction, mirroring how `payments`
  * consumes Provider Directory's `GetAffiliationBillingInfoUseCase`.
+ * File 12 Part 39 adds `GetActiveRoleMembershipUseCase` — a generic,
+ * `contextType`-parameterized lookup `pharmacy-fulfillment` uses to resolve
+ * which branch a `PHARMACY_STAFF` caller belongs to.
  */
 @Module({
   imports: [AuthCoreModule],
@@ -49,6 +53,7 @@ import { UserRepository } from './infrastructure/user.repository';
     VerifyResetCodeUseCase,
     UpdateUserProfileUseCase,
     UpdateCurrentUserUseCase,
+    GetActiveRoleMembershipUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
@@ -58,6 +63,6 @@ import { UserRepository } from './infrastructure/user.repository';
     PhoneRateLimiterService,
     { provide: OTP_SENDER, useClass: LoggingOtpSender },
   ],
-  exports: [UpdateUserProfileUseCase],
+  exports: [UpdateUserProfileUseCase, GetActiveRoleMembershipUseCase],
 })
 export class IdentityAuthModule {}

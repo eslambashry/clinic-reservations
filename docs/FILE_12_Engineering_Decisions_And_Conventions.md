@@ -497,3 +497,29 @@ shell only (File 12 Part 10's Phase 7 checklist item), not an implementation; se
     (hold → confirm → cancel → reschedule) and Phase 5 were themselves built incrementally rather than as one
     commit, and avoiding this codebase's own "no half-finished implementations" rule (File 12 Part 12) by never
     landing a placeholder controller/use-case with an empty body.
+11. **Broadcast accept/decline route shape (added once this slice was actually built): `POST
+    /v1/pharmacy-orders/{orderId}/accept` and `.../decline`, no `branchId` anywhere in the URL or body.** File 11
+    05.8 doesn't name either endpoint — it only documents `POST .../quote`, `POST .../approve` (patient-side),
+    `GET .../{orderId}`, and `GET /pharmacy-branches/{branchId}/orders` (the still-unbuilt pharmacy inbox listing,
+    a separate future pass) — same "undocumented but workflow-necessary" situation Part 37.5 already precedented
+    for the prescriptions review queue. The branch is resolved server-side from the caller's own `PHARMACY_STAFF`
+    role membership rather than taken as a request parameter — a staff member can only ever accept/decline as
+    their own branch, never one they specify, closing off an obvious spoof vector a `branchId` parameter would
+    otherwise open.
+12. **Item 5's branch-scoping primitive is now built for real, as `identity-auth`'s `GetActiveRoleMembershipUseCase(userId,
+    contextType)`.** Generic and `contextType`-parameterized rather than pharmacy-specific, and exported from
+    `identity-auth` (the module that actually owns `role_memberships`, per File 12 Part 05 — pharmacy-fulfillment
+    cannot query that table directly) — the same primitive Part 35.8 already identified as the missing piece for
+    clinic-staff appointment access, now available for that gap to reuse without duplicating it, though wiring
+    that up is out of scope here.
+13. **First-accept-wins is two independent conditional updates, not one.** `PharmacyOrderRepository.claimForBranch`
+    (`UPDATE pharmacy_orders SET pharmacy_branch_id=?, status='UNDER_REVIEW', version=version+1 WHERE id=? AND
+    version=? AND pharmacy_branch_id IS NULL` — File 11 line 456, verbatim) is the actual race; separately,
+    `PharmacyOrderBroadcastRepository.markResponded` (`WHERE id=? AND response IS NULL`) guards against the same
+    branch double-processing its own broadcast row (e.g. a double-tap), an unrelated but analogous race. On a lost
+    order-claim race, the losing branch's own broadcast row is deliberately left untouched (not marked
+    `DECLINED`) — File 11 line 456's stated "no additional signal needed, losing pharmacy simply sees the order
+    disappear from their queue." Neither repository method throws on a 0-row result — both return a plain
+    boolean, and the calling use-case decides which domain error it means (`ORDER_ALREADY_CLAIMED` vs
+    `BROADCAST_ALREADY_RESPONDED`), the exact same division of responsibility `AppointmentSlotRepository.markHeld`
+    /`CreateHoldUseCase` already established for the appointment-hold race (Part 35.2).
