@@ -30,4 +30,22 @@ export class AuditLogRepository {
       },
     });
   }
+
+  /**
+   * Read side (2026-08-29, `medsuper-pharmacy-dashboard` §6 — first consumer
+   * is `pharmacy-fulfillment`'s `ListPharmacyAuditUseCase`). Unpaginated by
+   * design: callers own filtering/paging semantics for their own resource
+   * (e.g. free-text search over an enriched projection this table knows
+   * nothing about) — this method's only job is "every log row for these
+   * resource ids," newest first.
+   */
+  findByResource(db: Prisma.TransactionClient, resourceType: string, resourceIds: string[]): Promise<AuditLog[]> {
+    if (resourceIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return db.auditLog.findMany({
+      where: { resource_type: resourceType, resource_id: { in: resourceIds } },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    });
+  }
 }

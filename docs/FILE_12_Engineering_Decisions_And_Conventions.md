@@ -389,3 +389,482 @@ process — is how a real, already-migrated 6-value `PrescriptionStatus` enum ma
    the review request must set `controlledSubstanceConfirmed: true` or the whole review is rejected
    with `422 CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED` — checked before the `PrescriptionReview`
    row is even created, so a rejected attempt leaves no partial record.
+10. **`itemCorrections` now also creates brand-new items, not only corrects existing ones — found and
+    closed while building Phase 7 (Part 39).** As shipped, no code path ever created a `PrescriptionItem`
+    with real drug/quantity data: `UploadPrescriptionUseCase` only creates items from OCR suggestions, and
+    `NoOpOcrExtractor` always returns zero (item 2 above); `itemCorrections` only ever set `drug_code` on an
+    item that already existed, via `findById`-or-`NotFoundError`, and never touched `quantity` at all. So an
+    `ACCEPTED` prescription could only ever have zero fulfillable items — directly contradicting `DEC-005`'s
+    stated MVP fallback, "manual pharmacist entry" when OCR isn't ready. **Decided:** `ItemCorrectionDto`'s
+    `prescriptionItemId` is now optional and `quantity` is now a required field alongside `drugCode` — when
+    `prescriptionItemId` is given, `PrescriptionItemRepository.setDrugCodeAndQuantity` corrects that item
+    (renamed from `setDrugCode`, now setting both fields in the one optimistic-lock update); when omitted,
+    `createReviewed` inserts a new item. Both still run after the `PrescriptionReview` row is created, inside
+    the same transaction — the trigger-ordering requirement (item 8 above) applies identically to `INSERT`
+    and `UPDATE`, and is unaffected by this change.
+
+---
+
+## PART 38 — Pharmacy Branch Search
+
+No source doc documents a pharmacy-search contract at all — File 10/11 only specify `GET /v1/doctors/search` (File 10 §2.3); the generic "Search (doctor/pharmacy discovery)" row (File 11 Part 22/File 10 §4: Postgres full-text + PostGIS, no Elasticsearch) is the only pharmacy-adjacent text, and it names the *technology*, not a route/param contract. Closed here before this endpoint was written, following the same process Part 32 used for doctor search — this Part is deliberately the pharmacy-search analogue of Part 32 items 9/10/16, reusing its shared infrastructure rather than re-deciding it.
+
+1. **The searchable/browsable unit is the branch, not the pharmacy chain.** `Pharmacy` (the legal/brand entity) carries no address — only `PharmacyBranch` does (`address_id`, `phone`, `iana_timezone`, `delivery_capable`). A patient picking where to send a prescription needs an address to act on, and the same chain can have more than one branch, so `GET /v1/pharmacy-branches/search` queries `pharmacy_branches` directly (joined to its parent `pharmacies` row for display name) rather than returning `Pharmacy` rows with a nested `branches[]` the way the single-record `GetPharmacyUseCase`/`PharmacyWithBranches` detail endpoint does. This is also why the route lives on `PharmacyBranchesController`, not `PharmaciesController` — mirrors how `med-super`'s pharmacy-select flow was revised (2026-08-28) to list/link branches end to end, never a parent "pharmacy" page.
+2. **Route + auth: `GET /pharmacy-branches/search`, `@OptionalAuth()`**, declared before `@Get(':branchId')` in the controller (same ordering requirement Part 32 notes for `doctors.controller.ts` — Nest would otherwise try to parse `search` as a `:branchId` UUID and 400 on `ParseUUIDPipe`). No admin-bypass behavior is added for search itself — same as doctor search, visibility is always public-only rows; only single-record detail (`GetPharmacyBranchUseCase`) has an Admin-bypass branch.
+3. **Query params: `q, lat, lng, radiusKm, deliveryCapable, sort, cursor, limit`** — `q`/`lat`/`lng`/`radiusKm`/`cursor`/`limit` mirror `DoctorSearchQueryDto` exactly (same validation decorators, same defaults: `radiusKm` 15, `limit` 20/max 50). `specialty` and `date` are dropped (no doctor-shaped equivalent — a pharmacy branch has no specialty or appointment date). `deliveryCapable` (boolean) is new: `PharmacyBranch.delivery_capable` is a real, useful filter (File 11 line 245) with no doctor-search analogue.
+3a. **Response `address` includes `geoLat`/`geoLng`** (nullable, from `addresses.geo_lat/geo_lng`) even though the corresponding fields aren't part of the query params — the Flutter pharmacy-select map view needs coordinates to plot a pin per result, the same way the branch-detail endpoint's raw `address` object already exposes them.
+4. **Sort whitelist is `distance:asc | name:asc`, not `distance:asc | rating:desc | price:asc`.** `PharmacyBranch`/`Pharmacy` have no `rating_avg`/`rating_count` (those columns exist only on `Doctor`) and no `consult_fee`/`currency` equivalent — there is nothing to back a `rating:desc` or `price:asc` sort. Default is `distance:asc` when `lat`/`lng` are given, else `name:asc` (sorts by `pharmacies.brand_name`) — the same "location present → distance, else the next most meaningful column" logic Part 32 used, substituting `brand_name` for `rating_avg` since that's this table's most meaningful non-geo column.
+5. **Visibility is 2-hop (`pharmacy_branches → pharmacies`), hardcoded into the search CTE's `WHERE`, not routed through `provider-visibility.rules.ts`.** `p.status = 'VERIFIED' AND p.deleted_at IS NULL AND pb.status = 'VERIFIED'` is the direct SQL equivalent of `isProviderEntityVisible`/`isBranchVisible` — doctor search does the same thing for its own (4-hop, affiliation-mediated) visibility chain rather than calling the shared rule functions, which exist for single-record detail's Admin-bypass check, not search. No new domain-rule code was added or needed.
+6. **Reuses existing shared infrastructure as-is, not reinvented:** `@OptionalAuth()` (Part 32.9), `src/shared/core/pagination/cursor.util.ts`'s `encodeCursor`/`decodeCursor` (Part 32.16) with an opaque `{ v: sortValue, b: branchId }` payload (branch id as the tiebreaker, since there's no affiliation row to key off like doctor search's `{ v, a }`).
+7. **Free-text `q` matches only `pharmacies.brand_name`** via `pg_trgm` `similarity(...) > 0.2` (same threshold doctor search uses) — no `legal_name`/address match, since brand name is what a patient actually recognizes and searches by.
+
+---
+
+## PART 39 — Phase 7 (Pharmacy Fulfillment) Decisions
+
+File 11 Part 14 (state machine), Part 09.3 (`pharmacy_order_broadcasts`/`substitutions` schema), and Part 07.2
+(masked-vs-full prescription access) specify Pharmacy Fulfillment in real detail; File 10 Part 3.5/6/7/8.1 and
+line 275/276/314/375 add the broadcast/substitution/refund product intent. What follows is closed here, before
+any Phase 7 code is written, mirroring Parts 32/33/35/36/37/38's process — this pass is decisions + a module
+shell only (File 12 Part 10's Phase 7 checklist item), not an implementation; see item 10.
+
+1. **No enum-reconciliation gap, unlike Phase 6.** `PharmacyOrderStatus`, `BroadcastResponse`,
+   `PharmacyOrderItemStatus`, and `SubstitutionDecision` (`prisma/schema/shared.prisma`) already match File 11
+   Part 14's state diagram and Part 09.3's substitution/broadcast description exactly — ten `PharmacyOrderStatus`
+   values, `TIMEOUT` already present on `BroadcastResponse`. Stated explicitly so a future implementation pass
+   doesn't re-spend the effort Part 37.1 needed to reconcile Prescription's enum against File 10's diagram.
+2. **Broadcast targeting reuses `SearchPharmacyBranchesUseCase` (Part 38), not a new query.** Order creation will
+   call provider-directory's existing branch-search use-case — once exported from `ProviderDirectoryModule`,
+   which does not yet export it — with the relevant location and default radius, sorted `distance:asc`, taking
+   the top N verified branches as broadcast targets (N is a new named constant, registered in Part 08's registry
+   when written, not a bare literal). `DEC-002` (Maps/geocoding vendor, still `Open`) is not a blocker: distance
+   search already runs on stored `addresses.geo_lat/geo_lng` via PostGIS, the same reasoning Part 38 item 1
+   already established for pharmacy-branch search itself.
+3. **Prescriptions needs a new tx-scoped export it does not have today.** `PrescriptionsModule` currently exports
+   nothing (`src/modules/prescriptions/prescriptions.module.ts`). Order creation needs to read an `ACCEPTED`
+   prescription's items (`drug_code`, `quantity`) inside its own transaction to build `PharmacyOrderItem` rows —
+   the existing `GetPrescriptionUseCase` is HTTP-shaped (takes an `actor: AccessTokenPayload`, does its own
+   owner/staff masking, opens no `tx`) and is the wrong tool for an internal cross-module read. **Decided:** a
+   new, narrowly-scoped, tx-parameterized read use-case will be added to Prescriptions' exports when order
+   creation is implemented — the exact shape `GetAffiliationBillingInfoUseCase` already established (Part 36.3)
+   for the same "another module needs a transactional internal read" problem. Not built in this pass.
+4. **Broadcast timeout is a new `policy_configs`-tunable duration plus a worker cron, not a DB-level expiry.**
+   Follows `HoldExpiryJob`/`ExpireHoldsUseCase`'s exact shape (Part 33/35.9): a future `BroadcastExpiryJob`
+   (`@Cron`, worker-process-only, registered the same way in whatever module owns it) sweeps unanswered
+   `pharmacy_order_broadcasts` rows past their TTL and sets `response = TIMEOUT`. The accept-side concurrency
+   guarantee is unrelated and needs no new migration: it is the plain optimistic-lock update File 11 line 456
+   already specifies — `UPDATE pharmacy_orders SET pharmacy_branch_id=?, version=version+1 WHERE id=? AND
+   version=? AND pharmacy_branch_id IS NULL` — unlike appointment holds, which needed a partial unique index
+   because multiple *simultaneous* holds must be impossible; multiple simultaneous *broadcasts* on one order are
+   the expected, normal state.
+5. **Branch-scoped pharmacy-staff authorization will be a contained repository lookup inside pharmacy-fulfillment,
+   not a JWT-claims or shared-`Guard` change.** `AccessTokenPayload` (`src/shared/core/auth/jwt-payload.interface.ts`)
+   carries `sub`/`roleMembershipId`/`roleCode`/`contextType`/`permissions` — no `contextId` — so there is no
+   existing primitive for "which branch does this staff member belong to," the identical gap CLAUDE.md and Part
+   35.8 already flag as blocking clinic-staff appointment access. Two shapes were considered: (a) add `contextId`
+   to the token claims and teach `RbacGuard` to compare it against the resource, which would also unblock Part
+   35.8's gap; (b) a one-line `role_memberships` lookup by `context_id` inside pharmacy-fulfillment's own
+   use-case/domain-rule code, scoped to this module only. **Decided: (b) for now** — the same anti-premature-
+   primitive reasoning Part 37.4 already used for Phase 6's own deferred branch-scoping. Two modules independently
+   needing the same shape of check is a real signal, but still only two data points; centralize it into a shared
+   primitive if a third module needs it, rather than guessing the right shared abstraction from two call sites.
+6. **`OUT_FOR_DELIVERY` stays unreachable this phase.** Reaching it requires creating a `delivery_orders` row
+   (File 11 Part 17), and Delivery is Phase 9, unbuilt. Same precedent as `AppointmentStatus.HELD`/`EXPIRED`
+   (Part 35.1) and `PrescriptionStatus.CANCELLED` (Part 37.1): the enum value exists for forward-compatibility,
+   no code path produces it yet. Whether `fulfillment_type = DELIVERY` orders are rejected outright at creation
+   or simply get stuck at `PREPARING` until Phase 9 ships is left to the implementation pass, not decided here.
+7. **Payment capture reuses `CapturePayAtClinicPaymentUseCase` (`payments` module) as-is — no pharmacy-specific
+   clone.** It already takes `payableType`/`payableId`/`providerType`/`providerId` as plain input fields, and
+   `PayableType.PHARMACY_ORDER`/`ProviderType.PHARMACY` already exist in `shared.prisma`'s enums — Phase 7's
+   `ACCEPTED → PAID` transition calls it exactly the way `ConfirmAppointmentUseCase` does today, inside its own
+   transaction. The use-case's name staying appointment-flavored despite serving two modules is a cosmetic
+   question for whoever implements this transition, not a blocker.
+8. **Partial refund on substitution-driven price reduction needs a new payments-module sibling to
+   `ProcessCancellationRefundUseCase`.** File 10 line 375 states this is "a realistic MVP scenario, not an edge
+   case to defer" — a patient approving a cheaper substitution after capture must trigger a real partial refund.
+   Not designed in detail here (the exact split/reversal math belongs with whoever implements the substitution-
+   approval transition); flagged as required scope for that pass, following the existing tx-scoped-use-case shape.
+9. **`DEC-016` (controlled-substance policy) tension is inherited, not re-litigated.** File 10's suggested MVP
+   default is a hard block on controlled substances anywhere in the patient-uploaded flow; Phase 6 already
+   shipped a confirm-and-allow path instead (Part 37.9: `controlledSubstanceConfirmed` flag). **Decided:**
+   Pharmacy Fulfillment dispenses whatever Phase 6's review already accepted — it does not add a second, stricter
+   check that would silently contradict behavior already shipped. This is a flagged product/legal gap (`DEC-016`
+   remains `Open`), not something engineering resolves by fiat in this module.
+10. **This pass is decisions + a module shell only — no business logic.** `PharmacyFulfillmentModule` is created
+    empty and is *not* registered in `AppModule` yet (nothing to wire). Order creation + broadcast fan-out,
+    broadcast accept/decline + its concurrency test, substitution propose/approve/reject, payment-capture wiring,
+    the timeout job, and branch-scoped RBAC are each their own follow-up pass — matching how Phase 4
+    (hold → confirm → cancel → reschedule) and Phase 5 were themselves built incrementally rather than as one
+    commit, and avoiding this codebase's own "no half-finished implementations" rule (File 12 Part 12) by never
+    landing a placeholder controller/use-case with an empty body.
+11. **Broadcast accept/decline route shape (added once this slice was actually built): `POST
+    /v1/pharmacy-orders/{orderId}/accept` and `.../decline`, no `branchId` anywhere in the URL or body.** File 11
+    05.8 doesn't name either endpoint — it only documents `POST .../quote`, `POST .../approve` (patient-side),
+    `GET .../{orderId}`, and `GET /pharmacy-branches/{branchId}/orders` (the still-unbuilt pharmacy inbox listing,
+    a separate future pass) — same "undocumented but workflow-necessary" situation Part 37.5 already precedented
+    for the prescriptions review queue. The branch is resolved server-side from the caller's own `PHARMACY_STAFF`
+    role membership rather than taken as a request parameter — a staff member can only ever accept/decline as
+    their own branch, never one they specify, closing off an obvious spoof vector a `branchId` parameter would
+    otherwise open.
+12. **Item 5's branch-scoping primitive is now built for real, as `identity-auth`'s `GetActiveRoleMembershipUseCase(userId,
+    contextType)`.** Generic and `contextType`-parameterized rather than pharmacy-specific, and exported from
+    `identity-auth` (the module that actually owns `role_memberships`, per File 12 Part 05 — pharmacy-fulfillment
+    cannot query that table directly) — the same primitive Part 35.8 already identified as the missing piece for
+    clinic-staff appointment access, now available for that gap to reuse without duplicating it, though wiring
+    that up is out of scope here.
+13. **First-accept-wins is two independent conditional updates, not one.** `PharmacyOrderRepository.claimForBranch`
+    (`UPDATE pharmacy_orders SET pharmacy_branch_id=?, status='UNDER_REVIEW', version=version+1 WHERE id=? AND
+    version=? AND pharmacy_branch_id IS NULL` — File 11 line 456, verbatim) is the actual race; separately,
+    `PharmacyOrderBroadcastRepository.markResponded` (`WHERE id=? AND response IS NULL`) guards against the same
+    branch double-processing its own broadcast row (e.g. a double-tap), an unrelated but analogous race. On a lost
+    order-claim race, the losing branch's own broadcast row is deliberately left untouched (not marked
+    `DECLINED`) — File 11 line 456's stated "no additional signal needed, losing pharmacy simply sees the order
+    disappear from their queue." Neither repository method throws on a 0-row result — both return a plain
+    boolean, and the calling use-case decides which domain error it means (`ORDER_ALREADY_CLAIMED` vs
+    `BROADCAST_ALREADY_RESPONDED`), the exact same division of responsibility `AppointmentSlotRepository.markHeld`
+    /`CreateHoldUseCase` already established for the appointment-hold race (Part 35.2).
+14. **`/quote`'s response can only ever be `ACCEPTED`/`SUBSTITUTION_PROPOSED` — File 10 line 194 names no third
+    value.** So the "pharmacist rejects the whole order outright" transition (`UNDER_REVIEW --> REJECTED`, File 11
+    Part 14) has no path through this endpoint; submitting a quote where every item is `UNAVAILABLE` is instead a
+    `422 NO_ITEMS_AVAILABLE` business-rule error. Same "left unproduced" precedent already used for other diagram
+    states with no documented trigger (`AppointmentStatus.HELD`/`EXPIRED`, Part 35.1).
+15. **`estimatedReadyMinutes` (present in File 10 line 193's request example) is not accepted by
+    `SubmitPharmacyOrderQuoteDto`.** No column exists anywhere in `prisma/schema/pharmacy.prisma` to persist it,
+    and adding one is a schema decision (Part 12: "don't invent a migration inline") that belongs to whoever
+    actually needs to surface an ETA to the patient — silently accepting-and-discarding the field would be worse
+    than not accepting it at all. Flagged here as a documented-but-unbuilt piece of the contract, not a silent gap.
+16. **`totalPrice`'s `currency` in the `/quote` response reuses `PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY`
+    (`'EGP'`), not a new per-row column.** `PharmacyOrderItem.unit_price` has no paired currency column — this is
+    the same single-currency-region MVP assumption `payments` already relies on (File 12 Part 36's "single
+    currency per region"), reused rather than re-decided.
+17. **Building a `Substitution.original_drug_code` needed one more `prescriptions` export,
+    `GetPrescriptionItemDrugCodesUseCase`, alongside a new `GetDrugCatalogControlledStatusUseCase` for the
+    pharmacy-side controlled-substance re-check (File 10 line 541 — a separate confirmation from Phase 6's
+    review-time one, Part 37.9, tied to the *dispensing* branch's own license proxy).** `PharmacyOrderItem` has no
+    `drug_code`/controlled-substance data of its own, only the `prescription_item_id` FK, and both `drug_catalog`
+    and `prescription_items` are owned by `prescriptions` (File 12 Part 05) — neither can be queried directly.
+    Both exports are plain lookups with no ownership/status validation, unlike `GetAcceptedPrescriptionForOrderUseCase`
+    — the caller already legitimately owns these ids via its own rows, so there's no authorization boundary to
+    enforce here, only a table-ownership one.
+18. **Patient `approve` (File 10 line 205) is not built this pass — a deliberate scope decision, not an
+    oversight.** File 10 Part 8.1 states approval and `payment_intents` creation are "the same moment, not
+    decoupled," so a real `approve` endpoint needs the payment-capture wiring (Part 39.7) to exist first; building
+    a payment-free stand-in now would ship behavior that contradicts the documented rule. The payment-independent
+    half of the patient's decision — **reject** — has no such dependency and is built this pass
+    (`RejectPharmacyOrderSubstitutionUseCase`, `SUBSTITUTION_PROPOSED --> REJECTED`).
+19. **`GET /v1/pharmacy-orders/{orderId}` (File 11 05.8, documented but unbuilt until now) is built this pass**,
+    not deferred — without it a patient has no way to see a proposed substitution before deciding whether to
+    reject it, making `reject` unusable in practice. Completing already-specified surface area directly needed by
+    what's being built, not new invented scope. No Admin bypass, unlike `GetPrescriptionUseCase`'s equivalent —
+    File 11 05.8 names only "owning patient or the assigned pharmacy branch staff."
+20. **`approve` is now built (item 18's deferral resolved) — `ApprovePharmacyOrderUseCase` reuses
+    `CapturePayAtClinicPaymentUseCase` exactly as Part 39.7 anticipated, no pharmacy-specific clone.** Both
+    state-diagram hops (`SUBSTITUTION_PROPOSED --> ACCEPTED`, `ACCEPTED --> PAID`) happen inside the one
+    transaction this call opens — approving pending substitutions (when present) and capturing payment are not
+    separately observable states, matching File 10 Part 8.1's "same moment" framing literally, not just at the
+    API-contract level.
+21. **`providerId` for the pharmacy-order payment capture is the pharmacy *branch* id, not the parent `Pharmacy`
+    entity — a documented assumption, not an existing precedent.** `ConfirmAppointmentUseCase` sets `providerId`
+    to `Doctor.id` (the person/legal earner) for `ProviderType.DOCTOR`; nothing in this codebase has yet captured
+    a `ProviderType.CLINIC` payment to say what a *branch-having* provider type should use. **Decided:** the branch
+    — the operationally-distinct, address-having unit that actually won the broadcast and submitted the quote —
+    mirroring the role `ClinicBranch` plays in appointments' own affiliation model (an affiliation is scoped to a
+    branch, not the parent `Clinic`). Revisit if a real `ProviderType.CLINIC` capture is ever built and picks
+    differently.
+22. **`computeOrderTotal` (`domain/pharmacy-order-quote.rules.ts`) is now shared between the quote response's
+    `totalPrice` and the actual payment-capture amount** — both must derive the charge from the same persisted
+    `PharmacyOrderItem` rows the same way, or a future edit to one could silently undercharge or overcharge
+    relative to what the patient was quoted.
+23. **File 10 line 375's "partial refund on substitution reduces order total after capture" scenario has no
+    trigger point in the modeled flow and is not built.** Substitution resolution always happens *before* capture
+    (item 20) — the amount captured already reflects any substitution's price change from the start, and MVP is
+    explicitly single-round (Part 09.3: no renegotiation after the pharmacist's one quote). A refund scenario would
+    require a *second* substitution round discovered after `PAID` (e.g. an item goes out of stock during
+    `PREPARING`), which is new state-machine surface no source doc specifies — flagged as a real gap for whoever
+    eventually needs post-capture order modification, not speculatively built against an unmodeled scenario.
+
+## PART 40 — Pharmacy Console Contract Reconciliation (2026-08-29)
+
+`medsuper-pharmacy-dashboard` (the Next.js pharmacy-staff console, ADR-006) was built end-to-end against its
+own, never-agreed contract (`docs/PROPOSED_CONTRACT.md` in that repo) while Part 39 built the real backend
+against File 10 §2.3's item-by-item contract, in parallel, with neither side checked against the other until
+this pass. Reconciling them found the two genuinely incompatible at the product level, not just the wire level
+— closed here, per the same "add the decision to File 12 first" rule (Part 12) that governs any divergence from
+an already-closed decision (items 14–16 below, specifically).
+
+1. **Item 14–16's item-by-item quote contract is reopened and replaced with a flat one — a deliberate
+   product-priority call, not an oversight.** The dashboard's "this console holds no drug data" design (its own
+   `docs/PROPOSED_CONTRACT.md` §0) is incompatible with a `unitPrice`-per-`PharmacyOrderItem` contract: pricing
+   an item requires knowing what it is, which is exactly the data this console was designed to never hold.
+   **Decided: the backend accepts what the console already sends** — `{ totalPrice, estimatedReadyMinutes, note }`
+   on `SubmitPharmacyOrderQuoteDto`, one total instead of per-item ones. New `pharmacy_orders` columns
+   (`total_price`, `currency`, `estimated_ready_minutes`, `staff_note`, `quoted_at`) replace reading
+   `computeOrderTotal` off `PharmacyOrderItem` rows for both the quote response and `approve`'s payment-capture
+   amount (item 22's shared-derivation guarantee now holds between the order row and the capture call instead of
+   between the item rows and both). `PharmacyOrderItem.status`/`unit_price` are left in place, unwritten by this
+   flow — the same "unreachable but present" precedent as `AppointmentStatus.HELD` (Part 35.1).
+2. **`SUBSTITUTION_PROPOSED` is now unreachable through this module, full stop — not just through this console.**
+   This module is the only caller of `SubmitPharmacyOrderQuoteUseCase` in the whole system (ADR-006: no other
+   pharmacy-staff surface exists), so removing the per-item substitution path from the quote use-case makes the
+   status genuinely unreachable everywhere, not just from one client. Kept in `shared.prisma` regardless — same
+   forward-compat reasoning as `PrescriptionStatus.CANCELLED` (Part 37.1). `RejectPharmacyOrderSubstitutionUseCase`
+   (patient-initiated, `SUBSTITUTION_PROPOSED --> REJECTED`) is correspondingly dead code in practice but left
+   registered and callable, not deleted — it's still correct given the state it names, there's just no way to
+   reach that state through this console any more.
+3. **The dashboard's UI never had a separate "accept this broadcast" step — quoting and rejecting now fold the
+   accept/decline decision in.** `SubmitPharmacyOrderQuoteUseCase`, given an unclaimed order, claims it first
+   (the exact `PharmacyOrderRepository.claimForBranch` conditional update item 13 already specifies) before
+   quoting, inside the same transaction — the `RECEIVED --> UNDER_REVIEW` hop is real but never separately
+   observable, the same "not decoupled" framing File 10 Part 8.1 already established for `approve`'s two hops
+   (item 20). `RejectPharmacyOrderUseCase` mirrors this: given an unresponded broadcast, it declines it (item 13's
+   `markResponded`) rather than rejecting a claimed order. Keyed off the *broadcast row's* own state, not the
+   order's current claim, so a branch that never got around to responding can still decline even after another
+   branch won the race — same behavior the original `DeclinePharmacyOrderBroadcastUseCase` always had.
+   `AcceptPharmacyOrderBroadcastUseCase`/`DeclinePharmacyOrderBroadcastUseCase` and their routes (item 11) remain
+   exactly as built — valid, separately-callable primitives, simply unused by this particular console.
+4. **`RejectPharmacyOrderUseCase` (new) also accepts `ACCEPTED`, not only `UNDER_REVIEW`** — the dashboard's own
+   `REJECTABLE` set already allowed staff to pull back an already-quoted order (e.g. an unresponsive patient), a
+   real operational need item 14's original "reject only reaches `REJECTED` via `NO_ITEMS_AVAILABLE`" framing
+   never had to consider.
+5. **New `FulfillPharmacyOrderUseCase`/`CompletePharmacyOrderUseCase`, closing a real gap item 6 flagged but never
+   resolved.** `PAID --> READY_FOR_PICKUP`/`OUT_FOR_DELIVERY` and `--> FULFILLED` had no endpoint at all before
+   this pass — the state-diagram hops existed in `shared.prisma` but no code path produced them. Built now because
+   the console genuinely needs *some* way to close an order; `DELIVERED` was still declined (item 6's own
+   reasoning stands unchanged) — `complete` accepts `OUT_FOR_DELIVERY` directly, taking the dashboard's own
+   documented fallback for that scenario. This does **not** mean Delivery (Phase 9) shipped — no courier
+   assignment/tracking exists, only the status flag.
+6. **New `ListPharmacyOrdersUseCase` (`GET /pharmacy-orders`), the queue listing item 11 named as a future pass
+   and never built.** Placed at `GET /pharmacy-orders` rather than the `GET /pharmacy-branches/{branchId}/orders`
+   File 11 05.8 named — no `branchId` in the URL, matching this controller's own "branch resolved server-side"
+   convention every other route here already uses, and exactly what the console already called. Returns a
+   patient's own orders, or — for `PHARMACY_STAFF` — orders the caller's branch has claimed *plus* orders
+   currently broadcast to it with no response yet (`PharmacyOrderRepository.findForBranch`, a Prisma `OR` across
+   the `pharmacy_branch_id` column and the `broadcasts` relation — no query for this "claimed-or-incoming" set
+   existed anywhere before). Each row is enriched to the same shape `GET .../{orderId}` returns (patient/
+   prescription projections, flat quote) via a new shared `pharmacy-order-detail.mapper.ts` — an accepted N+1 (one
+   extra patient + prescription lookup per row) for an MVP staff console, not a performance target.
+7. **New cross-module exports this pass needed and didn't have: `identity-auth`'s `GetUserSummaryUseCase`
+   (plain `id -> {firstName, lastName, phoneMasked}` lookup) and `prescriptions`' `GetPrescriptionSummaryUseCase`
+   (plain tx-scoped prescription+images read).** Both follow the same "plain lookup, no ownership check — the
+   caller already legitimately owns this id via its own rows" shape `GetPrescriptionItemDrugCodesUseCase` (item
+   17) already established. Phone masking has no prior art anywhere in this codebase to reuse; `GetUserSummaryUseCase`
+   introduces the first one (last 3 digits visible) rather than inventing a second convention if a real
+   requirement for a different mask shape shows up later.
+8. **`PharmacyOrder.notes` (upload-time patient instruction, `UploadPrescriptionUseCase`'s DTO) is still not
+   persisted anywhere — a pre-existing gap, not something this pass introduced or closed.** The dashboard's
+   `patientNote` field is documented as always `null` in live mode until a future pass adds a column, the same
+   `not_persisted[]` precedent ADR-005 already established for accepted-but-discarded fields.
+9. **The patient-notification log and audit-trail feed (`medsuper-pharmacy-dashboard`'s
+   `docs/PROPOSED_CONTRACT.md` §3/§6) are explicitly out of scope for this pass and remain mock-only.** Both need
+   a real product decision (a notification channel for the former, DEC-003 still open; an audit-store read-API
+   design for the latter) this reconciliation pass deliberately did not make unilaterally — silently inventing
+   either would be exactly the kind of gap-filling File 12 Part 12 already warns against.
+
+## PART 41 — Pharmacy Console Integration Audit & Hardening (2026-08-29)
+
+Senior-level end-to-end audit of the Part 40 reconciliation, treating backend + dashboard as one system: workflow
+reconstruction, contract cross-check (every field, both directions), authorization/IDOR review, concurrency review,
+and a mock-vs-live parity check. Confirmed correct and unchanged: branch scoping (every use-case resolves
+`branchId` server-side from `GetActiveRoleMembershipUseCase`, never from a client-supplied id — no IDOR found),
+optimistic-lock/first-accept-wins concurrency (`updateWithOptimisticLock` / `claimForBranch` / `markResponded`
+conditional updates), the error envelope, and the notifications/audit mock isolation (§11 of the audit brief —
+both surfaces correctly report a 501/error in live mode rather than faking success). Two real gaps found and
+fixed:
+
+1. **`pharmacy_orders`/`pharmacy_order_broadcasts` had no index beyond their primary key** — the 20260829120000
+   migration only added columns. `PharmacyOrderRepository.findForPatient`/`findForBranch` (Part 40 item 6) filter
+   on `patient_id`/`pharmacy_branch_id` (+ optional `status`) and would run full sequential scans as the tables
+   grow, the identical gap `20260819120000_add_appointment_patient_id_status_index` already fixed once for
+   `appointments`. `findByOrderAndBranch` also went from an occasional lookup to a hot path this pass — Part 40
+   item 3 means `quote`/`reject` call it on every single request now, not just `accept`/`decline`. Fixed in
+   `20260829130000_add_pharmacy_order_queue_indexes`: `pharmacy_orders(patient_id, status)`,
+   `pharmacy_orders(pharmacy_branch_id, status)`, `pharmacy_order_broadcasts(pharmacy_order_id, pharmacy_branch_id)`,
+   `pharmacy_order_broadcasts(pharmacy_branch_id, response)`. Not deployed (`db:migrate:deploy` still requires an
+   explicit decision to run against a real database — unchanged from Part 40's own scope limit).
+2. **Test coverage gap on the two newest use-cases**: `fulfill-pharmacy-order.use-case.spec.ts` and
+   `complete-pharmacy-order.use-case.spec.ts` covered the happy paths and the one business-rule rejection each, but
+   neither had a wrong-branch (IDOR) case, a no-membership 403, or an optimistic-lock-conflict propagation case —
+   coverage every other mutating use-case in this module already had. Added (4 cases each, 300/300 unit tests now
+   passing, up from 292).
+
+**Pre-existing gaps noted, not fixed this pass** (real, but not introduced or intensified by this pass, so left
+alone per the "don't modify unrelated modules" rule): `pharmacy_orders.prescription_id` (hit by
+`findLatestByPrescriptionId` on every order-creation call) and `pharmacy_order_items.pharmacy_order_id` (hit by
+`findByOrderId` on every quote) are likewise unindexed — both predate Part 39, not something this reconciliation
+touched.
+
+**Frontend — mock/live parity fixes** (`medsuper-pharmacy-dashboard`, mirrored in that repo's own docs):
+`order-detail-pane.tsx`'s `REJECTABLE` set and `mock-service.ts`'s `assertTerminalMutable` both still listed
+`SUBSTITUTION_PROPOSED` as reject-able — dead per item 2 above (unreachable through this console, and the real
+`RejectPharmacyOrderUseCase` 422s a reject attempt against it), so the button/mock both promised an action the
+live backend would refuse. `mock-service.ts`'s `fulfillOrder` also accepted `ACCEPTED`, which the real
+`assertOrderIsPaid` never does (`fulfill` requires exactly `PAID`) — the UI's own `readyable` gate already never
+exposed this path, so it was latent, not reachable through normal use, but still a live/mock divergence per §10 of
+the audit brief. All three now match the backend exactly.
+
+**Verification**: backend `db:generate` ✅, `build` ✅, `lint` ✅ (0 errors, 1 pre-existing unrelated warning),
+`test` — 300/300 unit tests ✅, the same 5 pre-existing `*.integration.spec.ts` suites (`doctor-search.repository`,
+`prescription-drug-code-trigger`, `pharmacy-order-broadcast-concurrency`, `appointment-slot.repository`,
+`appointment-hold-concurrency`) fail for lack of a local Postgres — environment limitation, not a regression, same
+failure set as before this pass. Dashboard: `tsc --noEmit` ✅, `lint` ✅, `next build` ✅. No browser/E2E
+click-through — still the user's explicit "code + automated tests only" choice from the original reconciliation
+
+## PART 42 — Real-Postgres Production-Readiness Gate & Real-Auth Bridge (2026-08-29)
+
+Follow-up to Part 41, this time against a real disposable local Postgres (docker-compose, user-approved) instead of
+mocks — proved several things Part 41 could only reason about statically, found one real bug that unit-test mocks
+had hidden, and (mid-session, on the user's explicit direction — "no mock mode, real user/password, real
+experience") built the auth bridge this dashboard never had.
+
+1. **Real-Postgres verification, not just unit tests.** `20260829130000_add_pharmacy_order_queue_indexes` and the
+   flat-quote migration both apply cleanly (`prisma migrate deploy`); all 4 new indexes are physically present and
+   structurally usable (confirmed via `EXPLAIN` with `enable_seqscan=off` — the fixture tables are too small for the
+   planner to prefer them unforced, expected). New
+   `pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts` (17 cases, real DI, real
+   transactions, no mocks) proves the full workflow, 5 concurrency races (including two genuinely parallel raw HTTP
+   requests, not just parallel in-process calls), 3 IDOR cross-branch cases, and money precision at 4 boundary
+   amounts — all against real Postgres. Full suite: 330/332 passing; the 2 remaining failures
+   (`doctor-search.repository.integration.spec.ts`, missing `CREATE EXTENSION postgis`) are provider-directory,
+   unrelated, environment-only.
+2. **Real bug found that mocks had hidden: `Prisma.Decimal.toString()` strips trailing zeros
+   (`Decimal('120.00').toString() === '120'`); `.toFixed(2)` doesn't.** `pharmacy-order-detail.mapper.ts`'s
+   `quote.totalPrice` and `approve-pharmacy-order.use-case.ts`'s `totalAmount` both used `.toString()` — silently
+   correct for prices like `'150.00'` in every unit test (which mock `total_price` as `{ toString: () => '225.00' }`,
+   a shape no real `Decimal` has) but wrong the instant a real quote landed on Postgres with a trailing zero — which
+   is most quotes. Fixed to `.toFixed(2)` on both; both spec files' mocks now implement `toFixed` too (not just
+   `toString`), closing the exact gap that let this through. The dashboard's `http-service.ts` had a matching gap on
+   the read side: `getOrder`/`listOrders` cast the raw response straight to `PharmacyOrder` with no adapter mapping
+   (every mutation already converted `quote.totalPrice` string→number; these two didn't) — `order.quote.totalPrice`
+   held a string at runtime despite the type saying `number`, and `.toFixed(2)` on a string throws. Fixed with a
+   `toPharmacyOrder()` mapper mirroring `submitQuote`'s existing conversion. Found and confirmed via real HTTP
+   end-to-end, not code reading — `tsc`/unit tests never exercise a real `Decimal`.
+3. **`npm run start:dev` (tsx watch) silently skips all DTO validation; the compiled build (`tsc` + `node
+   dist/main.js`) does not.** Sent `{"totalPrice":"not-a-number", ...}` to a running `start:dev` instance —
+   `SubmitPharmacyOrderQuoteDto`'s `@IsDecimal` never fired; the request reached the domain layer and got a 422 from
+   `assertValidFlatQuoteInput` instead of the intended 400 `VALIDATION_ERROR`. The identical request against the
+   compiled build correctly 400s with the precise field message. Root cause: esbuild (which `tsx` wraps) has
+   incomplete `emitDecoratorMetadata` support for controller-method parameter types — NestJS's `ValidationPipe`
+   reads that metadata via reflection to know which DTO class to validate `@Body()` against, gets `Object` instead,
+   and its own `toValidate()` skips non-class metatypes by design. **Confirmed dev-tooling-only — the actual
+   production path (`npm run build && npm start`) is unaffected** — but every engineer's `start:dev` session
+   currently believes DTO validation works when the class-level rules (a wrong type, a missing required field) are
+   silently no-ops; only the domain-layer business rules underneath still catch mistakes, and only some of them
+   produce an equivalent error. Flagged here rather than fixed — the fix is a tooling choice (swap `start:dev`'s
+   transpiler, or accept the gap and always validate against a build before shipping) outside pharmacy-fulfillment's
+   own scope, and outside a single module's authority to decide unilaterally.
+4. **Real-auth bridge — `medsuper-pharmacy-dashboard` had never actually been able to authenticate against this
+   backend.** Discovered empirically: the dashboard's login (`MockAuthService`) has always been a fully separate,
+   self-contained demo layer with no path to a real backend JWT — confirmed live in the browser, where "live mode"
+   correctly showed a 401 "session expired" gate (the frontend's own error handling worked correctly; there was
+   simply never a real token to send). The user's direction was explicit: stop using mock, wire real credentials,
+   real experience — not a product decision this backend module gets to make alone, but a straightforward
+   plumbing gap once directed. Backend change needed for it, small and justified: `GetCurrentUserUseCase`
+   (`GET /v1/auth/me`) gained `contextId: string | null` — the caller's own active-membership scope id (a pharmacy
+   branch id for `PHARMACY_STAFF`), resolved from `roleMembershipId` already in the JWT via the same
+   `findActiveByUser` list the use-case already fetched. Not in the JWT itself by design (every use-case in this
+   module already re-resolves branch scope server-side via `GetActiveRoleMembershipUseCase`, never trusting a
+   claim) — this is purely a display convenience for a staff client's own "which branch am I" question, still just
+   an extra field on an existing, already-authenticated read. No new backend behavior invented beyond that: the
+   dashboard's `HttpAuthService` (frontend-side) is built entirely from existing, unmodified endpoints —
+   `POST /auth/password/login`, `GET/PATCH /auth/me`, `POST /auth/password/set` (bearer-authorized, no
+   old-password check — the JWT already proves identity, so "change password" and "set password" are the same
+   call), `POST /auth/password/forgot` + `/password/reset/verify-code` + `/password/reset` (real `requestId`+`code`
+   OTP-style flow, not the single-token magic-link shape the dashboard's UI was built around — bridged by
+   concatenating `requestId:code` into the one opaque `token` string the existing `AuthService` interface already
+   carries, plus one new code-input field on the reset page; a genuinely secondary flow, wired correctly but not
+   itself part of this pass's browser verification), `POST /auth/logout`, `POST /auth/token/refresh`,
+   `GET /pharmacy-branches/{id}` (branch/pharmacy display name). A real password was set on a real seeded
+   `PHARMACY_STAFF` account via the real `/auth/password/set` endpoint (not a DB script) for verification.
+5. **Verified end-to-end through the actual browser, real credentials, real backend, zero mock**: real
+   phone+password login → real dashboard (real staff name, real branch name/address, all from `/auth/me` +
+   `/pharmacy-branches/{id}`) → real queue (server-rendered, real bearer token attached server-side) → real quote
+   submitted through the actual `QuoteEditor` UI form (persisted `175.50` exactly, confirmed in Postgres) → real
+   patient approve/pay (`PAID`) → real fulfill via the actual UI button (`READY_FOR_PICKUP`) → real complete via the
+   actual UI button with its confirmation dialog (`FULFILLED`) → confirmed in Postgres. A full page refresh mid-flow
+   correctly showed the persisted `ACCEPTED` state (no frontend-only fake persistence). The audit page correctly
+   showed its honest "not implemented server-side yet, mock mode only" error rather than fabricating data.
+   Reject's business logic was proven correct via direct real HTTP (decline-unresponded-broadcast,
+   whole-order-reject-with-reason, and the required-reason 422) rather than the browser specifically — the same
+   `runMutation`/action-button code path already proven live for quote/fulfill/complete.
+
+**Verification (this pass)**: backend `build` ✅, `lint` ✅, unit+integration tests 330/332 ✅ (2 unrelated
+PostGIS environment failures), `tsc --noEmit` (frontend) ✅, `next build` (frontend) ✅ (including the new
+`/api/auth/refresh` route). Real backend HTTP: full workflow, 5 concurrency races, 3 IDOR cases, RBAC 403, 401/404
+paths — all real. Real browser: real login through real completion, one full cycle, plus the audit page's honest
+mock-only error state. Not run: reject through the browser specifically (covered via direct HTTP instead); a live
+SMS/email provider for the password-reset flow (dev-only, `LoggingOtpSender`-equivalent server-log code, same
+precedent as OTP login).
+request, unchanged for this follow-up pass.
+
+## PART 43 — Pharmacy Audit Trail Read Endpoint (2026-08-29)
+
+Closes `medsuper-pharmacy-dashboard/docs/PROPOSED_CONTRACT.md` §6, the last
+open gap Part 40/41/42 all left unaddressed: `GET /v1/pharmacy-audit` did not
+exist, so `HttpPharmacyOrdersService.listAuditTrail` threw a documented `501`
+and the dashboard's `/audit` page ran mock-only in live mode (confirmed by
+Part 42's own browser verification, item 5 above).
+
+1. **No new table, no migration.** Every `pharmacy-fulfillment` use-case
+   already calls `AuditService.record` on every state change (`create`,
+   `quote`, `reject`, `fulfill`, `complete`, broadcast accept/decline) — the
+   write side was complete since Part 39/40. Only a read path was missing.
+2. **`AuditService.listByResource(db, resourceType, resourceIds)`** (new,
+   `audit.service.ts`/`audit-log.repository.ts`) is the only sanctioned way
+   for another module to read `audit_logs` — Part 05's "no cross-module
+   infrastructure reach" rule means `pharmacy-fulfillment` was not allowed to
+   query `AuditLogRepository` directly, so the read method was added to the
+   `audit` module itself and exported, mirroring how `record` was already
+   exposed.
+3. **New `ListPharmacyAuditUseCase`/`PharmacyAuditController`**
+   (`pharmacy-fulfillment/application/`, `.../api/`), registered as a sibling
+   controller (`@Controller('pharmacy-audit')`) alongside
+   `PharmacyOrdersController`, not nested under it — matching the
+   dashboard's own contract path. `PHARMACY_STAFF` only: this console has no
+   patient-facing surface (ADR-006), so there is no patient-scoped branch to
+   support here, unlike `ListPharmacyOrdersUseCase`.
+4. **Raw `audit_logs.action` strings map onto the dashboard's own
+   `AuditAction` vocabulary**, not the reverse — `pharmacy-order.create` →
+   `ORDER_RECEIVED`, `.quote` → `QUOTE_SENT`, `.reject` → `ORDER_REJECTED`,
+   `.complete` → `COMPLETED`; `.fulfill` resolves to `MARKED_READY` or
+   `HANDED_TO_COURIER` from the order's `fulfillment_type` (not derivable
+   from the action string alone). Broadcast accept/decline and the patient's
+   `approve` are not part of that vocabulary and are dropped, not mapped —
+   same "unreachable/out of scope for this console" precedent as
+   `SUBSTITUTION_PROPOSED` (Part 40 item 1).
+5. **`detail` is reconstructed from the order's current row, not a stored
+   value**, because none was ever written: `audit_logs` has no free-text
+   column beyond `reason_code`, which no pharmacy-fulfillment use-case
+   populates. `quote`/`reject`'s own flat-quote and rejection columns
+   (`total_price`/`currency`, `rejection_reason`/`rejection_note`, all added
+   Part 40) already carry what a `QUOTE_SENT`/`ORDER_REJECTED` entry's detail
+   needs, and each transition is terminal (one quote, one rejection, ever,
+   per order) — so reading the current row is equivalent to having captured
+   the detail at write time. `MARKED_READY`/`HANDED_TO_COURIER`/`COMPLETED`
+   have no note column at all (`fulfill`/`complete` are pure status flips)
+   and correctly return `null` in live mode, a real (documented, not
+   accidental) mock/live divergence from the mock's optional `note` param.
+6. **`search`/`action` filtering and pagination happen in application
+   memory, not SQL**, over `findAllForBranch`'s full, unpaginated result for
+   the caller's branch: both depend on the enriched entry (patient name, an
+   order code computed from `orderId` the same way the frontend does,
+   per-action `detail`), not on any single indexed column either table
+   could filter on directly. Accepted MVP-scale tradeoff, same reasoning
+   already given for `ListPharmacyOrdersUseCase`'s per-row enrichment N+1
+   (Part 40).
+7. **The wire response has no `orderCode` field.** It stays a frontend-only
+   presentation value (`shortOrderCode`, dashboard `src/lib/utils/format.ts`)
+   — the backend derives the identical string server-side only to match
+   `search`, never to put it on the wire, so the two implementations can't
+   drift into disagreement about the format.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅, `eslint` ✅, full
+`pharmacy-fulfillment`+`audit` Jest suite 112/112 ✅ (16 suites, including a
+new `list-pharmacy-audit.use-case.spec.ts` covering the 403-no-membership
+case, action mapping/fulfillment-type resolution, action+search filtering,
+and offset-cursor pagination). Not run: a live-Postgres/browser check of this
+specific endpoint (Part 42's real-infrastructure pass above verified
+everything else in this module against a real database; this endpoint was
+added after that pass and inherits the same real schema/columns it already
+proved out, but wasn't itself re-verified live in this session) — flagged
+here rather than silently assumed, per this file's own "don't claim success
+without evidence" rule (`MEMORY.md` §14.5).

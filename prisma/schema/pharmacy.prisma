@@ -1,22 +1,40 @@
 model PharmacyOrder {
-  id                 String                   @id @default(uuid()) @db.Uuid
-  prescription_id    String                   @db.Uuid
-  patient_id         String                   @db.Uuid
-  pharmacy_branch_id String?                  @db.Uuid
-  status             PharmacyOrderStatus      @default(RECEIVED)
-  payment_intent_id  String?                  @db.Uuid
-  fulfillment_type   FulfillmentType          @default(PICKUP)
-  created_at         DateTime                 @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime                 @updatedAt @db.Timestamptz(6)
-  version            Int                      @default(1)
-  delivery_orders    DeliveryOrder[]
-  broadcasts         PharmacyOrderBroadcast[]
-  items              PharmacyOrderItem[]
-  patient            User                     @relation(fields: [patient_id], references: [id])
-  payment_intent     PaymentIntent?           @relation(fields: [payment_intent_id], references: [id])
-  pharmacy_branch    PharmacyBranch?          @relation(fields: [pharmacy_branch_id], references: [id])
-  prescription       Prescription             @relation(fields: [prescription_id], references: [id])
+  id                       String                        @id @default(uuid()) @db.Uuid
+  prescription_id          String                        @db.Uuid
+  patient_id               String                        @db.Uuid
+  pharmacy_branch_id       String?                       @db.Uuid
+  status                   PharmacyOrderStatus           @default(RECEIVED)
+  payment_intent_id        String?                       @db.Uuid
+  fulfillment_type         FulfillmentType               @default(PICKUP)
+  /// Flat quote fields (2026-08-29 decision, see File 12 Part 39 follow-up):
+  /// the pharmacist types one total for the whole order instead of pricing
+  /// `PharmacyOrderItem` rows individually — `medsuper-pharmacy-dashboard`'s
+  /// "no drug data" product decision took priority over the original
+  /// item-by-item quote contract. `total_price`/`currency` are also what
+  /// `approve` captures as payment, not a derived sum.
+  total_price              Decimal?                      @db.Decimal(10, 2)
+  currency                 String?                       @db.Char(3)
+  estimated_ready_minutes  Int?
+  staff_note               String?
+  quoted_at                DateTime?                     @db.Timestamptz(6)
+  rejection_reason         PharmacyOrderRejectionReason?
+  rejection_note           String?
+  rejected_at              DateTime?                     @db.Timestamptz(6)
+  created_at               DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime                      @updatedAt @db.Timestamptz(6)
+  version                  Int                           @default(1)
+  delivery_orders          DeliveryOrder[]
+  broadcasts               PharmacyOrderBroadcast[]
+  items                    PharmacyOrderItem[]
+  patient                  User                          @relation(fields: [patient_id], references: [id])
+  payment_intent           PaymentIntent?                @relation(fields: [payment_intent_id], references: [id])
+  pharmacy_branch          PharmacyBranch?               @relation(fields: [pharmacy_branch_id], references: [id])
+  prescription              Prescription                 @relation(fields: [prescription_id], references: [id])
 
+  /// Backs `PharmacyOrderRepository.findForPatient` ("my orders", 2026-08-29).
+  @@index([patient_id, status])
+  /// Backs `PharmacyOrderRepository.findForBranch` (branch queue, 2026-08-29).
+  @@index([pharmacy_branch_id, status])
   @@map("pharmacy_orders")
 }
 
@@ -33,6 +51,10 @@ model PharmacyOrderBroadcast {
   pharmacy_branch    PharmacyBranch     @relation(fields: [pharmacy_branch_id], references: [id])
   pharmacy_order     PharmacyOrder      @relation(fields: [pharmacy_order_id], references: [id], onDelete: Cascade)
 
+  /// Backs `findByOrderAndBranch` — hit on every quote/reject/accept/decline (2026-08-29).
+  @@index([pharmacy_order_id, pharmacy_branch_id])
+  /// Backs the branch-queue's "incoming, unresponded" subquery (2026-08-29).
+  @@index([pharmacy_branch_id, response])
   @@map("pharmacy_order_broadcasts")
 }
 

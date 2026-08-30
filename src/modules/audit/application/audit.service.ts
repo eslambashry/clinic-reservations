@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AuditLog, Prisma } from '@prisma/client';
 import { RequestContextService } from '../../../shared/core/context/request-context.service';
 import { AuditLogRepository, CreateAuditLogParams } from '../infrastructure/audit-log.repository';
 
@@ -25,5 +25,19 @@ export class AuditService {
       ...params,
       correlationId: this.context.correlationId,
     });
+  }
+
+  /**
+   * Read side (2026-08-29, `docs/PROPOSED_CONTRACT.md` §6 in
+   * `medsuper-pharmacy-dashboard` — first caller is `pharmacy-fulfillment`'s
+   * `ListPharmacyAuditUseCase`). The only sanctioned way for another module
+   * to read `audit_logs` — never `AuditLogRepository` directly (File 12 Part
+   * 05's "no cross-module infrastructure reach"). Plain `PrismaService` read,
+   * not `tx`-scoped, same "authorization/reporting lookup, not a
+   * same-snapshot-as-a-write requirement" reasoning as
+   * `GetActiveRoleMembershipUseCase`.
+   */
+  async listByResource(db: Prisma.TransactionClient, resourceType: string, resourceIds: string[]): Promise<AuditLog[]> {
+    return this.repository.findByResource(db, resourceType, resourceIds);
   }
 }

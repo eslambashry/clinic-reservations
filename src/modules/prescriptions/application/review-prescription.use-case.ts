@@ -12,8 +12,10 @@ import { PrescriptionRepository } from '../infrastructure/prescription.repositor
 import { PrescriptionReviewRepository } from '../infrastructure/prescription-review.repository';
 
 export interface ItemCorrection {
-  prescriptionItemId: string;
+  /** Omit to create a new item instead of correcting an existing one (File 12 Part 37.10). */
+  prescriptionItemId?: string;
   drugCode: string;
+  quantity: number;
 }
 
 export interface ReviewPrescriptionInput {
@@ -40,6 +42,11 @@ const OUTBOX_EVENT_BY_DECISION: Partial<Record<PrescriptionReviewDecision, strin
  * rejects a non-null `drug_code` unless a review row for this prescription
  * already exists, and Postgres trigger visibility only sees the
  * transaction's own prior writes if they happened first.
+ *
+ * File 12 Part 37.10: an `itemCorrections` entry without a
+ * `prescriptionItemId` creates a brand-new item instead of correcting one —
+ * the `DEC-005` "manual pharmacist entry" path, since OCR (a no-op stub,
+ * Part 37.2) never actually produces one to correct.
  */
 @Injectable()
 export class ReviewPrescriptionUseCase {
@@ -87,11 +94,15 @@ export class ReviewPrescriptionUseCase {
       });
 
       for (const correction of corrections) {
-        const item = await this.items.findById(tx, correction.prescriptionItemId);
-        if (!item || item.prescription_id !== prescriptionId) {
-          throw new NotFoundError('PrescriptionItem', correction.prescriptionItemId);
+        if (correction.prescriptionItemId) {
+          const item = await this.items.findById(tx, correction.prescriptionItemId);
+          if (!item || item.prescription_id !== prescriptionId) {
+            throw new NotFoundError('PrescriptionItem', correction.prescriptionItemId);
+          }
+          await this.items.setDrugCodeAndQuantity(tx, item.id, item.version, { drugCode: correction.drugCode, quantity: correction.quantity });
+        } else {
+          await this.items.createReviewed(tx, prescriptionId, { drugCode: correction.drugCode, quantity: correction.quantity });
         }
-        await this.items.setDrugCode(tx, item.id, item.version, correction.drugCode);
       }
 
       const newStatus = resolvePrescriptionStatus(prescription.status, input.decision);

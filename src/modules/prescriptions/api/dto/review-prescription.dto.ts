@@ -1,16 +1,29 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PrescriptionReviewDecision } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Min, MaxLength, ValidateNested } from 'class-validator';
 
+/**
+ * File 12 Part 37 (item 10): `prescriptionItemId` is optional — when given,
+ * this corrects that existing item's `drugCode`/`quantity`; when omitted,
+ * the pharmacist is entering a brand-new item from scratch. Both `drugCode`
+ * and `quantity` are required either way — a fulfillable item (Phase 7)
+ * needs both, and this is the only code path that ever sets either.
+ */
 export class ItemCorrectionDto {
-  @ApiProperty({ format: 'uuid' })
+  @ApiPropertyOptional({ format: 'uuid', description: 'Omit to create a new item instead of correcting an existing one.' })
+  @IsOptional()
   @IsUUID()
-  prescriptionItemId: string;
+  prescriptionItemId?: string;
 
   @ApiProperty()
   @IsString()
   drugCode: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  quantity: number;
 }
 
 /** File 11 05.7 / File 12 Part 37: pharmacist review decision. `itemCorrections` is the only field that can populate `prescription_items.drug_code` — the DB trigger requires this review row to be created first (enforced by the use-case, not this DTO). */

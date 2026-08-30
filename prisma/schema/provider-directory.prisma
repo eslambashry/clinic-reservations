@@ -39,13 +39,6 @@ model Doctor {
   license_number      String
   license_verified_at DateTime?                 @db.Timestamptz(6)
   status              DoctorStatus              @default(PENDING)
-  rating_avg          Decimal                   @default(0) @db.Decimal(2, 1)
-  rating_count        Int                       @default(0)
-  region_code         String?
-  deleted_at          DateTime?                 @db.Timestamptz(6)
-  created_at          DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime                  @updatedAt @db.Timestamptz(6)
-  version             Int                       @default(1)
   /// File 12 Part 32.1 — nullable, no upload flow yet (Part 19 deferred);
   /// a pre-hosted URL only, matching `ProviderVerificationDocument.file_url`.
   photo_url           String?
@@ -53,21 +46,20 @@ model Doctor {
   /// column existed — free-text degree/qualification (e.g. "MBBCh, MD").
   degree              String?
   /// ADR-005 Part 34.2: same reasoning as `degree`.
-  bio                 String?      @db.Text
+  bio                 String?                   @db.Text
   /// ADR-005 Part 34.2: same reasoning as `degree`.
   experience_years    Int?
-  rating_avg          Decimal      @default(0) @db.Decimal(2, 1)
-  rating_count        Int          @default(0)
+  rating_avg          Decimal                   @default(0) @db.Decimal(2, 1)
+  rating_count        Int                       @default(0)
   region_code         String?
-  deleted_at          DateTime?    @db.Timestamptz
-  created_at          DateTime     @default(now()) @db.Timestamptz
-  updated_at          DateTime     @updatedAt @db.Timestamptz
-  version             Int          @default(1)
-
-  user         User                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  specialty    Specialty                 @relation(fields: [specialty_code], references: [code])
-  affiliations DoctorClinicAffiliation[]
-  encounters   Encounter[]
+  deleted_at          DateTime?                 @db.Timestamptz(6)
+  created_at          DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                  @updatedAt @db.Timestamptz(6)
+  version             Int                       @default(1)
+  affiliations        DoctorClinicAffiliation[]
+  specialty           Specialty                 @relation(fields: [specialty_code], references: [code])
+  user                User                      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  encounters          Encounter[]
 
   @@map("doctors")
 }
