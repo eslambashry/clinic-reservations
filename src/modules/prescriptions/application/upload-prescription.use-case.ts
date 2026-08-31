@@ -55,6 +55,7 @@ export class UploadPrescriptionUseCase {
       const prescription = await this.prescriptions.create(tx, {
         patientId: actor.sub,
         source: 'PATIENT_UPLOADED',
+        notes: input.notes,
       });
 
       await this.images.createMany(

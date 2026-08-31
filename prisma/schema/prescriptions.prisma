@@ -21,6 +21,11 @@ model Prescription {
   doctor_id       String?              @db.Uuid
   source          PrescriptionSource
   status          PrescriptionStatus   @default(UPLOADED)
+  /// Patient-typed free text from `POST /v1/prescriptions/upload`'s `notes`
+  /// field — accepted by that endpoint but never actually persisted until
+  /// this column. Surfaced back out via `PrescriptionSummary`/
+  /// `PrescriptionDetail` and `PharmacyOrderDetail.patientNote`.
+  notes           String?
   expires_at      DateTime?            @db.Timestamptz(6)
   created_at      DateTime             @default(now()) @db.Timestamptz(6)
   updated_at      DateTime             @updatedAt @db.Timestamptz(6)

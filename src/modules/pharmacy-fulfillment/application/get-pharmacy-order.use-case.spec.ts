@@ -38,7 +38,7 @@ describe('GetPharmacyOrderUseCase', () => {
     rejected_at: null,
   };
   const patient = { id: 'patient-1', firstName: 'Sara', lastName: 'Ali', phoneMasked: '***1234' };
-  const prescription = { id: 'presc-1', source: 'PATIENT_UPLOADED', status: 'ACCEPTED', expiresAt: null, doctorId: null, images: [] };
+  const prescription = { id: 'presc-1', source: 'PATIENT_UPLOADED', status: 'ACCEPTED', expiresAt: null, doctorId: null, notes: 'Take with food', images: [] };
 
   it('returns the order for the owning patient, with a quote block', async () => {
     const { pharmacyOrders, getUserSummary, getPrescriptionSummary, useCase } = setup();
@@ -51,6 +51,7 @@ describe('GetPharmacyOrderUseCase', () => {
     expect(result.patient).toEqual(patient);
     expect(result.quote).toEqual({ totalPrice: '225.00', currency: 'EGP', estimatedReadyMinutes: 45, note: 'all available', quotedAt: '2026-08-29T10:05:00.000Z' });
     expect(result.rejection).toBeNull();
+    expect(result.patientNote).toBe('Take with food');
   });
 
   it('returns the order for the assigned pharmacy branch staff', async () => {

@@ -19,7 +19,7 @@ describe('GetCurrentUserUseCase', () => {
 
   it('returns the user with every active role plus which one is the token active context', async () => {
     const { users, roleMemberships, useCase } = setup();
-    users.findById.mockResolvedValue({ id: 'user-1', phone: '+201001234567', first_name: 'Nour', last_name: 'Ahmed' });
+    users.findById.mockResolvedValue({ id: 'user-1', phone: '+201001234567', first_name: 'Nour', last_name: 'Ahmed', email: 'nour@example.com' });
     roleMemberships.findActiveByUser.mockResolvedValue([{ role_code: 'PATIENT', context_id: null }]);
 
     const result = await useCase.execute({ userId: 'user-1', activeRoleCode: 'PATIENT' });
@@ -30,6 +30,7 @@ describe('GetCurrentUserUseCase', () => {
       roles: ['PATIENT'],
       activeRole: 'PATIENT',
       displayName: 'Nour Ahmed',
+      email: 'nour@example.com',
       contextId: null,
     });
   });
