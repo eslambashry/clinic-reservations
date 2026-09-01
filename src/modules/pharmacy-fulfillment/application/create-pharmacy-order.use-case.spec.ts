@@ -82,6 +82,31 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(result.broadcastedBranchIds).toEqual(['branch-9']);
   });
 
+  it('broadcasts to the chosen branch without lat/lng at all — File 12 Part 46, a chosen branch does not need the caller\'s GPS location', async () => {
+    const { pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
+    getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: true });
+    pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
+    getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
+    pharmacyOrders.create.mockResolvedValue({ id: 'order-1', status: 'RECEIVED' });
+
+    const result = await useCase.execute(
+      { prescriptionId: 'prescription-1', fulfillmentType: 'PICKUP', pharmacyBranchId: 'branch-9' },
+      actor,
+    );
+
+    expect(searchPharmacyBranches.execute).not.toHaveBeenCalled();
+    expect(broadcasts.createMany).toHaveBeenCalledWith(expect.anything(), 'order-1', ['branch-9']);
+    expect(result.broadcastedBranchIds).toEqual(['branch-9']);
+  });
+
+  it('422s with PHARMACY_ORDER_LOCATION_REQUIRED when neither pharmacyBranchId nor lat/lng is given', async () => {
+    const { useCase } = setup();
+
+    await expect(
+      useCase.execute({ prescriptionId: 'prescription-1', fulfillmentType: 'PICKUP' }, actor),
+    ).rejects.toMatchObject({ code: 'PHARMACY_ORDER_LOCATION_REQUIRED', httpStatus: 422 });
+  });
+
   it('422s with PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE when the chosen branch cannot deliver and DELIVERY was requested', async () => {
     const { getPharmacyBranch, useCase } = setup();
     getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: false });

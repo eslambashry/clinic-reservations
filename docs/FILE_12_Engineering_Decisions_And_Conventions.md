@@ -969,3 +969,57 @@ controller, DTO, or use-case, confirmed by grep across the whole repo.
 `get-current-user` spec: 9/9 ✅. Full suite: 318 unit tests pass (64
 suites); the 6 `*.integration.spec.ts` suites still fail in this environment
 for the same pre-existing `localhost:5432` reason noted above.
+
+## PART 46 — Pharmacy Order lat/lng Made Conditional + OCR Stub Change (OPEN DECISION) (2026-09-01)
+
+Found while manually exercising the full pharmacy-order flow end-to-end
+against a real local Postgres (first time this flow was run against a real
+database rather than mocks/unit tests in this repo's history):
+
+1. **`POST /v1/pharmacy-orders`'s `lat`/`lng` are now required only when
+   `pharmacyBranchId` is omitted**, not unconditionally as File 12 Part
+   39.2 originally stated. `CreatePharmacyOrderDto.lat`/`lng` are now
+   `@IsOptional()`; `CreatePharmacyOrderUseCase.execute` throws a new
+   `PHARMACY_ORDER_LOCATION_REQUIRED` (422) only on the no-branch-chosen
+   path, where `findNearestBranches` genuinely needs a location to search
+   from. A chosen branch is broadcast to directly and never reads `lat`/
+   `lng` at all (`resolveChosenBranch` never touches them) — requiring a
+   GPS read to submit an order the caller already fully specified was an
+   unnecessary UX blocker (confirmed live: a denied/unavailable browser
+   geolocation permission silently prevented every order submission,
+   including PICKUP orders with an explicit branch, before this change).
+   `med-super`'s `PharmacyOrderController.submit`/
+   `PharmacyOrderRemoteDatasource.create` updated to match (`lat`/`lng`
+   now nullable, only sent when known).
+
+2. **`NoOpOcrExtractor` now fabricates one placeholder free-text item per
+   uploaded file instead of returning zero — this is an OPEN DECISION, not
+   a ratified File 10/12 rule.** Root cause: with `DEC-005` (OCR vendor)
+   unresolved, every patient-uploaded prescription in this codebase
+   previously ended up with **zero** `prescription_items` rows (OCR was the
+   only item-creation path reachable from `UploadPrescriptionUseCase`; the
+   other one, `ReviewPrescriptionUseCase`, is `PHARMACY_STAFF`-only and
+   `med-super`'s patient app never drives it). That made
+   `assertHasFulfillableItems` reject 100% of orders with
+   `NO_FULFILLABLE_ITEMS` (422), permanently, for any prescription uploaded
+   through the real patient app — not a bug introduced by this pass, a
+   pre-existing gap this pass is the first to have actually hit by running
+   the flow for real. The fabricated item
+   (`drugNameFreeText: '[DEV PLACEHOLDER] Unidentified medication — no OCR
+   vendor configured'`, `quantity: 1`, no `drug_code`) exists solely so the
+   pharmacy-order flow is exercisable end-to-end in dev/QA.
+   **This must be revisited — not silently kept — once `DEC-005` is
+   resolved or a real manual-item-entry path reaches the patient app**; see
+   the comment on `NoOpOcrExtractor.extract` for the exact revert
+   condition. Flagging it here rather than treating it as settled, per the
+   explicit instruction that led to this change.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅, new/updated specs
+in `create-pharmacy-order.use-case.spec.ts` (2 new: chosen-branch-without-
+location succeeds, no-branch-and-no-location 422s) — 12/12 ✅; full
+`src/modules/prescriptions/` suite 35/35 ✅ (unaffected in assertions,
+`NoOpOcrExtractor` isn't spec'd directly). `med-super`: `flutter analyze`
+clean, `pharmacy_booking`/`auth` suites pass (76 + 58) after updating
+`pharmacy_order_controller_test.dart` and `pharmacy_select_screen_test.dart`
+for the new conditional-location and no-pre-selection/delivery-capability
+behavior described in this same session.

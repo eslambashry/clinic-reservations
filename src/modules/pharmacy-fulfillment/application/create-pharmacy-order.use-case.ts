@@ -17,8 +17,8 @@ import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.reposi
 export interface CreatePharmacyOrderInput {
   prescriptionId: string;
   fulfillmentType: FulfillmentType;
-  lat: number;
-  lng: number;
+  lat?: number;
+  lng?: number;
   pharmacyBranchId?: string;
 }
 
@@ -60,9 +60,18 @@ export class CreatePharmacyOrderUseCase {
   ) {}
 
   async execute(input: CreatePharmacyOrderInput, actor: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
-    const branchIds = input.pharmacyBranchId
-      ? [await this.resolveChosenBranch(input.pharmacyBranchId, input.fulfillmentType)]
-      : await this.findNearestBranches(input.lat, input.lng, input.fulfillmentType);
+    let branchIds: string[];
+    if (input.pharmacyBranchId) {
+      branchIds = [await this.resolveChosenBranch(input.pharmacyBranchId, input.fulfillmentType)];
+    } else {
+      if (input.lat === undefined || input.lng === undefined) {
+        throw new BusinessRuleError(
+          'PHARMACY_ORDER_LOCATION_REQUIRED',
+          'lat/lng are required when pharmacyBranchId is not provided.',
+        );
+      }
+      branchIds = await this.findNearestBranches(input.lat, input.lng, input.fulfillmentType);
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const latestOrder = await this.pharmacyOrders.findLatestByPrescriptionId(tx, input.prescriptionId);
