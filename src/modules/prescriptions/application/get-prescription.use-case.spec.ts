@@ -14,8 +14,9 @@ describe('GetPrescriptionUseCase', () => {
     const images = { findByPrescriptionId: jest.fn() };
     const items = { findByPrescriptionId: jest.fn() };
     const reviews = { findByPrescriptionId: jest.fn() };
-    const useCase = new GetPrescriptionUseCase(prisma as any, prescriptions as any, images as any, items as any, reviews as any);
-    return { prescriptions, images, items, reviews, useCase };
+    const mediaStorage = { getSignedUrl: jest.fn((url: string) => `${url}?signed=1`) };
+    const useCase = new GetPrescriptionUseCase(prisma as any, prescriptions as any, images as any, items as any, reviews as any, mediaStorage as any);
+    return { prescriptions, images, items, reviews, mediaStorage, useCase };
   }
 
   it('404s when the prescription does not exist', async () => {

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { ConflictError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { SELF_REGISTRATION_NOT_PERSISTED_FIELDS, SelfRegisterProviderUseCase } from './self-register-provider.use-case';
 
 function buildTx() {
@@ -34,6 +34,7 @@ describe('SelfRegisterProviderUseCase', () => {
     const affiliations = { create: jest.fn().mockResolvedValue({ id: 'affiliation-1' }) };
     const audit = { record: jest.fn() };
     const updateUserProfile = { execute: jest.fn() };
+    const mediaStorage = { upload: jest.fn().mockResolvedValue({ url: 'https://ik.imagekit.io/x/doctor-profiles/user-1/photo.jpg', fileId: 'file-1', filePath: '/doctor-profiles/user-1/photo.jpg' }), getSignedUrl: jest.fn() };
     const useCase = new SelfRegisterProviderUseCase(
       prisma as any,
       specialties as any,
@@ -44,8 +45,9 @@ describe('SelfRegisterProviderUseCase', () => {
       affiliations as any,
       audit as any,
       updateUserProfile as any,
+      mediaStorage as any,
     );
-    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, useCase };
+    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, useCase };
   }
 
   it('rejects an unknown specialty before creating anything', async () => {
@@ -151,5 +153,32 @@ describe('SelfRegisterProviderUseCase', () => {
       lastName: 'El Sayed Hassan',
       email: 'amina@example.com',
     });
+  });
+
+  it('uploads photo_data_uri to ImageKit and persists the resulting URL onto Doctor.photo_url', async () => {
+    const { tx, doctors, mediaStorage, useCase } = setup();
+    const tinyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    const photoDto = { ...dto, photo_data_uri: `data:image/png;base64,${tinyPngBase64}` };
+
+    const result = await useCase.execute(photoDto, actor);
+
+    expect(mediaStorage.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ mimeType: 'image/png' }),
+      { folder: 'doctor-profiles/user-1', isPrivate: false },
+    );
+    expect(doctors.create).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ photoUrl: 'https://ik.imagekit.io/x/doctor-profiles/user-1/photo.jpg' }),
+    );
+    expect(result.notPersisted).not.toContain('photo_data_uri');
+  });
+
+  it('rejects a malformed photo_data_uri before creating anything', async () => {
+    const { clinics, mediaStorage, useCase } = setup();
+    const badDto = { ...dto, photo_data_uri: 'not-a-data-uri' };
+
+    await expect(useCase.execute(badDto, actor)).rejects.toBeInstanceOf(DomainError);
+    expect(mediaStorage.upload).not.toHaveBeenCalled();
+    expect(clinics.create).not.toHaveBeenCalled();
   });
 });

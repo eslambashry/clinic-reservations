@@ -6,7 +6,7 @@ function buildTx() {
 
 describe('UploadPrescriptionUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
-  const input = { fileUrls: ['https://example.com/rx1.jpg'] };
+  const input = { files: [{ buffer: Buffer.from('img'), originalName: 'rx1.jpg', mimeType: 'image/jpeg', sizeBytes: 3 }] };
   const prescription = { id: 'prescription-1', version: 1 };
 
   function setup() {
@@ -19,6 +19,7 @@ describe('UploadPrescriptionUseCase', () => {
     const ocrExtractor = { extract: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
+    const mediaStorage = { upload: jest.fn().mockResolvedValue({ url: 'https://example.com/rx1.jpg', fileId: 'file-1', filePath: '/prescriptions/patient-1/rx1.jpg' }) };
     const useCase = new UploadPrescriptionUseCase(
       prisma as any,
       prescriptions as any,
@@ -28,18 +29,20 @@ describe('UploadPrescriptionUseCase', () => {
       ocrExtractor as any,
       audit as any,
       outbox as any,
+      mediaStorage as any,
     );
-    return { tx, prisma, prescriptions, images, items, qualityChecker, ocrExtractor, audit, outbox, useCase };
+    return { tx, prisma, prescriptions, images, items, qualityChecker, ocrExtractor, audit, outbox, mediaStorage, useCase };
   }
 
   it('sets QUALITY_CHECK_PASSED, runs OCR, and emits PrescriptionUploaded when all images pass', async () => {
-    const { tx, prescriptions, images, items, qualityChecker, ocrExtractor, audit, outbox, useCase } = setup();
+    const { tx, prescriptions, images, items, qualityChecker, ocrExtractor, audit, outbox, mediaStorage, useCase } = setup();
     qualityChecker.check.mockResolvedValue({ passed: true, blurScore: null });
     ocrExtractor.extract.mockResolvedValue([{ drugNameFreeText: 'Panadol', dose: null, frequency: null, durationDays: null, quantity: null }]);
     prescriptions.create.mockResolvedValue(prescription);
 
     const result = await useCase.execute(input, actor);
 
+    expect(mediaStorage.upload).toHaveBeenCalledWith(input.files[0], { folder: 'prescriptions/patient-1', isPrivate: true });
     expect(result).toEqual({ prescriptionId: 'prescription-1', status: 'QUALITY_CHECK_PASSED' });
     expect(prescriptions.create).toHaveBeenCalledWith(tx, { patientId: 'patient-1', source: 'PATIENT_UPLOADED' });
     expect(images.createMany).toHaveBeenCalledWith(tx, [

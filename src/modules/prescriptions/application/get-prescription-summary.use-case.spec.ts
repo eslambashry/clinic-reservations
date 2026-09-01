@@ -14,7 +14,8 @@ describe('GetPrescriptionSummaryUseCase', () => {
     const images = {
       findByPrescriptionId: jest.fn().mockResolvedValue([{ id: 'img-1', file_url: 'https://x/1.jpg', quality_check_status: 'PASSED' }]),
     };
-    const useCase = new GetPrescriptionSummaryUseCase(prescriptions as any, images as any);
+    const mediaStorage = { getSignedUrl: jest.fn((url: string) => `${url}?signed=1`) };
+    const useCase = new GetPrescriptionSummaryUseCase(prescriptions as any, images as any, mediaStorage as any);
 
     const result = await useCase.execute({} as any, 'presc-1');
 
@@ -24,14 +25,15 @@ describe('GetPrescriptionSummaryUseCase', () => {
       status: 'ACCEPTED',
       expiresAt: '2026-09-01T00:00:00.000Z',
       doctorId: null,
-      images: [{ id: 'img-1', fileUrl: 'https://x/1.jpg', qualityCheckStatus: 'PASSED' }],
+      images: [{ id: 'img-1', fileUrl: 'https://x/1.jpg?signed=1', qualityCheckStatus: 'PASSED' }],
     });
   });
 
   it('returns null when the prescription does not exist', async () => {
     const prescriptions = { findById: jest.fn().mockResolvedValue(null) };
     const images = { findByPrescriptionId: jest.fn() };
-    const useCase = new GetPrescriptionSummaryUseCase(prescriptions as any, images as any);
+    const mediaStorage = { getSignedUrl: jest.fn() };
+    const useCase = new GetPrescriptionSummaryUseCase(prescriptions as any, images as any, mediaStorage as any);
 
     expect(await useCase.execute({} as any, 'missing')).toBeNull();
   });

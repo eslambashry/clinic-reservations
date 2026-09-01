@@ -10,6 +10,7 @@ import { CoreModule } from './shared/core/core.module';
 import { PolicyConfigModule } from './shared/kernel/policy-config/policy-config.module';
 import { PrismaModule } from './shared/kernel/prisma/prisma.module';
 import { RedisModule } from './shared/kernel/redis/redis.module';
+import { MediaStorageModule } from './shared/kernel/storage/media-storage.module';
 
 /**
  * Root module shared by both process entrypoints (`main.ts` — API,
@@ -23,6 +24,7 @@ import { RedisModule } from './shared/kernel/redis/redis.module';
     AppConfigModule,
     PrismaModule,
     RedisModule,
+    MediaStorageModule,
     PolicyConfigModule,
     CoreModule,
     HealthModule,

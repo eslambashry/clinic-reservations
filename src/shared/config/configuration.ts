@@ -20,6 +20,11 @@ export interface AppConfig {
   cors: {
     allowedOrigins: string[] | null;
   };
+  imagekit: {
+    privateKey: string;
+    urlEndpoint: string;
+    publicKey: string | null;
+  };
 }
 
 export default (): AppConfig => ({
@@ -43,5 +48,10 @@ export default (): AppConfig => ({
     allowedOrigins: process.env.CORS_ALLOWED_ORIGINS
       ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
       : null,
+  },
+  imagekit: {
+    privateKey: process.env.IMAGEKIT_PRIVATE_KEY as string,
+    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT as string,
+    publicKey: process.env.IMAGEKIT_PUBLIC_KEY ?? null,
   },
 });

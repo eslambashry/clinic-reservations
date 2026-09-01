@@ -1,5 +1,6 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ProviderVerificationDocument, RoleContextType } from '@prisma/client';
 import { ApproveVerificationDocumentUseCase } from '../application/approve-verification-document.use-case';
 import { ListVerificationDocumentsResult, ListVerificationDocumentsUseCase } from '../application/list-verification-documents.use-case';
@@ -8,6 +9,10 @@ import { UploadVerificationDocumentUseCase } from '../application/upload-verific
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
+import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
+import { buildMemoryMulterOptions } from '../../../shared/kernel/storage/multer.config';
+import { toUploadedMediaFile } from '../../../shared/kernel/storage/multer-file.mapper';
 import { CreateVerificationDocumentDto } from './dto/create-verification-document.dto';
 import { ListVerificationDocumentsQueryDto } from './dto/list-verification-documents-query.dto';
 import { RejectVerificationDocumentDto } from './dto/reject-verification-document.dto';
@@ -32,12 +37,33 @@ export class VerificationDocumentsController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Admin: attach a verification document (fileUrl is pre-hosted, Part 32.7)' })
+  @UseInterceptors(FileInterceptor('file', buildMemoryMulterOptions(MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES)))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        providerType: { type: 'string', enum: ['DOCTOR', 'CLINIC', 'PHARMACY', 'LAB'] },
+        providerId: { type: 'string', format: 'uuid' },
+        docType: { type: 'string', example: 'MEDICAL_LICENSE' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Admin: attach a verification document — multipart upload, jpeg/png/pdf, stored private (Part 32.7 superseded by ImageKit)' })
   upload(
+    @UploadedFile() file: Express.Multer.File | undefined,
     @Body() dto: CreateVerificationDocumentDto,
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<ProviderVerificationDocument> {
-    return this.uploadDocument.execute(dto, user);
+    const uploadedFiles = file ? [toUploadedMediaFile(file)] : [];
+    assertValidMediaFiles(uploadedFiles, {
+      allowedMimeTypes: MEDIA_CONSTANTS.DOCUMENT_MIME_TYPES,
+      maxFileSizeBytes: MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES,
+      maxFileCount: 1,
+    });
+
+    return this.uploadDocument.execute({ ...dto, file: uploadedFiles[0] }, user);
   }
 
   @Post(':documentId/approve')

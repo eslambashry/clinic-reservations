@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
+import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
 import { PrescriptionImageRepository } from '../infrastructure/prescription-image.repository';
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
 
@@ -28,6 +30,7 @@ export class GetPrescriptionSummaryUseCase {
   constructor(
     @Inject(PrescriptionRepository) private readonly prescriptions: PrescriptionRepository,
     @Inject(PrescriptionImageRepository) private readonly images: PrescriptionImageRepository,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(tx: Prisma.TransactionClient, prescriptionId: string): Promise<PrescriptionSummary | null> {
@@ -42,7 +45,12 @@ export class GetPrescriptionSummaryUseCase {
       status: prescription.status,
       expiresAt: prescription.expires_at?.toISOString() ?? null,
       doctorId: prescription.doctor_id,
-      images: images.map((image) => ({ id: image.id, fileUrl: image.file_url, qualityCheckStatus: image.quality_check_status })),
+      // Signed fresh on every read — see the identical note in `GetPrescriptionUseCase`.
+      images: images.map((image) => ({
+        id: image.id,
+        fileUrl: this.mediaStorage.getSignedUrl(image.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS),
+        qualityCheckStatus: image.quality_check_status,
+      })),
     };
   }
 }

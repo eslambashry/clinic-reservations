@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ProviderType, ProviderVerificationDocument, VerificationStatus } from '@prisma/client';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
+import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { VerificationDocumentRepository } from '../infrastructure/verification-document.repository';
 
@@ -31,6 +33,7 @@ export class ListVerificationDocumentsUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(VerificationDocumentRepository) private readonly documents: VerificationDocumentRepository,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(input: ListVerificationDocumentsInput): Promise<ListVerificationDocumentsResult> {
@@ -46,8 +49,14 @@ export class ListVerificationDocumentsUseCase {
     });
 
     const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
-    const last = items[items.length - 1];
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+
+    // Signed fresh on every read — see the identical note in `GetPrescriptionUseCase`; the stored `file_url` stays unsigned.
+    const items = page.map((document) => ({
+      ...document,
+      file_url: this.mediaStorage.getSignedUrl(document.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS),
+    }));
 
     return {
       items,
