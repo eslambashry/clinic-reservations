@@ -1,3 +1,4 @@
+import * as argon2 from '@node-rs/argon2';
 import { REGION_CONSTANTS } from '../shared/config/constants';
 import { prisma } from './client';
 
@@ -322,6 +323,84 @@ async function main() {
       },
     });
     console.log(`✅ Seeded demo pharmacy: ${p.brandName} (${p.id}), branch ${p.branchId}`);
+  }
+
+  // Laboratory module (un-postponed 2026-09-02, File 12 Part 47/48): one demo
+  // laboratory + branch, same shape as the demoPharmacies block above, so
+  // `medsuper-laboratory-dashboard`'s real-auth bridge has a real branch to
+  // log a LAB_STAFF test user into. No LabOrder rows are seeded — the queue
+  // starts empty until a real PATIENT creates one via `POST /v1/lab-orders`.
+  const demoLabId = '00000000-0000-0000-0000-000000000201';
+  const demoLabBranchId = '00000000-0000-0000-0000-000000000211';
+  const demoLabAddressId = '00000000-0000-0000-0000-000000000221';
+
+  await prisma.laboratory.upsert({
+    where: { id: demoLabId },
+    update: {},
+    create: {
+      id: demoLabId,
+      legal_name: 'Nile Diagnostics LLC (Seed)',
+      brand_name: 'Nile Labs',
+      region_code: DEFAULT_REGION,
+      status: 'VERIFIED',
+      verified_at: new Date(),
+    },
+  });
+
+  await prisma.address.upsert({
+    where: { id: demoLabAddressId },
+    update: {},
+    create: {
+      id: demoLabAddressId,
+      line1: '9 Qasr El Nil St',
+      city: 'Cairo',
+      region_code: DEFAULT_REGION,
+      country_code: 'EG',
+    },
+  });
+
+  await prisma.labBranch.upsert({
+    where: { id: demoLabBranchId },
+    update: {},
+    create: {
+      id: demoLabBranchId,
+      laboratory_id: demoLabId,
+      address_id: demoLabAddressId,
+      phone: '+20221230004',
+      iana_timezone: 'Africa/Cairo',
+      home_collection_capable: true,
+      status: 'VERIFIED',
+    },
+  });
+  console.log(`✅ Seeded demo laboratory: Nile Labs (${demoLabId}), branch ${demoLabBranchId}`);
+
+  // A Lab Staff test user, password-login-ready — unlike the pharmacy staff
+  // seed above (which never set password_hash, so it cannot actually log in
+  // via POST /auth/password/login as committed), this one is, so
+  // `medsuper-laboratory-dashboard`'s real-auth bridge is testable end-to-end
+  // against a real local Postgres without a manual DB edit first. Same
+  // hashing call `SetPasswordUseCase`/`LoginWithPasswordUseCase` use.
+  const labStaffPassword = 'DevPass123!';
+  let labStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000004' } });
+  if (!labStaffUser) {
+    labStaffUser = await prisma.user.create({
+      data: {
+        phone: '+201000000004',
+        first_name: 'Amina',
+        last_name: 'Tarek',
+        password_hash: await argon2.hash(labStaffPassword),
+      },
+    });
+    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone} (password: ${labStaffPassword})`);
+  }
+  const labStaffMembership = await prisma.roleMembership.findFirst({
+    where: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF' },
+  });
+  if (!labStaffMembership) {
+    await prisma.roleMembership.create({
+      data: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: demoLabBranchId },
+    });
+    console.log(`✅ Granted LAB_STAFF role_membership to ${labStaffUser.phone} (branch ${demoLabBranchId})`);
   }
 
   console.log('🎉 Database seed completed successfully!');

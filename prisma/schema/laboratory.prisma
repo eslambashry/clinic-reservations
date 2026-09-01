@@ -1,0 +1,177 @@
+/// Laboratory module (un-postponed 2026-09-02, File 12 Part 47) — MVP.
+/// Mirrors `pharmacy.prisma`'s conventions closely: UUID PKs, `version` for
+/// optimistic locking, a flat (non-line-item) quote, and a single owning
+/// branch per order (no broadcast fan-out — a lab order is assigned to one
+/// branch at creation, never contested between branches like a pharmacy
+/// broadcast). Every shape here is copied 1:1 from
+/// `medsuper-laboratory-dashboard/src/lib/api/types.ts`, the only
+/// authoritative source at un-postpone time (Readiness Plan / Discovery
+/// narratives were the dashboard's own source before this pass; the
+/// dashboard's already-built, internally-consistent contract is what this
+/// schema now implements verbatim, same "adopt the console's own design"
+/// precedent pharmacy's flat quote already set).
+
+model Laboratory {
+  id          String         @id @default(uuid()) @db.Uuid
+  legal_name  String
+  brand_name  String
+  tax_id      String?
+  region_code String?
+  status      ProviderStatus @default(PENDING)
+  verified_at DateTime?      @db.Timestamptz(6)
+  deleted_at  DateTime?      @db.Timestamptz(6)
+  created_at  DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime       @updatedAt @db.Timestamptz(6)
+  version     Int            @default(1)
+  branches    LabBranch[]
+
+  @@map("laboratories")
+}
+
+model LabBranch {
+  id                      String         @id @default(uuid()) @db.Uuid
+  laboratory_id           String         @db.Uuid
+  address_id              String         @db.Uuid
+  phone                   String
+  iana_timezone           String
+  /// File 10 §3.3 capability — gates whether `dispatchCourier` is ever a
+  /// legal action for orders assigned to this branch.
+  home_collection_capable Boolean        @default(false)
+  status                  ProviderStatus @default(PENDING)
+  created_at              DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime       @updatedAt @db.Timestamptz(6)
+  version                 Int            @default(1)
+  address                 Address        @relation(fields: [address_id], references: [id])
+  laboratory              Laboratory     @relation(fields: [laboratory_id], references: [id], onDelete: Cascade)
+  orders                  LabOrder[]
+
+  @@map("lab_branches")
+}
+
+/// Mirrors `DrugCatalog`'s minimal lookup-table shape — referenced by code,
+/// never embedded free text (dashboard `CatalogTest { code, displayName }`).
+model TestCatalog {
+  code         String   @id
+  display_name String
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @updatedAt @db.Timestamptz(6)
+  version      Int      @default(1)
+  items        LabOrderItem[]
+
+  @@map("test_catalog")
+}
+
+model LabOrder {
+  id                    String              @id @default(uuid()) @db.Uuid
+  patient_id            String              @db.Uuid
+  lab_branch_id         String              @db.Uuid
+  /// Optional — "patient-selected analyses OR uploaded prescription"
+  /// (dashboard `LabOrder.prescriptionImages`, sourced via this FK same as
+  /// `PharmacyOrder.prescription_id`). Direct catalog-code selection needs
+  /// no prescription at all.
+  prescription_id       String?             @db.Uuid
+  status                LabOrderStatus      @default(REQUESTED)
+  collection_type       CollectionType      @default(VISIT)
+  /// Flat quote fields (dashboard `LabQuote`) — one total for the whole
+  /// order, same "no per-line pricing" shape pharmacy's own quote resolved
+  /// to. `total_price`/`currency`/`appointment_at`/`prep_instructions`/
+  /// `quoted_at` are all set together by `SubmitLabQuoteUseCase`.
+  total_price           Decimal?            @db.Decimal(10, 2)
+  currency              String?             @db.Char(3)
+  appointment_at        DateTime?           @db.Timestamptz(6)
+  prep_instructions     String?
+  quoted_at             DateTime?           @db.Timestamptz(6)
+  /// The patient's turn for the appointment day — set at quote time
+  /// (matches `MockLaboratoryOrdersService.submitQuote` exactly).
+  queue_number          Int?
+  /// Issued by `ConfirmLabBookingUseCase` (`QUOTED --> AWAITING_SAMPLE`) —
+  /// null until then. Implements the `BOOKING_CONFIRMED` custody event the
+  /// dashboard's own mock declares but never produces.
+  booking_code          String?
+  /// Plain string, not a Postgres enum: the dashboard's own
+  /// `RejectOrderRequest.reason` is free-text, unlike pharmacy's closed
+  /// `PharmacyOrderRejectionReason` set — matching that rather than
+  /// inventing a stricter constraint nobody asked for.
+  rejection_reason      String?
+  rejection_note        String?
+  rejected_at           DateTime?           @db.Timestamptz(6)
+  /// Set when a collected sample is rejected and a redraw is needed —
+  /// cleared again the moment a fresh sample is collected.
+  recollection_required Boolean             @default(false)
+  created_at             DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime           @updatedAt @db.Timestamptz(6)
+  version                Int                @default(1)
+  patient                User               @relation(fields: [patient_id], references: [id])
+  lab_branch             LabBranch          @relation(fields: [lab_branch_id], references: [id])
+  prescription           Prescription?      @relation(fields: [prescription_id], references: [id])
+  items                  LabOrderItem[]
+  results                LabResultDocument[]
+  notes                  LabOrderNote[]
+
+  /// Backs `LabOrderRepository.findForPatient` ("my orders").
+  @@index([patient_id, status])
+  /// Backs `LabOrderRepository.findForBranch` (branch queue) and
+  /// `findAllForBranch` (the audit trail's unpaginated branch-history read).
+  @@index([lab_branch_id, status])
+  @@map("lab_orders")
+}
+
+model LabOrderItem {
+  id             String          @id @default(uuid()) @db.Uuid
+  lab_order_id   String          @db.Uuid
+  catalog_code   String
+  unit_price     Decimal?        @db.Decimal(10, 2)
+  result_state   ItemResultState @default(PENDING)
+  created_at     DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime        @updatedAt @db.Timestamptz(6)
+  version        Int             @default(1)
+  lab_order      LabOrder        @relation(fields: [lab_order_id], references: [id], onDelete: Cascade)
+  catalog_test   TestCatalog     @relation(fields: [catalog_code], references: [code])
+  /// Implicit back-relation — the FK (`item_id`, unique) lives on
+  /// `LabResultDocument`, which is the side that comes into existence second
+  /// (`recordResult`). One item has at most one result document.
+  result         LabResultDocument?
+
+  @@map("lab_order_items")
+}
+
+model LabResultDocument {
+  id                String            @id @default(uuid()) @db.Uuid
+  lab_order_id      String            @db.Uuid
+  /// `@unique` enforces "at most one result per item" at the DB level —
+  /// the reverse side of `LabOrderItem.result` above.
+  item_id           String            @unique @db.Uuid
+  /// Registration-only reference — real file storage vendor undecided
+  /// (File 10 uploads rule), same as pharmacy's prescription-image URLs.
+  file_label        String
+  size_kb           Int
+  uploaded_at       DateTime          @default(now()) @db.Timestamptz(6)
+  uploaded_by       String            @db.Uuid
+  /// Reserved per File 10 §1.2 ("reserve the schema field now") — a human
+  /// call in MVP, never automated detection.
+  is_critical       Boolean           @default(false)
+  review_state      ResultReviewState @default(UNREVIEWED)
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime          @updatedAt @db.Timestamptz(6)
+  version           Int               @default(1)
+  lab_order         LabOrder          @relation(fields: [lab_order_id], references: [id], onDelete: Cascade)
+  item              LabOrderItem      @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  uploaded_by_user  User              @relation(fields: [uploaded_by], references: [id])
+
+  @@map("lab_result_documents")
+}
+
+/// Append-only staff notes — never edited, so no `version` column (matches
+/// `PrescriptionReview`'s own "append-only audit trail — never updated,
+/// only created" precedent).
+model LabOrderNote {
+  id           String   @id @default(uuid()) @db.Uuid
+  lab_order_id String   @db.Uuid
+  author_id    String   @db.Uuid
+  body         String
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  lab_order    LabOrder @relation(fields: [lab_order_id], references: [id], onDelete: Cascade)
+  author       User     @relation(fields: [author_id], references: [id])
+
+  @@map("lab_order_notes")
+}
