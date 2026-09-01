@@ -29,30 +29,47 @@ describe('GetAcceptedPrescriptionForOrderUseCase', () => {
     await expect(useCase.execute(tx, 'prescription-1', 'patient-1')).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it('422s with PRESCRIPTION_NOT_ACCEPTED when the prescription is not yet ACCEPTED', async () => {
-    const { prescriptions, useCase } = setup();
+  it('allows QUALITY_CHECK_PASSED — ACCEPTED only ever comes from a review endpoint nothing in the current ecosystem calls', async () => {
+    const { prescriptions, items, useCase } = setup();
     prescriptions.findById.mockResolvedValue({ id: 'prescription-1', patient_id: 'patient-1', status: 'QUALITY_CHECK_PASSED' });
+    items.findByPrescriptionId.mockResolvedValue([{ id: 'item-1', drug_code: null, drug_name_free_text: 'Panadol', quantity: 20 }]);
 
-    await expect(useCase.execute(tx, 'prescription-1', 'patient-1')).rejects.toMatchObject({
-      code: 'PRESCRIPTION_NOT_ACCEPTED',
-      httpStatus: 422,
-    });
+    const result = await useCase.execute(tx, 'prescription-1', 'patient-1');
+
+    expect(result.prescriptionId).toBe('prescription-1');
   });
 
-  it('returns only items with both a drugCode and a quantity set', async () => {
+  it.each(['UPLOADED', 'QUALITY_CHECK_FAILED', 'REJECTED', 'CANCELLED'])(
+    '422s with PRESCRIPTION_NOT_ACCEPTED when the prescription status is %s',
+    async (status) => {
+      const { prescriptions, useCase } = setup();
+      prescriptions.findById.mockResolvedValue({ id: 'prescription-1', patient_id: 'patient-1', status });
+
+      await expect(useCase.execute(tx, 'prescription-1', 'patient-1')).rejects.toMatchObject({
+        code: 'PRESCRIPTION_NOT_ACCEPTED',
+        httpStatus: 422,
+      });
+    },
+  );
+
+  it('returns items with a quantity and either a real drugCode or only OCR free-text — neither alone with no quantity counts', async () => {
     const { prescriptions, items, useCase } = setup();
     prescriptions.findById.mockResolvedValue({ id: 'prescription-1', patient_id: 'patient-1', status: 'ACCEPTED' });
     items.findByPrescriptionId.mockResolvedValue([
-      { id: 'item-1', drug_code: 'PARA500', quantity: 20 },
-      { id: 'item-2', drug_code: null, quantity: null },
-      { id: 'item-3', drug_code: 'AMOX250', quantity: null },
+      { id: 'item-1', drug_code: 'PARA500', drug_name_free_text: null, quantity: 20 },
+      { id: 'item-2', drug_code: null, drug_name_free_text: 'Amoxicillin', quantity: 10 },
+      { id: 'item-3', drug_code: null, drug_name_free_text: null, quantity: 5 },
+      { id: 'item-4', drug_code: 'AMOX250', drug_name_free_text: null, quantity: null },
     ]);
 
     const result = await useCase.execute(tx, 'prescription-1', 'patient-1');
 
     expect(result).toEqual({
       prescriptionId: 'prescription-1',
-      items: [{ id: 'item-1', drugCode: 'PARA500', quantity: 20 }],
+      items: [
+        { id: 'item-1', drugCode: 'PARA500', quantity: 20 },
+        { id: 'item-2', drugCode: null, quantity: 10 },
+      ],
     });
   });
 });

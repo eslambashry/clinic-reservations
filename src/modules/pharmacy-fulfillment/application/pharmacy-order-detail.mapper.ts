@@ -18,7 +18,7 @@ export interface PharmacyOrderDetail {
     images: { id: string; fileUrl: string; qualityCheckStatus: string }[];
   };
   quote: { totalPrice: string; currency: string; estimatedReadyMinutes: number | null; note: string | null; quotedAt: string } | null;
-  /** Not persisted anywhere yet — see `GetPrescriptionSummaryUseCase`'s own note. Always null until a future pass adds a column. */
+  /** The prescription's own `notes` field (patient-typed at upload time) — surfaced here for convenience so the order detail carries it without a separate prescription fetch. */
   patientNote: string | null;
   staffNote: string | null;
   rejection: { reason: string; note: string | null; at: string } | null;
@@ -71,7 +71,7 @@ export function buildPharmacyOrderDetail(
             quotedAt: order.quoted_at.toISOString(),
           }
         : null,
-    patientNote: null,
+    patientNote: prescription.notes,
     staffNote: order.staff_note,
     rejection:
       order.rejection_reason && order.rejected_at

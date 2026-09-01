@@ -868,3 +868,158 @@ added after that pass and inherits the same real schema/columns it already
 proved out, but wasn't itself re-verified live in this session) — flagged
 here rather than silently assumed, per this file's own "don't claim success
 without evidence" rule (`MEMORY.md` §14.5).
+
+## PART 44 — Patient-Chosen Branch on Order Creation + Prescription Notes Persistence (2026-08-31)
+
+`med-super`'s pharmacy-booking flow lets the patient pick one specific
+branch before reviewing/confirming an order — `POST /v1/pharmacy-orders`
+had no way to express that (`lat`/`lng`-only, broadcasts to every nearby
+verified branch). Separately, `POST /v1/prescriptions/upload`'s `notes`
+field was accepted by that endpoint's DTO but never persisted anywhere.
+
+1. **`CreatePharmacyOrderDto.pharmacyBranchId` (optional, UUID).** When
+   given, `CreatePharmacyOrderUseCase` validates it via
+   `GetPharmacyBranchUseCase` (exists, `VERIFIED`, delivery-capable if
+   `fulfillmentType === 'DELIVERY'`) and broadcasts to that branch alone —
+   `PharmacyOrderBroadcastRepository.createMany` already takes a list of
+   branch ids, so a single-element list needed no repository change.
+   `accept`/`decline`/`quote` are untouched: the chosen branch still has to
+   `accept` the order like any other broadcast candidate, first-accept-wins
+   included, since exactly one candidate is still a broadcast, not a direct
+   assignment. When omitted, behavior is unchanged — nearest-verified-branch
+   search as before. `GetPharmacyBranchUseCase` is now exported from
+   `ProviderDirectoryModule` (previously provider-only) so
+   `PharmacyFulfillmentModule` can inject it.
+2. **`GetAcceptedPrescriptionForOrderUseCase` now also accepts
+   `QUALITY_CHECK_PASSED`, not just `ACCEPTED`.** `ACCEPTED` only happens via
+   `POST /v1/prescriptions/:id/review` — a `PHARMACY_STAFF`-only endpoint
+   that turned out to be dead code in practice: checked
+   `medsuper-pharmacy-dashboard`'s API client directly, and it never calls
+   it anywhere. Nothing in the current ecosystem (`med-super` or the
+   dashboard) can ever produce an `ACCEPTED` prescription, so requiring it
+   before order creation made every order permanently uncreateable, not a
+   guarded workflow. The dashboard's actual approval step is the *order's*
+   flat-total `quote` (Part 40) — reviewed off the prescription image
+   directly, no separate content-review step — which still runs entirely
+   unchanged after this: an order still starts `RECEIVED` and needs a
+   branch to `accept`+`quote` it, same as before.
+3. **`assertHasFulfillableItems`'s filter no longer requires `drug_code`.**
+   Same root cause: `drug_code` can only be set via
+   `setDrugCodeAndQuantity`/`createReviewed`, both gated by the same
+   review-that-never-happens (and further enforced by a DB trigger on
+   `drug_code` writes) — requiring it made every prescription's items
+   permanently unfulfillable. `medsuper-pharmacy-dashboard` never reads
+   `drug_code` either (Part 40: flat total off the image, no per-item drug
+   data). An item now only needs a `quantity` plus either a real `drug_code`
+   or OCR's free-text name (`drug_name_free_text`) to be fulfillable.
+   `FulfillableItem.drugCode` is now `string | null` accordingly.
+4. **`Prescription.notes` (new column, nullable text).** `PrescriptionRepository.create`
+   and `UploadPrescriptionUseCase` now pass it through;
+   `GetPrescriptionSummaryUseCase`/`GetPrescriptionUseCase` and
+   `PharmacyOrderDetail.patientNote` (via `buildPharmacyOrderDetail`) now
+   surface the real value instead of a hardcoded `null`.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅. Touched unit specs
+(`upload-prescription`, `get-prescription`, `get-prescription-summary`,
+`get-accepted-prescription-for-order`, `create-pharmacy-order`,
+`get-pharmacy-order`, `list-pharmacy-orders`) 37/37 ✅. Full suite: 313 unit
+tests pass (62 suites); the 6 `*.integration.spec.ts` suites fail in this
+environment with `Can't reach database server at localhost:5432` (no local
+Postgres/docker running here) — a pre-existing environment limitation, not
+caused by this change; not re-verified against a real database.
+
+## PART 45 — Self-Service Profile Reads/Edits for Patient and Doctor (2026-08-31)
+
+`med-super` audited its own patient- and doctor-profile screens against the
+real backend and found: (1) a patient's own `email` was write-only (`PATCH
+/v1/auth/me` accepted it, `GET /v1/auth/me` never returned it), and (2)
+`med-super`'s doctor-profile screen called an entirely invented
+`/v1/provider/me` that has never existed anywhere in this backend — no
+controller, DTO, or use-case, confirmed by grep across the whole repo.
+
+1. **`GetCurrentUserResult` now includes `email`.** `GetCurrentUserUseCase`
+   reads `user.email` (a column that already existed, just never
+   surfaced) — no schema change. `PATCH /v1/auth/me`'s response already
+   re-reads through this same use-case, so it picks the field up for free.
+2. **`GET /v1/doctors/me` / `PATCH /v1/doctors/me` (new, `DOCTOR`-only)**
+   replace the invented `/v1/provider/me`. `GetMyDoctorProfileUseCase`
+   resolves the caller's own `Doctor` row via `Doctor.user_id` (new
+   `DoctorRepository.findByUserId`/`findByUserIdWithUser`) rather than a
+   path param — same "server resolves the caller's own scope" convention
+   `PHARMACY_STAFF`'s branch-scoped endpoints already use. Its response
+   includes `licenseNumber`, which the public `GET /v1/doctors/{id}`
+   deliberately omits (a license number is the doctor's own business to see,
+   not public listing data).
+3. **The self-edit is narrower than the Admin `PATCH /v1/doctors/{id}`, on
+   purpose.** `UpdateMyDoctorProfileDto`/`UpdateMyDoctorProfileUseCase` only
+   touch `bio`/`degree`/`experienceYears` (`DoctorRepository.update` extended
+   to accept them). `specialtyCode`/`licenseNumber`/`regionCode` stay
+   Admin-only — a doctor can't re-specialize or re-license themselves.
+   `photoUrl` is excluded entirely (not even accepted-and-dropped): no
+   object-storage decision exists yet for doctor photos, same gap as
+   `ProviderVerificationDocument.file_url` and prescription uploads.
+4. **Route order**: `@Get('me')`/`@Patch('me')` are registered on
+   `DoctorsController` before the existing `@Get(':doctorId')`/`@Patch(':doctorId')`
+   — a literal `me` segment would otherwise be captured by the dynamic
+   `:doctorId` param and rejected by its `ParseUUIDPipe` before ever reaching
+   a `me`-specific handler.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅. New specs
+(`get-my-doctor-profile`, `update-my-doctor-profile`) plus the updated
+`get-current-user` spec: 9/9 ✅. Full suite: 318 unit tests pass (64
+suites); the 6 `*.integration.spec.ts` suites still fail in this environment
+for the same pre-existing `localhost:5432` reason noted above.
+
+## PART 46 — Pharmacy Order lat/lng Made Conditional + OCR Stub Change (OPEN DECISION) (2026-09-01)
+
+Found while manually exercising the full pharmacy-order flow end-to-end
+against a real local Postgres (first time this flow was run against a real
+database rather than mocks/unit tests in this repo's history):
+
+1. **`POST /v1/pharmacy-orders`'s `lat`/`lng` are now required only when
+   `pharmacyBranchId` is omitted**, not unconditionally as File 12 Part
+   39.2 originally stated. `CreatePharmacyOrderDto.lat`/`lng` are now
+   `@IsOptional()`; `CreatePharmacyOrderUseCase.execute` throws a new
+   `PHARMACY_ORDER_LOCATION_REQUIRED` (422) only on the no-branch-chosen
+   path, where `findNearestBranches` genuinely needs a location to search
+   from. A chosen branch is broadcast to directly and never reads `lat`/
+   `lng` at all (`resolveChosenBranch` never touches them) — requiring a
+   GPS read to submit an order the caller already fully specified was an
+   unnecessary UX blocker (confirmed live: a denied/unavailable browser
+   geolocation permission silently prevented every order submission,
+   including PICKUP orders with an explicit branch, before this change).
+   `med-super`'s `PharmacyOrderController.submit`/
+   `PharmacyOrderRemoteDatasource.create` updated to match (`lat`/`lng`
+   now nullable, only sent when known).
+
+2. **`NoOpOcrExtractor` now fabricates one placeholder free-text item per
+   uploaded file instead of returning zero — this is an OPEN DECISION, not
+   a ratified File 10/12 rule.** Root cause: with `DEC-005` (OCR vendor)
+   unresolved, every patient-uploaded prescription in this codebase
+   previously ended up with **zero** `prescription_items` rows (OCR was the
+   only item-creation path reachable from `UploadPrescriptionUseCase`; the
+   other one, `ReviewPrescriptionUseCase`, is `PHARMACY_STAFF`-only and
+   `med-super`'s patient app never drives it). That made
+   `assertHasFulfillableItems` reject 100% of orders with
+   `NO_FULFILLABLE_ITEMS` (422), permanently, for any prescription uploaded
+   through the real patient app — not a bug introduced by this pass, a
+   pre-existing gap this pass is the first to have actually hit by running
+   the flow for real. The fabricated item
+   (`drugNameFreeText: '[DEV PLACEHOLDER] Unidentified medication — no OCR
+   vendor configured'`, `quantity: 1`, no `drug_code`) exists solely so the
+   pharmacy-order flow is exercisable end-to-end in dev/QA.
+   **This must be revisited — not silently kept — once `DEC-005` is
+   resolved or a real manual-item-entry path reaches the patient app**; see
+   the comment on `NoOpOcrExtractor.extract` for the exact revert
+   condition. Flagging it here rather than treating it as settled, per the
+   explicit instruction that led to this change.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅, new/updated specs
+in `create-pharmacy-order.use-case.spec.ts` (2 new: chosen-branch-without-
+location succeeds, no-branch-and-no-location 422s) — 12/12 ✅; full
+`src/modules/prescriptions/` suite 35/35 ✅ (unaffected in assertions,
+`NoOpOcrExtractor` isn't spec'd directly). `med-super`: `flutter analyze`
+clean, `pharmacy_booking`/`auth` suites pass (76 + 58) after updating
+`pharmacy_order_controller_test.dart` and `pharmacy_select_screen_test.dart`
+for the new conditional-location and no-pre-selection/delivery-capability
+behavior described in this same session.

@@ -6,7 +6,7 @@ function buildTx() {
 
 describe('UploadPrescriptionUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
-  const input = { fileUrls: ['https://example.com/rx1.jpg'] };
+  const input = { fileUrls: ['https://example.com/rx1.jpg'], notes: 'Take with food' };
   const prescription = { id: 'prescription-1', version: 1 };
 
   function setup() {
@@ -41,7 +41,7 @@ describe('UploadPrescriptionUseCase', () => {
     const result = await useCase.execute(input, actor);
 
     expect(result).toEqual({ prescriptionId: 'prescription-1', status: 'QUALITY_CHECK_PASSED' });
-    expect(prescriptions.create).toHaveBeenCalledWith(tx, { patientId: 'patient-1', source: 'PATIENT_UPLOADED' });
+    expect(prescriptions.create).toHaveBeenCalledWith(tx, { patientId: 'patient-1', source: 'PATIENT_UPLOADED', notes: 'Take with food' });
     expect(images.createMany).toHaveBeenCalledWith(tx, [
       { prescriptionId: 'prescription-1', fileUrl: 'https://example.com/rx1.jpg', qualityCheck: { passed: true, blurScore: null } },
     ]);

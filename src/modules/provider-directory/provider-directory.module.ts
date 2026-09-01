@@ -19,6 +19,7 @@ import { GetAffiliationBillingInfoUseCase } from './application/get-affiliation-
 import { GetClinicBranchUseCase } from './application/get-clinic-branch.use-case';
 import { GetClinicUseCase } from './application/get-clinic.use-case';
 import { GetDoctorUseCase } from './application/get-doctor.use-case';
+import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.use-case';
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
 import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
@@ -38,6 +39,7 @@ import { UpdateAffiliationUseCase } from './application/update-affiliation.use-c
 import { UpdateClinicBranchUseCase } from './application/update-clinic-branch.use-case';
 import { UpdateClinicUseCase } from './application/update-clinic.use-case';
 import { UpdateDoctorUseCase } from './application/update-doctor.use-case';
+import { UpdateMyDoctorProfileUseCase } from './application/update-my-doctor-profile.use-case';
 import { UpdatePharmacyBranchUseCase } from './application/update-pharmacy-branch.use-case';
 import { UpdatePharmacyUseCase } from './application/update-pharmacy.use-case';
 import { UploadVerificationDocumentUseCase } from './application/upload-verification-document.use-case';
@@ -106,6 +108,8 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     VerifyDoctorUseCase,
     SuspendDoctorUseCase,
     GetDoctorUseCase,
+    GetMyDoctorProfileUseCase,
+    UpdateMyDoctorProfileUseCase,
     SearchDoctorsUseCase,
     CreateClinicUseCase,
     UpdateClinicUseCase,
@@ -140,6 +144,12 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     SelfRegisterProviderUseCase,
     GetAffiliationBillingInfoUseCase,
   ],
-  exports: [ResolveAffiliationForSchedulingUseCase, ListSchedulableAffiliationsUseCase, GetAffiliationBillingInfoUseCase, SearchPharmacyBranchesUseCase],
+  exports: [
+    ResolveAffiliationForSchedulingUseCase,
+    ListSchedulableAffiliationsUseCase,
+    GetAffiliationBillingInfoUseCase,
+    SearchPharmacyBranchesUseCase,
+    GetPharmacyBranchUseCase,
+  ],
 })
 export class ProviderDirectoryModule {}

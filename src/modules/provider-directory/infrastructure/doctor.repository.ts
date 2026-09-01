@@ -18,6 +18,9 @@ export interface UpdateDoctorInput {
   licenseNumber?: string;
   regionCode?: string;
   photoUrl?: string;
+  bio?: string;
+  degree?: string;
+  experienceYears?: number;
 }
 
 const DOCTOR_WITH_USER = { user: true, specialty: true } satisfies Prisma.DoctorInclude;
@@ -44,6 +47,14 @@ export class DoctorRepository {
     return db.doctor.findUnique({ where: { id } });
   }
 
+  findByUserId(db: Prisma.TransactionClient, userId: string): Promise<Doctor | null> {
+    return db.doctor.findUnique({ where: { user_id: userId } });
+  }
+
+  findByUserIdWithUser(db: Prisma.TransactionClient, userId: string): Promise<DoctorWithUser | null> {
+    return db.doctor.findUnique({ where: { user_id: userId }, include: DOCTOR_WITH_USER });
+  }
+
   findByIdWithUser(db: Prisma.TransactionClient, id: string): Promise<DoctorWithUser | null> {
     return db.doctor.findUnique({ where: { id }, include: DOCTOR_WITH_USER });
   }
@@ -59,6 +70,9 @@ export class DoctorRepository {
       ...(input.licenseNumber !== undefined && { license_number: input.licenseNumber }),
       ...(input.regionCode !== undefined && { region_code: input.regionCode }),
       ...(input.photoUrl !== undefined && { photo_url: input.photoUrl }),
+      ...(input.bio !== undefined && { bio: input.bio }),
+      ...(input.degree !== undefined && { degree: input.degree }),
+      ...(input.experienceYears !== undefined && { experience_years: input.experienceYears }),
     });
   }
 

@@ -11,6 +11,7 @@ export interface PrescriptionDetail {
   prescriptionId: string;
   status: string;
   source: string;
+  notes: string | null;
   images: { id: string; fileUrl: string; qualityCheckStatus: string }[];
   items: { id: string; drugCode: string | null; drugNameFreeText: string | null; dose: string | null; frequency: string | null }[];
   reviews: { id: string; decision: string; reasonCode: string | null; reviewedAt: string }[];
@@ -54,6 +55,7 @@ export class GetPrescriptionUseCase {
       prescriptionId: prescription.id,
       status: prescription.status,
       source: prescription.source,
+      notes: prescription.notes,
       images: images.map((image) => ({ id: image.id, fileUrl: image.file_url, qualityCheckStatus: image.quality_check_status })),
       items: items.map((item) => ({ id: item.id, drugCode: item.drug_code, drugNameFreeText: item.drug_name_free_text, dose: item.dose, frequency: item.frequency })),
       reviews: reviews.map((review) => ({ id: review.id, decision: review.decision, reasonCode: review.reason_code, reviewedAt: review.reviewed_at.toISOString() })),

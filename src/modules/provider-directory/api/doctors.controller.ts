@@ -4,9 +4,11 @@ import { Doctor, DoctorClinicAffiliation, RoleContextType } from '@prisma/client
 import { CreateAffiliationUseCase } from '../application/create-affiliation.use-case';
 import { CreateDoctorUseCase } from '../application/create-doctor.use-case';
 import { DoctorDetail, GetDoctorUseCase } from '../application/get-doctor.use-case';
+import { GetMyDoctorProfileUseCase, MyDoctorProfile } from '../application/get-my-doctor-profile.use-case';
 import { SearchDoctorsResult, SearchDoctorsUseCase } from '../application/search-doctors.use-case';
 import { SuspendDoctorUseCase } from '../application/suspend-doctor.use-case';
 import { UpdateDoctorUseCase } from '../application/update-doctor.use-case';
+import { UpdateMyDoctorProfileUseCase } from '../application/update-my-doctor-profile.use-case';
 import { VerifyDoctorUseCase } from '../application/verify-doctor.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -16,6 +18,7 @@ import { CreateAffiliationDto } from './dto/create-affiliation.dto';
 import { CreateDoctorDto } from './dto/create-doctor.dto';
 import { DoctorSearchQueryDto } from './dto/doctor-search-query.dto';
 import { UpdateDoctorDto } from './dto/update-doctor.dto';
+import { UpdateMyDoctorProfileDto } from './dto/update-my-doctor-profile.dto';
 
 /**
  * File 11 05.4/05.3, File 12 Part 32: search + detail are public
@@ -32,6 +35,8 @@ export class DoctorsController {
     @Inject(VerifyDoctorUseCase) private readonly verifyDoctor: VerifyDoctorUseCase,
     @Inject(SuspendDoctorUseCase) private readonly suspendDoctor: SuspendDoctorUseCase,
     @Inject(GetDoctorUseCase) private readonly getDoctor: GetDoctorUseCase,
+    @Inject(GetMyDoctorProfileUseCase) private readonly getMyDoctorProfile: GetMyDoctorProfileUseCase,
+    @Inject(UpdateMyDoctorProfileUseCase) private readonly updateMyDoctorProfile: UpdateMyDoctorProfileUseCase,
     @Inject(SearchDoctorsUseCase) private readonly searchDoctors: SearchDoctorsUseCase,
     @Inject(CreateAffiliationUseCase) private readonly createAffiliation: CreateAffiliationUseCase,
   ) {}
@@ -41,6 +46,25 @@ export class DoctorsController {
   @ApiOperation({ summary: 'Public doctor search (File 10 §2.3) — specialty/location/sort, cursor-paginated' })
   search(@Query() query: DoctorSearchQueryDto): Promise<SearchDoctorsResult> {
     return this.searchDoctors.execute(query);
+  }
+
+  // Registered before `:doctorId` below — a literal 'me' segment would
+  // otherwise be captured by that dynamic param and rejected by its
+  // ParseUUIDPipe (File 12 Part 45).
+  @ApiBearerAuth()
+  @Roles(RoleContextType.DOCTOR)
+  @Get('me')
+  @ApiOperation({ summary: "A doctor's own directory record, including licenseNumber (the public detail route omits it)" })
+  getMe(@CurrentUser() user: AccessTokenPayload): Promise<MyDoctorProfile> {
+    return this.getMyDoctorProfile.execute(user);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleContextType.DOCTOR)
+  @Patch('me')
+  @ApiOperation({ summary: "A doctor's own self-edit — bio/degree/experienceYears only, narrower than the Admin PATCH below" })
+  updateMe(@CurrentUser() user: AccessTokenPayload, @Body() dto: UpdateMyDoctorProfileDto): Promise<MyDoctorProfile> {
+    return this.updateMyDoctorProfile.execute(user, dto);
   }
 
   @OptionalAuth()
