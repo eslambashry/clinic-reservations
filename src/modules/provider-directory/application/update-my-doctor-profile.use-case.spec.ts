@@ -1,0 +1,45 @@
+import { NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { UpdateMyDoctorProfileUseCase } from './update-my-doctor-profile.use-case';
+
+describe('UpdateMyDoctorProfileUseCase', () => {
+  const actor = { sub: 'user-1', roleMembershipId: 'membership-1', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+  const profile = { id: 'doctor-1', displayName: 'Amr Adel' } as any;
+
+  function setup() {
+    const tx = {} as any;
+    const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
+    const doctors = { findByUserId: jest.fn(), update: jest.fn() };
+    const getMyDoctorProfile = { execute: jest.fn() };
+    const useCase = new UpdateMyDoctorProfileUseCase(prisma as any, doctors as any, getMyDoctorProfile as any);
+    return { tx, doctors, getMyDoctorProfile, useCase };
+  }
+
+  it('404s when the caller has no doctor row', async () => {
+    const { doctors, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue(null);
+
+    await expect(useCase.execute(actor, { bio: 'New bio' })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it('updates only bio/degree/experienceYears and re-reads the fresh profile', async () => {
+    const { tx, doctors, getMyDoctorProfile, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', version: 3 });
+    getMyDoctorProfile.execute.mockResolvedValue(profile);
+
+    const result = await useCase.execute(actor, { bio: 'New bio', degree: 'MD', experienceYears: 12 });
+
+    expect(doctors.update).toHaveBeenCalledWith(tx, 'doctor-1', 3, { bio: 'New bio', degree: 'MD', experienceYears: 12 });
+    expect(getMyDoctorProfile.execute).toHaveBeenCalledWith(actor);
+    expect(result).toBe(profile);
+  });
+
+  it('skips the write entirely when no field is given', async () => {
+    const { doctors, getMyDoctorProfile, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', version: 3 });
+    getMyDoctorProfile.execute.mockResolvedValue(profile);
+
+    await useCase.execute(actor, {});
+
+    expect(doctors.update).not.toHaveBeenCalled();
+  });
+});

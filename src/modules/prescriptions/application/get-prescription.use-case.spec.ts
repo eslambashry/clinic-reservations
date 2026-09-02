@@ -6,7 +6,7 @@ function buildTx() {
 }
 
 describe('GetPrescriptionUseCase', () => {
-  const prescription = { id: 'prescription-1', patient_id: 'patient-1', status: 'QUALITY_CHECK_PASSED', source: 'PATIENT_UPLOADED' };
+  const prescription = { id: 'prescription-1', patient_id: 'patient-1', status: 'QUALITY_CHECK_PASSED', source: 'PATIENT_UPLOADED', notes: 'Take with food' };
 
   function setup() {
     const prisma = buildTx();
@@ -46,6 +46,7 @@ describe('GetPrescriptionUseCase', () => {
     const result = await useCase.execute('prescription-1', actor);
 
     expect(result.prescriptionId).toBe('prescription-1');
+    expect(result.notes).toBe('Take with food');
   });
 
   it('allows PHARMACY_STAFF to read any prescription (no branch-scoping yet, File 12 Part 37.4)', async () => {

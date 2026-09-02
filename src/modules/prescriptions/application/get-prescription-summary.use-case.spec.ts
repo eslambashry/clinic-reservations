@@ -9,6 +9,7 @@ describe('GetPrescriptionSummaryUseCase', () => {
         status: 'ACCEPTED',
         expires_at: new Date('2026-09-01T00:00:00Z'),
         doctor_id: null,
+        notes: 'Take with food',
       }),
     };
     const images = {
@@ -25,6 +26,7 @@ describe('GetPrescriptionSummaryUseCase', () => {
       status: 'ACCEPTED',
       expiresAt: '2026-09-01T00:00:00.000Z',
       doctorId: null,
+      notes: 'Take with food',
       images: [{ id: 'img-1', fileUrl: 'https://x/1.jpg?signed=1', qualityCheckStatus: 'PASSED' }],
     });
   });

@@ -11,6 +11,7 @@ export interface PrescriptionSummary {
   status: string;
   expiresAt: string | null;
   doctorId: string | null;
+  notes: string | null;
   images: { id: string; fileUrl: string; qualityCheckStatus: string }[];
 }
 
@@ -45,6 +46,7 @@ export class GetPrescriptionSummaryUseCase {
       status: prescription.status,
       expiresAt: prescription.expires_at?.toISOString() ?? null,
       doctorId: prescription.doctor_id,
+      notes: prescription.notes,
       // Signed fresh on every read — see the identical note in `GetPrescriptionUseCase`.
       images: images.map((image) => ({
         id: image.id,

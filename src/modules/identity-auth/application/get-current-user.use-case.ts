@@ -15,6 +15,7 @@ export interface GetCurrentUserResult {
   roles: string[];
   activeRole: string;
   displayName: string | null;
+  email: string | null;
   /**
    * The active membership's own scope id (e.g. a pharmacy branch id for
    * PHARMACY_STAFF) — null for context types with no scope (PATIENT).
@@ -51,6 +52,7 @@ export class GetCurrentUserUseCase {
       roles: memberships.map((m) => m.role_code),
       activeRole: input.activeRoleCode,
       displayName,
+      email: user.email,
       contextId: activeMembership?.context_id ?? null,
     };
   }

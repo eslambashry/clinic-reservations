@@ -5,6 +5,7 @@ import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimist
 export interface NewPrescription {
   patientId: string;
   source: PrescriptionSource;
+  notes?: string;
 }
 
 export interface ListQueueParams {
@@ -19,6 +20,7 @@ export class PrescriptionRepository {
       data: {
         patient_id: input.patientId,
         source: input.source,
+        notes: input.notes,
       },
     });
   }

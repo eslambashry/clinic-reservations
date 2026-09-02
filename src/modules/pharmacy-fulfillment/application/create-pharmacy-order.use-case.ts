@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { FulfillmentType } from '@prisma/client';
 import { GetAcceptedPrescriptionForOrderUseCase } from '../../prescriptions/application/get-accepted-prescription-for-order.use-case';
+import { GetPharmacyBranchUseCase } from '../../provider-directory/application/get-pharmacy-branch.use-case';
 import { SearchPharmacyBranchesUseCase } from '../../provider-directory/application/search-pharmacy-branches.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -16,8 +17,9 @@ import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.reposi
 export interface CreatePharmacyOrderInput {
   prescriptionId: string;
   fulfillmentType: FulfillmentType;
-  lat: number;
-  lng: number;
+  lat?: number;
+  lng?: number;
+  pharmacyBranchId?: string;
 }
 
 export interface CreatePharmacyOrderResult {
@@ -28,15 +30,20 @@ export interface CreatePharmacyOrderResult {
 
 /**
  * File 11 Part 14 (`[*] --> RECEIVED`) / File 12 Part 39: creates a
- * `PharmacyOrder` from an `ACCEPTED` prescription and broadcasts it to the
- * nearest verified pharmacy branches.
+ * `PharmacyOrder` from an `ACCEPTED` prescription and broadcasts it to
+ * pharmacy branches.
  *
- * `SearchPharmacyBranchesUseCase` (Part 38) runs BEFORE the `$transaction`
- * opens — same reasoning `UploadPrescriptionUseCase` already uses for its
- * quality-check/OCR calls: its repository takes `PrismaService`, not a
- * `tx`, so it can't participate in the write transaction anyway, and
- * failing fast on "no branches nearby" avoids opening a transaction that's
- * doomed to roll back.
+ * File 12 Part 44: if the caller already picked a specific branch
+ * (`pharmacyBranchId`), that branch alone is broadcast to —
+ * `accept`/`decline`/`quote` work exactly the same as the many-branch case,
+ * just with a single candidate. Otherwise the order falls back to
+ * broadcasting to the nearest verified branches found from `lat`/`lng`.
+ *
+ * Both `GetPharmacyBranchUseCase`/`SearchPharmacyBranchesUseCase` run BEFORE
+ * the `$transaction` opens — same reasoning `UploadPrescriptionUseCase`
+ * already uses for its quality-check/OCR calls: neither repository
+ * participates in the write transaction anyway, and failing fast avoids
+ * opening a transaction that's doomed to roll back.
  */
 @Injectable()
 export class CreatePharmacyOrderUseCase {
@@ -47,22 +54,24 @@ export class CreatePharmacyOrderUseCase {
     @Inject(PharmacyOrderBroadcastRepository) private readonly broadcasts: PharmacyOrderBroadcastRepository,
     @Inject(GetAcceptedPrescriptionForOrderUseCase) private readonly getAcceptedPrescription: GetAcceptedPrescriptionForOrderUseCase,
     @Inject(SearchPharmacyBranchesUseCase) private readonly searchPharmacyBranches: SearchPharmacyBranchesUseCase,
+    @Inject(GetPharmacyBranchUseCase) private readonly getPharmacyBranch: GetPharmacyBranchUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(input: CreatePharmacyOrderInput, actor: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
-    const branchResults = await this.searchPharmacyBranches.execute({
-      lat: input.lat,
-      lng: input.lng,
-      radiusKm: PHARMACY_CONSTANTS.BROADCAST_RADIUS_KM,
-      deliveryCapable: input.fulfillmentType === 'DELIVERY' ? true : undefined,
-      limit: PHARMACY_CONSTANTS.BROADCAST_FANOUT_COUNT,
-    });
-    if (branchResults.items.length === 0) {
-      throw new BusinessRuleError('NO_PHARMACY_BRANCHES_AVAILABLE', 'No verified pharmacy branches were found near the given location.');
+    let branchIds: string[];
+    if (input.pharmacyBranchId) {
+      branchIds = [await this.resolveChosenBranch(input.pharmacyBranchId, input.fulfillmentType)];
+    } else {
+      if (input.lat === undefined || input.lng === undefined) {
+        throw new BusinessRuleError(
+          'PHARMACY_ORDER_LOCATION_REQUIRED',
+          'lat/lng are required when pharmacyBranchId is not provided.',
+        );
+      }
+      branchIds = await this.findNearestBranches(input.lat, input.lng, input.fulfillmentType);
     }
-    const branchIds = branchResults.items.map((branch) => branch.branchId);
 
     return this.prisma.$transaction(async (tx) => {
       const latestOrder = await this.pharmacyOrders.findLatestByPrescriptionId(tx, input.prescriptionId);
@@ -101,5 +110,28 @@ export class CreatePharmacyOrderUseCase {
 
       return { pharmacyOrderId: order.id, status: order.status, broadcastedBranchIds: branchIds };
     });
+  }
+
+  /** Validates the caller's chosen branch (exists, VERIFIED, delivery-capable if needed) and returns its id alone as the broadcast set. */
+  private async resolveChosenBranch(branchId: string, fulfillmentType: FulfillmentType): Promise<string> {
+    const branch = await this.getPharmacyBranch.execute(branchId, undefined);
+    if (fulfillmentType === 'DELIVERY' && !branch.delivery_capable) {
+      throw new BusinessRuleError('PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE', 'The chosen pharmacy branch does not offer delivery.');
+    }
+    return branch.id;
+  }
+
+  private async findNearestBranches(lat: number, lng: number, fulfillmentType: FulfillmentType): Promise<string[]> {
+    const branchResults = await this.searchPharmacyBranches.execute({
+      lat,
+      lng,
+      radiusKm: PHARMACY_CONSTANTS.BROADCAST_RADIUS_KM,
+      deliveryCapable: fulfillmentType === 'DELIVERY' ? true : undefined,
+      limit: PHARMACY_CONSTANTS.BROADCAST_FANOUT_COUNT,
+    });
+    if (branchResults.items.length === 0) {
+      throw new BusinessRuleError('NO_PHARMACY_BRANCHES_AVAILABLE', 'No verified pharmacy branches were found near the given location.');
+    }
+    return branchResults.items.map((branch) => branch.branchId);
   }
 }

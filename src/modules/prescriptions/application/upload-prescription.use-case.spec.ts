@@ -44,7 +44,7 @@ describe('UploadPrescriptionUseCase', () => {
 
     expect(mediaStorage.upload).toHaveBeenCalledWith(input.files[0], { folder: 'prescriptions/patient-1', isPrivate: true });
     expect(result).toEqual({ prescriptionId: 'prescription-1', status: 'QUALITY_CHECK_PASSED' });
-    expect(prescriptions.create).toHaveBeenCalledWith(tx, { patientId: 'patient-1', source: 'PATIENT_UPLOADED' });
+    expect(prescriptions.create).toHaveBeenCalledWith(tx, { patientId: 'patient-1', source: 'PATIENT_UPLOADED', notes: 'Take with food' });
     expect(images.createMany).toHaveBeenCalledWith(tx, [
       { prescriptionId: 'prescription-1', fileUrl: 'https://example.com/rx1.jpg', qualityCheck: { passed: true, blurScore: null } },
     ]);

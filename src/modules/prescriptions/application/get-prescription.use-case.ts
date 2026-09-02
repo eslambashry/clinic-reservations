@@ -13,6 +13,7 @@ export interface PrescriptionDetail {
   prescriptionId: string;
   status: string;
   source: string;
+  notes: string | null;
   images: { id: string; fileUrl: string; qualityCheckStatus: string }[];
   items: { id: string; drugCode: string | null; drugNameFreeText: string | null; dose: string | null; frequency: string | null }[];
   reviews: { id: string; decision: string; reasonCode: string | null; reviewedAt: string }[];
@@ -57,6 +58,7 @@ export class GetPrescriptionUseCase {
       prescriptionId: prescription.id,
       status: prescription.status,
       source: prescription.source,
+      notes: prescription.notes,
       // `file_url` is stored unsigned (uploaded `isPrivate: true` — File 11's PHI table requires restricted access, not a public link) — sign fresh on every read, never persist the signed form.
       images: images.map((image) => ({
         id: image.id,
