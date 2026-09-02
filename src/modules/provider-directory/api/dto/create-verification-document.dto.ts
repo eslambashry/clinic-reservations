@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ProviderType } from '@prisma/client';
-import { IsEnum, IsString, IsUUID, IsUrl } from 'class-validator';
+import { IsEnum, IsString, IsUUID } from 'class-validator';
 
-/** File 12 Part 32.7: `fileUrl` is pre-hosted — no upload flow in this phase. */
+/** File 12 Part 32.7 (superseded): the file itself arrives as `multipart/form-data` (`@UploadedFile()` in the controller) — this DTO only covers the accompanying text fields. */
 export class CreateVerificationDocumentDto {
   @ApiProperty({ enum: ProviderType, example: 'DOCTOR' })
   @IsEnum(ProviderType)
@@ -15,8 +15,4 @@ export class CreateVerificationDocumentDto {
   @ApiProperty({ example: 'MEDICAL_LICENSE' })
   @IsString()
   docType: string;
-
-  @ApiProperty({ example: 'https://storage.example.com/docs/license-123.pdf' })
-  @IsUrl()
-  fileUrl: string;
 }

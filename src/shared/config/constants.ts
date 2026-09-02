@@ -75,3 +75,22 @@ export const RATE_LIMIT_DEFAULT = {
   TTL_SECONDS: 60,
   LIMIT: 100,
 } as const;
+
+/**
+ * User-generated media/document uploads (`DEC-009`, resolved via ImageKit —
+ * File 11 Part 04: "MIME allowlist (jpeg/png/pdf), size/count validated at
+ * the API layer before touching storage"). File 11/12 give the MIME
+ * allowlist but no exact byte sizes — those are engineering defaults for the
+ * launch pilot, same spirit as `RATE_LIMIT_DEFAULT`, not a source-doc
+ * citation. `PRESCRIPTION_MAX_FILES` is the one number File 10 §2.3 does
+ * state explicitly, preserved unchanged from the pre-ImageKit implementation.
+ */
+export const MEDIA_CONSTANTS = {
+  IMAGE_MIME_TYPES: ['image/jpeg', 'image/png'] as string[],
+  DOCUMENT_MIME_TYPES: ['image/jpeg', 'image/png', 'application/pdf'] as string[],
+  MAX_IMAGE_SIZE_BYTES: 8 * 1024 * 1024,
+  MAX_DOCUMENT_SIZE_BYTES: 15 * 1024 * 1024,
+  PRESCRIPTION_MAX_FILES: 5,
+  /** How long a freshly generated signed URL for a private file stays valid (read-time only — never persisted). */
+  SIGNED_URL_TTL_SECONDS: 5 * 60,
+} as const;

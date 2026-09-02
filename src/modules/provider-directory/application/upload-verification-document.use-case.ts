@@ -2,7 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, ProviderType, ProviderVerificationDocument } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { ClinicRepository } from '../infrastructure/clinic.repository';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
@@ -13,10 +15,18 @@ export interface UploadVerificationDocumentInput {
   providerType: ProviderType;
   providerId: string;
   docType: string;
-  fileUrl: string;
+  file: UploadedMediaFile;
 }
 
-/** File 12 Part 32.7: `fileUrl` is a pre-hosted URL — no upload flow yet (object storage vendor is OPEN). */
+/**
+ * File 12 Part 32.7 (superseded): the document now uploads to ImageKit —
+ * private (`isPrivate: true`), since a medical license/syndicate ID/
+ * commercial registration is exactly the kind of sensitive document File
+ * 11's PHI table demands "restricted IAM" for, not a publicly guessable
+ * link. Admin-only end to end (`VerificationDocumentsController`'s
+ * class-level `@Roles(ADMIN)`) — no ownership check needed here, same as
+ * before this change.
+ */
 @Injectable()
 export class UploadVerificationDocumentUseCase {
   constructor(
@@ -26,16 +36,29 @@ export class UploadVerificationDocumentUseCase {
     @Inject(ClinicRepository) private readonly clinics: ClinicRepository,
     @Inject(PharmacyRepository) private readonly pharmacies: PharmacyRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(
     input: UploadVerificationDocumentInput,
     actor: AccessTokenPayload,
   ): Promise<ProviderVerificationDocument> {
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertProviderExists(tx, input.providerType, input.providerId);
+    // Checked before uploading — an invalid providerId should fail fast, not consume an ImageKit upload for a file that will never be persisted.
+    await this.assertProviderExists(this.prisma, input.providerType, input.providerId);
 
-      const document = await this.documents.create(tx, input);
+    // Uploaded ahead of the transaction — same reasoning as `UploadPrescriptionUseCase`: an external round trip has no business holding a DB transaction open.
+    const stored = await this.mediaStorage.upload(input.file, {
+      folder: `provider-verification/${input.providerType}/${input.providerId}`,
+      isPrivate: true,
+    });
+
+    return this.prisma.$transaction(async (tx) => {
+      const document = await this.documents.create(tx, {
+        providerType: input.providerType,
+        providerId: input.providerId,
+        docType: input.docType,
+        fileUrl: stored.url,
+      });
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,
@@ -45,7 +68,8 @@ export class UploadVerificationDocumentUseCase {
         resourceId: document.id,
       });
 
-      return document;
+      // Response carries a signed, immediately-usable URL — the persisted `file_url` stays the unsigned canonical form.
+      return { ...document, file_url: this.mediaStorage.getSignedUrl(document.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS) };
     });
   }
 

@@ -1,14 +1,14 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, ArrayMinSize, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
-/** File 10 §2.3: max 5 files per prescription. File 12 Part 37.2: fileUrls are pre-hosted (no real multipart upload — object storage is DEC-009-gated/deferred, same pattern as ProviderVerificationDocument.file_url). */
+/**
+ * File 10 §2.3: max 5 files per prescription (`MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES`,
+ * enforced by the controller's `FilesInterceptor` + `assertValidMediaFiles`,
+ * unchanged from the pre-ImageKit implementation). Files themselves arrive as
+ * `multipart/form-data` (`@UploadedFiles()` in the controller) — this DTO only
+ * covers the remaining text field.
+ */
 export class UploadPrescriptionDto {
-  @ApiProperty({ type: [String], minItems: 1, maxItems: 5 })
-  @ArrayMinSize(1)
-  @ArrayMaxSize(5)
-  @IsUrl({}, { each: true })
-  fileUrls: string[];
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

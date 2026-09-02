@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, UseInterceptors } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { RoleContextType } from '@prisma/client';
 import { GetPrescriptionUseCase, PrescriptionDetail } from '../application/get-prescription.use-case';
 import { ListPrescriptionsResult, ListPrescriptionsUseCase } from '../application/list-prescriptions.use-case';
@@ -8,7 +9,11 @@ import { UploadPrescriptionResult, UploadPrescriptionUseCase } from '../applicat
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { IdempotencyInterceptor } from '../../../shared/core/idempotency/idempotency-key.interceptor';
+import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
+import { buildMemoryMulterOptions } from '../../../shared/kernel/storage/multer.config';
+import { toUploadedMediaFiles } from '../../../shared/kernel/storage/multer-file.mapper';
 import { ListPrescriptionsQueryDto } from './dto/list-prescriptions-query.dto';
 import { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import { UploadPrescriptionDto } from './dto/upload-prescription.dto';
@@ -32,10 +37,34 @@ export class PrescriptionsController {
 
   @Roles(RoleContextType.PATIENT)
   @Post('upload')
-  @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Upload a prescription photo/PDF for pharmacist review (File 10 §2.3 / File 12 Part 37)' })
-  upload(@Body() dto: UploadPrescriptionDto, @CurrentUser() user: AccessTokenPayload): Promise<UploadPrescriptionResult> {
-    return this.uploadPrescription.execute(dto, user);
+  @UseInterceptors(
+    FilesInterceptor('files', MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES, buildMemoryMulterOptions(MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES)),
+    IdempotencyInterceptor,
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES },
+        notes: { type: 'string' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Upload a prescription photo/PDF for pharmacist review (File 10 §2.3 / File 12 Part 37) — multipart, max 5 files, jpeg/png/pdf' })
+  upload(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() dto: UploadPrescriptionDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<UploadPrescriptionResult> {
+    const uploadedFiles = toUploadedMediaFiles(files ?? []);
+    assertValidMediaFiles(uploadedFiles, {
+      allowedMimeTypes: MEDIA_CONSTANTS.DOCUMENT_MIME_TYPES,
+      maxFileSizeBytes: MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES,
+      maxFileCount: MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES,
+    });
+
+    return this.uploadPrescription.execute({ files: uploadedFiles, notes: dto.notes }, user);
   }
 
   @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF, RoleContextType.ADMIN)

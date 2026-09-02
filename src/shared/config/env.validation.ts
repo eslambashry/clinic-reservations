@@ -55,6 +55,24 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   CORS_ALLOWED_ORIGINS?: string;
+
+  /**
+   * ImageKit (`DEC-009` — object storage vendor, File 12 Part 12) — private
+   * API key, used server-side to authenticate uploads and to sign private-file
+   * URLs (`src/shared/kernel/storage/imagekit-storage.adapter.ts`). Never
+   * logged, never sent to a client.
+   */
+  @IsString()
+  IMAGEKIT_PRIVATE_KEY: string;
+
+  /** Public delivery endpoint (e.g. `https://ik.imagekit.io/<id>`) — used to build both public and signed URLs. */
+  @IsString()
+  IMAGEKIT_URL_ENDPOINT: string;
+
+  /** Not used server-side today (all uploads are server-side, authenticated by `IMAGEKIT_PRIVATE_KEY`) — kept for a future client-side/direct-upload flow. */
+  @IsString()
+  @IsOptional()
+  IMAGEKIT_PUBLIC_KEY?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

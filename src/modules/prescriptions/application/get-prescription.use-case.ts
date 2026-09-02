@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { PrescriptionImageRepository } from '../infrastructure/prescription-image.repository';
 import { PrescriptionItemRepository } from '../infrastructure/prescription-item.repository';
@@ -34,6 +36,7 @@ export class GetPrescriptionUseCase {
     @Inject(PrescriptionImageRepository) private readonly images: PrescriptionImageRepository,
     @Inject(PrescriptionItemRepository) private readonly items: PrescriptionItemRepository,
     @Inject(PrescriptionReviewRepository) private readonly reviews: PrescriptionReviewRepository,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(prescriptionId: string, actor: AccessTokenPayload): Promise<PrescriptionDetail> {
@@ -56,7 +59,12 @@ export class GetPrescriptionUseCase {
       status: prescription.status,
       source: prescription.source,
       notes: prescription.notes,
-      images: images.map((image) => ({ id: image.id, fileUrl: image.file_url, qualityCheckStatus: image.quality_check_status })),
+      // `file_url` is stored unsigned (uploaded `isPrivate: true` — File 11's PHI table requires restricted access, not a public link) — sign fresh on every read, never persist the signed form.
+      images: images.map((image) => ({
+        id: image.id,
+        fileUrl: this.mediaStorage.getSignedUrl(image.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS),
+        qualityCheckStatus: image.quality_check_status,
+      })),
       items: items.map((item) => ({ id: item.id, drugCode: item.drug_code, drugNameFreeText: item.drug_name_free_text, dose: item.dose, frequency: item.frequency })),
       reviews: reviews.map((review) => ({ id: review.id, decision: review.decision, reasonCode: review.reason_code, reviewedAt: review.reviewed_at.toISOString() })),
     };

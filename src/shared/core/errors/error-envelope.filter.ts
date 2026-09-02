@@ -162,6 +162,8 @@ function httpStatusToGenericCode(status: number): string {
       return 'RESOURCE_NOT_FOUND';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'RATE_LIMITED';
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return 'FILE_TOO_LARGE';
     case HttpStatus.SERVICE_UNAVAILABLE:
     case HttpStatus.BAD_GATEWAY:
       return 'GATEWAY_UNAVAILABLE';

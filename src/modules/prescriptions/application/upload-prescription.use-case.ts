@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
+import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { OCR_EXTRACTOR, OcrExtractorPort } from './ports/ocr-extractor.port';
 import { QUALITY_CHECKER, QualityCheckerPort } from './ports/quality-checker.port';
@@ -10,7 +11,7 @@ import { PrescriptionItemRepository } from '../infrastructure/prescription-item.
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
 
 export interface UploadPrescriptionInput {
-  fileUrls: string[];
+  files: UploadedMediaFile[];
   notes?: string;
 }
 
@@ -27,6 +28,14 @@ export interface UploadPrescriptionResult {
  * this use-case changing. Response `status` is the real post-check value,
  * not the literal `"UPLOADED"` File 10's contract shows — more useful given
  * there is no actual async wait for a client to poll through.
+ *
+ * Files upload to ImageKit (`MEDIA_STORAGE`, private — PHI, File 11's
+ * encryption table requires restricted access, not a public URL) before the
+ * transaction opens, same reasoning as running quality-check/OCR ahead of
+ * it: an external round trip has no business holding a DB transaction open.
+ * `QualityCheckerPort`/`OcrExtractorPort` still take a `fileUrl: string` —
+ * unchanged, they run against the now-uploaded ImageKit URL exactly as they
+ * used to run against the pre-hosted one.
  */
 @Injectable()
 export class UploadPrescriptionUseCase {
@@ -39,16 +48,22 @@ export class UploadPrescriptionUseCase {
     @Inject(OCR_EXTRACTOR) private readonly ocrExtractor: OcrExtractorPort,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(input: UploadPrescriptionInput, actor: AccessTokenPayload): Promise<UploadPrescriptionResult> {
+    const uploaded = await Promise.all(
+      input.files.map((file) => this.mediaStorage.upload(file, { folder: `prescriptions/${actor.sub}`, isPrivate: true })),
+    );
+    const fileUrls = uploaded.map((stored) => stored.url);
+
     // Quality-check runs per file before touching the database — cheap, stub-backed, no reason to hold a transaction open for it.
-    const qualityResults = await Promise.all(input.fileUrls.map((fileUrl) => this.qualityChecker.check(fileUrl)));
+    const qualityResults = await Promise.all(fileUrls.map((fileUrl) => this.qualityChecker.check(fileUrl)));
     const allPassed = qualityResults.every((result) => result.passed);
 
     // OCR only runs against images that actually passed quality — no point extracting from a failed photo.
     const ocrSuggestions = allPassed
-      ? (await Promise.all(input.fileUrls.map((fileUrl) => this.ocrExtractor.extract(fileUrl)))).flat()
+      ? (await Promise.all(fileUrls.map((fileUrl) => this.ocrExtractor.extract(fileUrl)))).flat()
       : [];
 
     return this.prisma.$transaction(async (tx) => {
@@ -60,7 +75,7 @@ export class UploadPrescriptionUseCase {
 
       await this.images.createMany(
         tx,
-        input.fileUrls.map((fileUrl, index) => ({ prescriptionId: prescription.id, fileUrl, qualityCheck: qualityResults[index] })),
+        fileUrls.map((fileUrl, index) => ({ prescriptionId: prescription.id, fileUrl, qualityCheck: qualityResults[index] })),
       );
 
       if (ocrSuggestions.length > 0) {

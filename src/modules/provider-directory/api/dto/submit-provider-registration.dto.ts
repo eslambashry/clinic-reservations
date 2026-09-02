@@ -6,8 +6,9 @@ import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
  * property names are deliberately `snake_case` — a scoped exception to Part
  * 09's `camelCase` API convention — to match the request body the Flutter
  * `provider_registration` feature already sends. Part 34.2 persists
- * `full_name`/`degree`/`email`/`experience_years`/`bio`; the remaining
- * optional fields below (`specialty_label`/`photo_data_uri`/`documents`/
+ * `full_name`/`degree`/`email`/`experience_years`/`bio`; a later pass (DEC-009
+ * resolved via ImageKit) added `photo_data_uri` to that list too. The
+ * remaining optional fields below (`specialty_label`/`documents`/
  * `city_label`/`working_days`) still have no persisted destination and stay
  * declared (and `@IsOptional()`) purely so the global `forbidNonWhitelisted`
  * ValidationPipe doesn't reject the frontend's existing payload —
@@ -69,7 +70,7 @@ export class SubmitProviderRegistrationDto {
   @IsString()
   email?: string;
 
-  @ApiPropertyOptional({ description: 'Not persisted — Doctor.photo_url is a pre-hosted URL field, no upload flow yet (ADR-005)' })
+  @ApiPropertyOptional({ description: 'Doctor.photo_url — a `data:<mime>;base64,<payload>` string (jpeg/png, max 8MB), uploaded to ImageKit and persisted (ADR-005, superseded: DEC-009 resolved)' })
   @IsOptional()
   @IsString()
   photo_data_uri?: string;
