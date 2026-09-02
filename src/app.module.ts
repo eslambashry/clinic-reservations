@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HealthModule } from './health/health.module';
 import { IdentityAuthModule } from './modules/identity-auth/identity-auth.module';
+import { LaboratoryModule } from './modules/laboratory/laboratory.module';
 import { PharmacyFulfillmentModule } from './modules/pharmacy-fulfillment/pharmacy-fulfillment.module';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from './modules/provider-directory/provider-directory.module';
@@ -33,6 +34,7 @@ import { MediaStorageModule } from './shared/kernel/storage/media-storage.module
     SchedulingAppointmentsModule,
     PrescriptionsModule,
     PharmacyFulfillmentModule,
+    LaboratoryModule,
   ],
 })
 export class AppModule {}

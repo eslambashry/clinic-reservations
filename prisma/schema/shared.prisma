@@ -365,3 +365,47 @@ enum OutboxEventStatus {
 
   @@map("outbox_events_status_enum")
 }
+
+/// Laboratory module (un-postponed 2026-09-02, File 12 Part 47). Copied 1:1
+/// from `medsuper-laboratory-dashboard/src/lib/api/types.ts`'s
+/// `LabOrderStatus` — the dashboard's own mock is the only authoritative
+/// source, same "adopt the console's own design" precedent pharmacy's flat
+/// quote already set (File 12 Part 40).
+enum LabOrderStatus {
+  REQUESTED
+  QUOTED
+  AWAITING_SAMPLE
+  IN_ANALYSIS
+  RESULTS_READY
+  REJECTED
+  CANCELLED
+
+  @@map("lab_orders_status_enum")
+}
+
+/// File 10 §3.3 — mirrors `FulfillmentType`'s role for pharmacy.
+enum CollectionType {
+  VISIT
+  HOME_COLLECTION
+
+  @@map("lab_orders_collection_type_enum")
+}
+
+enum ItemResultState {
+  PENDING
+  RECORDED
+
+  @@map("lab_order_items_result_state_enum")
+}
+
+/// UNREVIEWED until a human makes the critical/non-critical call
+/// (`SetCriticalFlagUseCase`) — always flips to REVIEWED in that same call,
+/// so `isCritical && UNREVIEWED` is not a reachable combination (the safety
+/// invariant `medsuper-laboratory-dashboard/docs/PROPOSED_CONTRACT.md` §2
+/// calls out explicitly).
+enum ResultReviewState {
+  UNREVIEWED
+  REVIEWED
+
+  @@map("lab_result_documents_review_state_enum")
+}

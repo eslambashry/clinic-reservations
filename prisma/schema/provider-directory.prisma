@@ -27,6 +27,7 @@ model Address {
   version           Int              @default(1)
   clinic_branches   ClinicBranch[]
   delivery_orders   DeliveryOrder[]
+  lab_branches      LabBranch[]
   pharmacy_branches PharmacyBranch[]
 
   @@map("addresses")

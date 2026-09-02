@@ -26,6 +26,9 @@ model User {
   audit_logs                      AuditLog[]                     @relation("ActorUser")
   consents                        Consent[]
   health_record                   HealthRecord?
+  lab_orders                      LabOrder[]
+  lab_order_notes_authored        LabOrderNote[]
+  lab_result_documents_uploaded   LabResultDocument[]
   notification_preferences        NotificationPreference[]
   notifications                   Notification[]
   payment_intents                 PaymentIntent[]

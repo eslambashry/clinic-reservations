@@ -31,6 +31,7 @@ model Prescription {
   updated_at      DateTime             @updatedAt @db.Timestamptz(6)
   version         Int                  @default(1)
   pharmacy_orders PharmacyOrder[]
+  lab_orders      LabOrder[]
   images          PrescriptionImage[]
   items           PrescriptionItem[]
   reviews         PrescriptionReview[]

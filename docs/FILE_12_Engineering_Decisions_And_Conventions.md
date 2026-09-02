@@ -1023,3 +1023,241 @@ clean, `pharmacy_booking`/`auth` suites pass (76 + 58) after updating
 `pharmacy_order_controller_test.dart` and `pharmacy_select_screen_test.dart`
 for the new conditional-location and no-pre-selection/delivery-capability
 behavior described in this same session.
+
+## PART 47 — Laboratory Module Un-Postpone + `medsuper-laboratory-dashboard` Connection (2026-09-02)
+
+The user explicitly asked to un-postpone `laboratory` (module map, root
+`README.md`/`MEMORY.md`), build a real backend from scratch, and connect
+`medsuper-laboratory-dashboard` to it "without gaps." Unlike Pharmacy
+Fulfillment (Part 39/40, which reconciled two *conflicting* pre-existing
+specs), Laboratory had zero Prisma models, zero endpoints, and no File 10/11
+engineering spec — but the dashboard's own `src/lib/api/types.ts`/
+`service.ts`/`mock-service.ts` was already a complete, internally-consistent
+design. This pass builds directly against that contract as the sole
+authority, the same relationship Part 40 established for pharmacy once its
+own reconciliation was done — no invented shape here needed reconciling.
+
+1. **New `prisma/schema/laboratory.prisma`**: `Laboratory`/`LabBranch`
+   (mirrors `Pharmacy`/`PharmacyBranch` exactly; `LabBranch` adds
+   `home_collection_capable Boolean` per the dashboard's
+   `LabBranch.homeCollectionCapable`), `TestCatalog` (code PK, mirrors
+   `DrugCatalog` minimally), `LabOrder` (flat quote fields, `queue_number`,
+   `booking_code`, `recollection_required`; `rejection_reason` is a plain
+   `String`, **not** a Postgres enum — the dashboard's own
+   `RejectOrderRequest.reason` is free-text, unlike pharmacy's closed
+   `PharmacyOrderRejectionReason` set), `LabOrderItem`, `LabResultDocument`
+   (one-directional FK via `item_id @unique`, not a bidirectional 1:1 —
+   the initial two-sided-FK draft was rejected by Prisma validation),
+   `LabOrderNote` (append-only, no `version`/`updated_at`). Four new enums
+   in `shared.prisma` (`LabOrderStatus`/`CollectionType`/`ItemResultState`/
+   `ResultReviewState`), copied 1:1 from the dashboard's own `types.ts` —
+   the only authoritative source. Migration
+   (`20260902000000_add_laboratory_module`) hand-written per this
+   environment's documented `prisma migrate dev` non-interactive-refusal
+   workaround (`MEMORY.md` §8); `db:migrate:deploy` against a real Postgres
+   was **not** run this pass (no local DB provisioned here, same
+   before-verification gap prior passes have flagged rather than silently
+   assumed away).
+2. **Custody trail reuses `audit_logs`, no new table** — every use-case
+   calls `AuditService.record`, exactly Part 43's precedent. One real
+   difference from pharmacy: lab custody events **recur** (multiple notes,
+   multiple per-item results, possible reject→recollect cycles), so
+   `detail` can't be reconstructed from the order's current row the way
+   pharmacy's one-shot quote/reject could (Part 43 item 5). This is the
+   first module to actually populate `audit_logs.reason_code` (declared
+   since before this pass, never used) with the event's own detail text at
+   write time instead — `ListLabAuditUseCase` then just reads it straight
+   off, no reconstruction logic needed. `encodeCustodyAction`/
+   `decodeCustodyAction` (`domain/custody-action.util.ts`) map the
+   dashboard's own 15-value `CustodyEventType` vocabulary onto
+   `laboratory.lab-order.<kebab-event>` 1:1 — no fulfillment-type-style
+   disambiguation needed here, unlike pharmacy's `fulfill` action (Part 43
+   item 4).
+3. **Closes a real, confirmed gap in the dashboard's own mock**: nothing in
+   `MockLaboratoryOrdersService` ever moved `QUOTED → AWAITING_SAMPLE`, even
+   though `BOOKING_CONFIRMED` was already a declared `CustodyEventType` and
+   `bookingCode` an already-declared `LabOrder` field — every quoted order
+   was permanently stuck. New `POST /lab-orders/{id}/confirm-booking`
+   (`ConfirmLabBookingUseCase`, `LAB_STAFF`) implements the dormant
+   transition and issues an `LB-XXXXXX` code (`randomInt`-based alphabet,
+   excludes `0/O/1/I` to avoid phone/reception mis-reads — same reasoning
+   `generateBookingCode`'s doc comment states). Frontend parity: added
+   `confirmBooking` to `LaboratoryOrdersService`/
+   `MockLaboratoryOrdersService` too (mock issues a `BC-####` code instead —
+   cosmetic difference only, nothing parses the format), plus a new staff
+   "تأكيد الحجز وإصدار الكود" button in `order-detail-pane.tsx`'s `QUOTED`
+   footer, so mock mode stops being permanently stuck at `QUOTED` as well.
+   Confirmed with the user before building (payment timing stays
+   out of scope — `DEC-002` — matching exactly what the dashboard already
+   models: no `PAID`-style gate blocks any transition today, and
+   `PayableType.LAB_ORDER` stays reserved-but-unused).
+4. **Minimal real `PATIENT`-role `POST /lab-orders`** (`CreateLabOrderUseCase`)
+   was added so the whole loop has one genuine entry point, confirmed with
+   the user — simpler than `CreatePharmacyOrderUseCase`: a lab order is
+   assigned to exactly one chosen branch at creation, never broadcast/
+   contested between branches. **Not wired into any Flutter screen** — the
+   dashboard's own code comment states plainly "no 'new order' flow exists
+   in this console," and this endpoint exists to make the module curl/
+   Postman-testable end-to-end, not because a mobile screen calls it yet.
+5. **`buildLabOrderDetail`'s `quote.quotedBy` has no backing column.**
+   Unlike pharmacy's quote (which never needed a "quoted by" field), the
+   dashboard's `LabQuote.quotedBy: string` is read directly by
+   `order-detail-pane.tsx` (`tf(t.drawer.quotedBy, {name: ...})`), but no
+   `quoted_by_user_id` column was added to `LabOrder` — adding one would
+   duplicate what the custody trail already records. Fixed by deriving it
+   in the mapper itself: the `QUOTE_SENT` custody event (already fetched
+   and passed into `buildLabOrderDetail` by both `GetLabOrderUseCase` and
+   `ListLabOrdersUseCase`) carries the acting staff member's `actorName`,
+   reused as `quotedBy` rather than adding a redundant denormalized column.
+6. **Frontend wiring is fully live, not partial**: new
+   `src/lib/api/http-service.ts` (`HttpLaboratoryOrdersService`) implements
+   every `LaboratoryOrdersService` method against the routes above, mirrors
+   the pharmacy adapter's envelope/timeout plumbing exactly (same
+   `Decimal`-as-string conversion for `quote.totalPrice`/item `unitPrice`,
+   same no-`orderCode`-on-the-wire convention for the audit list). HTTP
+   status → `LabApiError` mapping was derived from this repo's *actual*
+   error taxonomy (`domain-errors.ts`), not guessed: 404→`not_found`,
+   409→`conflict`, 400 (always `VALIDATION_ERROR`, class-validator
+   failures)→`validation_error`, 422 (always `BusinessRuleError`, an
+   open-ended code set)→`invalid_transition`; 401/403/500/network are left
+   as plain `Error`s — `use-lab-orders.ts`'s `act()` catch already degrades
+   any non-`LabApiError` to a generic, honest `{ok:false,
+   reason:"generic"}` outcome, so no new `LabApiError` kind was needed for
+   them. `src/lib/api/index.ts`'s selector and `src/lib/config.ts`'s
+   `isMockMode()` both flip on `NEXT_PUBLIC_API_BASE_URL` now, same as the
+   pharmacy dashboard's own selector — previously both were hardcoded to
+   stay mock-only regardless of env, a structural gate this pass removes
+   now that real routes exist.
+7. **Known gap, stated up front rather than discovered later: no auth
+   bridge exists for this console yet.** `queue-toolbar.tsx`'s own comment
+   already called this console's session "fixed... until branch-scoped
+   authorization lands" — there is no login flow, no token of any kind,
+   anywhere in `medsuper-laboratory-dashboard`. `HttpLaboratoryOrdersService`
+   therefore sends no `Authorization` header at all; every real call will
+   401 against `JwtAuthGuard` until a real-auth pass (mirroring the
+   pharmacy dashboard's own separate, later Part 42 pass) is done. This is
+   an explicitly flagged follow-up, not a silent scope expansion into
+   porting pharmacy's ~15-file auth subsystem in this same pass.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅, `eslint
+src/modules/laboratory` ✅, `jest src/modules/laboratory` 19/19 suites,
+84/84 tests ✅ (one spec per use-case, this codebase's universal
+convention). Frontend (`medsuper-laboratory-dashboard`): `tsc --noEmit` ✅,
+`eslint src/lib/api src/lib/mock src/lib/config.ts src/features/laboratory`
+✅. **Not run this pass**: `db:migrate:deploy` against a real Postgres, a
+live browser click-through of the new confirm-booking button, and any
+verification of the live HTTP adapter against a running backend — no local
+DB is provisioned in this environment, and the auth-bridge gap (item 7)
+means a live-mode click-through would 401 immediately regardless. All
+three are natural next passes, the same shape as pharmacy's own later
+real-Postgres/real-auth passes (Part 42) already took.
+
+## PART 48 — Laboratory Real-Auth Bridge (2026-09-02)
+
+Closes item 7 of Part 47, the same day, at the user's explicit direction
+("start the auth bridge now" after being asked whether to defer it).
+Mirrors `medsuper-pharmacy-dashboard`'s own Part 42 real-auth pass
+file-for-file wherever the two dashboards' existing auth scaffolding was
+already identical — which turned out to be almost everywhere, a correction
+worth stating plainly: an earlier claim in this same session ("no login
+flow of any kind exists anywhere in this codebase") was **wrong**.
+`medsuper-laboratory-dashboard` already had the *entire* mock auth
+scaffold pharmacy had before its own Part 42 — `lib/auth/mock-auth-service.ts`,
+`mock-store.ts`, `rate-limit.ts`, `session.ts`, `token.ts`, a full
+`app/(auth)/login`+`forgot-password`+`reset-password` UI, and every
+`app/api/auth/*` route handler — just never connected to a real backend.
+The actual task was a swap, not a from-scratch build.
+
+1. **Backend needed almost nothing** — `POST /auth/password/login`,
+   `GET/PATCH /auth/me`, `POST /auth/password/set`, `POST /auth/password/forgot`,
+   `POST /auth/password/reset(/verify-code)`, `POST /auth/logout`,
+   `POST /auth/token/refresh` were all already role-agnostic (built once
+   for `PATIENT` in Phase 1, reused verbatim by `PHARMACY_STAFF` in Part 42,
+   now by `LAB_STAFF` with zero backend changes to any of them).
+   `GetActiveRoleMembershipUseCase`/`GetCurrentUserUseCase` already resolve
+   any `RoleContextType` generically. The **one** real gap: no endpoint
+   existed to fetch a lab branch's display info for the post-login header,
+   mirroring `GET /pharmacy-branches/{id}`'s role in the sibling console.
+2. **New, deliberately minimal `GET /lab-branches/{branchId}`**
+   (`LabBranchesController`/`GetLabBranchUseCase`, `LAB_STAFF` only,
+   registered in `laboratory.module.ts`). Unlike
+   `GetPharmacyBranchUseCase` (a public, patient-facing directory lookup
+   that needs `provider-visibility.rules.ts`'s status/verification
+   computation), this is never anonymous and never about anyone else's
+   branch — the check is a plain `membership.contextId === branchId`
+   match, `RESOURCE_NOT_OWNED` (403) otherwise. Full branch directory CRUD
+   (search, verify, suspend, self-service edit), mirroring
+   `provider-directory`'s pharmacy equivalent, stays explicitly out of
+   scope — this endpoint exists solely to back the auth bridge's branch
+   display, the same reason the pharmacy equivalent was ever built.
+   `LabBranchRepository.findById` gained a sibling
+   `findByIdWithRelations` (includes `laboratory`+`address`) rather than
+   changing the existing method's shape, since `CreateLabOrderUseCase`
+   still only needs the bare row.
+3. **`src/db/seed.ts` gained a real, loggable-in `LAB_STAFF` test account** —
+   a genuine improvement over the pharmacy staff seed it sits next to:
+   the existing `pharmacyStaffUser` block sets neither `password_hash` nor
+   `context_id`, so that seeded account cannot actually complete
+   `POST /auth/password/login` or pass any branch-scoped check as
+   committed (whatever real credentials pharmacy's own Part 42 verification
+   used must have been set up out-of-band, not through this script). The
+   new lab block seeds a demo `Laboratory`/`LabBranch`/`Address` (fixed
+   UUIDs, same pattern as `demoPharmacies`) and a `+201000000004` user with
+   both `password_hash` (`argon2.hash`, the same call
+   `LoginWithPasswordUseCase`/`SetPasswordUseCase` verify against) and
+   `context_id` pointing at the seeded branch — so a real Postgres run of
+   this script alone makes the whole flow curl/browser-testable with no
+   manual DB edit first. Flagging, not silently fixing, the pre-existing
+   pharmacy gap this comparison surfaced — out of scope to touch here.
+4. **Frontend swap mirrors pharmacy's exactly, plus one structural fix.**
+   New `src/lib/auth/http-auth-service.ts` (`HttpAuthService`, real
+   `AuthService` implementation) and `backend-tokens.ts` (`ms_at`/`ms_rt`
+   cookie pair, access token non-httpOnly for client-side bearer
+   attachment, refresh token httpOnly). One difference from pharmacy
+   worth naming: pharmacy already had a dedicated `lib/auth/service.ts`
+   factory seam every route handler imported from, so its swap touched
+   exactly that one file. The lab dashboard had no such seam — all 8
+   `app/api/auth/*` route handlers imported `getAuthService` directly from
+   `mock-auth-service.ts`. Rather than leave that inconsistency (and the
+   sibling-repo doc's own stated goal, "deliberately near-identical in
+   plumbing so a fix in one ports to the other verbatim"), this pass adds
+   the missing `lib/auth/service.ts` seam and repoints all 8 imports at
+   it — `mock-auth-service.ts` itself is untouched and stays in the repo,
+   unused, same "don't delete it" choice pharmacy made.
+5. **`logout`/`refresh` are the only two routes that needed real logic**,
+   exactly matching pharmacy's own finding — every other route
+   (`login`/`profile`/`branch`/`forgot-password`/`reset-password`/
+   `reset-password/validate`/`revoke-all`/`change-password`) already goes
+   through the `AuthService` seam and needed no changes beyond the import
+   path fix in item 4. `logout` now also revokes the real backend refresh
+   token and clears both backend-token cookies (previously: local session
+   cookie only). `refresh` (new file, mirrors pharmacy's own) mints a
+   fresh access token from the httpOnly refresh cookie.
+6. **`HttpLaboratoryOrdersService` (Part 47) now attaches a real bearer
+   token** — `readAccessToken()` (new, mirrors pharmacy's own) reads
+   `ms_at` from `document.cookie` client-side or via `next/headers`
+   server-side, and a 401 triggers exactly one `/api/auth/refresh` retry
+   before surfacing normally. This was the one piece of Part 47 explicitly
+   left as a stated, deliberate gap ("no Authorization header — this
+   console has no auth bridge yet") — closed here, not forgotten.
+7. **Two stale UI surfaces corrected, not just left as future cleanup**
+   since this pass touches exactly what they were describing:
+   `queue-toolbar.tsx`'s "BRANCH-SCOPED · MOCK" badge is now conditional
+   on `isMockMode()` (was a hardcoded `· MOCK` suffix regardless of mode —
+   would have been actively misleading once live mode became real), and
+   the login form's mock-credentials hint (`tamer@medsuper.local`/
+   `Lab@2026` — email-based, which the real backend's
+   `normalizeToE164`-gated login never accepts anyway) is now gated behind
+   `isMockMode()` too, mirroring pharmacy's own identical fix at its own
+   Part 42.
+
+**Verification (this pass)**: backend `tsc --noEmit` ✅, `eslint
+src/modules/laboratory src/db/seed.ts` ✅, `jest src/modules/laboratory`
+20/20 suites, 88/88 tests ✅ (new `get-lab-branch.use-case.spec.ts`).
+Frontend (`medsuper-laboratory-dashboard`): `tsc --noEmit` ✅, `eslint
+src/lib/auth src/lib/api src/app/api/auth src/features/laboratory` ✅.
+**Not run this pass, same stated gap as Part 47**: `db:migrate:deploy`
+against a real Postgres and any live browser click-through — no local DB
+is provisioned in this environment. The seeded `LAB_STAFF` account (item 3)
+means that verification pass, whenever it happens, needs no manual setup
+first — a meaningful difference from Part 47's own hand-off state.
