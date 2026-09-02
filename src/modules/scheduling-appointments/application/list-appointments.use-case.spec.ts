@@ -13,6 +13,15 @@ describe('ListAppointmentsUseCase', () => {
       cancelled_reason: null,
       rescheduled_from_appointment_id: null,
       slot: { start_at: new Date(startAt), end_at: new Date(startAt) },
+      affiliation: {
+        doctor: { id: 'doctor-1', user: { first_name: 'Mona', last_name: 'Fahmy' } },
+        clinic_branch: {
+          id: 'branch-1',
+          phone: '+20 100 000 0000',
+          clinic: { brand_name: 'Nour Clinic' },
+          address: { line1: '12 Tahrir St', city: 'Cairo' },
+        },
+      },
     };
   }
 
