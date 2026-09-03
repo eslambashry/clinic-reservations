@@ -236,7 +236,7 @@ npm run db:seed              # tsx src/db/seed.ts (idempotent)
 npm run db:studio            # prisma studio
 ```
 
-Requires `.env` (copy `.env.example`): `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET` are validated at boot (`src/shared/config/env.validation.ts`) — process exits immediately if missing/malformed, not on first use. Local Postgres+PostGIS+Redis available via `docker-compose.yml`.
+Requires `.env` (copy `.env.example`): `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `REDIS_ENABLED`, `JWT_ACCESS_SECRET` are validated at boot (`src/shared/config/env.validation.ts`) — process exits immediately if missing/malformed, not on first use. Local Postgres+PostGIS+Redis available via `docker-compose.yml`.
 
 ---
 

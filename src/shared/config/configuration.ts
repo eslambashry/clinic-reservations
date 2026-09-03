@@ -9,7 +9,7 @@ export interface AppConfig {
   };
   redis: {
     url: string;
-    enabled: boolean // if redis dose not work 
+    enabled: boolean;
   };
   jwt: {
     accessSecret: string;
@@ -36,8 +36,7 @@ export default (): AppConfig => ({
   },
   redis: {
     url: process.env.REDIS_URL as string,
-    enabled: process.env.REDIS_ENABLED === 'true', // if redis dose not work 
-
+    enabled: process.env.REDIS_ENABLED === 'true',
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET as string,

@@ -29,7 +29,7 @@ npm run db:seed              # tsx src/db/seed.ts (idempotent: seeds a CANCELLAT
 npm run db:studio            # prisma studio
 ```
 
-Requires a `.env` (copy `.env.example`) — `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `JWT_ACCESS_SECRET` are validated at boot (`src/shared/config/env.validation.ts`) and the process exits immediately if any is missing/malformed, rather than failing on first use.
+Requires a `.env` (copy `.env.example`) — `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`, `REDIS_ENABLED`, and `JWT_ACCESS_SECRET` are validated at boot (`src/shared/config/env.validation.ts`) and the process exits immediately if any is missing/malformed, rather than failing on first use.
 
 Database: Neon Postgres. `DATABASE_URL` (pooled, PgBouncer, `sslmode=require`) is used for app runtime queries; `DIRECT_URL` (direct connection) is used for migrations. The Nest app (both processes) uses `PrismaService` (`src/shared/kernel/prisma/`) via DI; `src/db/client.ts`'s plain singleton is only for the standalone `db:seed` script, which runs outside the Nest container.
 

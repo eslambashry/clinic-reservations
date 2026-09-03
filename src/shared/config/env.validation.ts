@@ -1,5 +1,5 @@
 import { Type, plainToInstance } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Min, validateSync } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, Min, validateSync } from 'class-validator';
 
 enum NodeEnv {
   Development = 'development',
@@ -39,6 +39,9 @@ class EnvironmentVariables {
 
   @IsString()
   REDIS_URL: string;
+
+  @IsIn(['true', 'false'])
+  REDIS_ENABLED: string;
 
   /** Signs/verifies short-lived access JWTs (File 11 Part 07.1). Refresh tokens are opaque, not JWT — no secret needed for those; they're hashed with deterministic SHA-256 for lookup, not argon2 (see `identity-auth/domain/refresh-token.util.ts`). */
   @IsString()
