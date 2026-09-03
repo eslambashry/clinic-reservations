@@ -1,5 +1,44 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateNested } from 'class-validator';
+
+const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * One `working_days` entry — mirrors `CreateScheduleTemplateDto`'s
+ * `weekday`/`startTime`/`endTime`/`slotDurationMinutes`/`bufferMinutes`
+ * shape/validators exactly (`doctorClinicAffiliationId` is supplied by
+ * `SelfRegisterProviderUseCase` from the affiliation it just created, not by
+ * the client).
+ */
+export class WorkingDayDto {
+  @ApiProperty({ minimum: 1, maximum: 7, description: 'ISO-8601 weekday, 1=Monday…7=Sunday' })
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  weekday: number;
+
+  @ApiProperty({ example: '09:00' })
+  @Matches(HH_MM)
+  startTime: string;
+
+  @ApiProperty({ example: '17:00' })
+  @Matches(HH_MM)
+  endTime: string;
+
+  @ApiProperty({ minimum: 5, maximum: 240 })
+  @IsInt()
+  @Min(5)
+  @Max(240)
+  slotDurationMinutes: number;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 120, default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  bufferMinutes: number = 0;
+}
 
 /**
  * ADR-005 (`docs/decisions/ADR-005-PROVIDER-SELF-REGISTRATION.md`, FILE_12 Part 34):
@@ -7,13 +46,14 @@ import { IsArray, IsNumber, IsOptional, IsString } from 'class-validator';
  * 09's `camelCase` API convention — to match the request body the Flutter
  * `provider_registration` feature already sends. Part 34.2 persists
  * `full_name`/`degree`/`email`/`experience_years`/`bio`; a later pass (DEC-009
- * resolved via ImageKit) added `photo_data_uri` to that list too. The
- * remaining optional fields below (`specialty_label`/`documents`/
- * `city_label`/`working_days`) still have no persisted destination and stay
- * declared (and `@IsOptional()`) purely so the global `forbidNonWhitelisted`
- * ValidationPipe doesn't reject the frontend's existing payload —
- * `SelfRegisterProviderUseCase` never reads them, and the response's
- * `notPersisted` array names every one of them back explicitly.
+ * resolved via ImageKit) added `photo_data_uri` to that list too. `working_days`
+ * is now persisted too — see `WorkingDayDto` and `SelfRegisterProviderUseCase`.
+ * The remaining optional fields below (`specialty_label`/`documents`/
+ * `city_label`) still have no persisted destination and stay declared (and
+ * `@IsOptional()`) purely so the global `forbidNonWhitelisted` ValidationPipe
+ * doesn't reject the frontend's existing payload — `SelfRegisterProviderUseCase`
+ * never reads them, and the response's `notPersisted` array names every one of
+ * them back explicitly.
  */
 export class SubmitProviderRegistrationDto {
   @ApiProperty({ description: 'Specialty.code — validated against the real specialties table' })
@@ -95,8 +135,13 @@ export class SubmitProviderRegistrationDto {
   @IsString()
   city_label?: string;
 
-  @ApiPropertyOptional({ description: 'Not persisted — real ScheduleTemplate creation stays Admin-only (ADR-005, Part 33.1)' })
+  @ApiPropertyOptional({
+    type: [WorkingDayDto],
+    description: 'Persisted as real ScheduleTemplate rows tied to the affiliation created by this registration (ADR-005).',
+  })
   @IsOptional()
   @IsArray()
-  working_days?: unknown[];
+  @ValidateNested({ each: true })
+  @Type(() => WorkingDayDto)
+  working_days?: WorkingDayDto[];
 }

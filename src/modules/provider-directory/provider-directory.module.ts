@@ -62,6 +62,7 @@ import { SpecialtyRepository } from './infrastructure/specialty.repository';
 import { VerificationDocumentRepository } from './infrastructure/verification-document.repository';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
+import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastructure/schedule-template.repository';
 
 /**
  * File 11 Part 03: owns `doctors`, `clinics`, `clinic_branches`,
@@ -76,6 +77,11 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
  * `payments` to read an affiliation's consult fee inside its own transaction.
  * File 12 Part 39.2 adds a fourth, `SearchPharmacyBranchesUseCase`, reused
  * as-is by `pharmacy-fulfillment` for broadcast-target selection.
+ * `ScheduleTemplateRepository` is registered here too (not imported via
+ * `SchedulingAppointmentsModule`, which itself imports this module — that
+ * would be circular): `SelfRegisterProviderUseCase` needs it to persist
+ * `working_days` as real `ScheduleTemplate` rows inside its own transaction,
+ * scoped to the affiliation it just created, not a cross-module query.
  */
 @Module({
   imports: [AuditModule, IdentityAuthModule],
@@ -103,6 +109,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     VerificationDocumentRepository,
     DoctorSearchRepository,
     PharmacyBranchSearchRepository,
+    ScheduleTemplateRepository,
     // application
     CreateDoctorUseCase,
     UpdateDoctorUseCase,
