@@ -21,10 +21,10 @@ describe('GetDoctorSlotsUseCase', () => {
     await expect(useCase.execute('d1', 'b1', undefined, undefined, undefined)).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it('defaults to [today, today+14days) in UTC when from/to are omitted', async () => {
+  it('defaults to [now, now+14days) when from/to are omitted, not the start of today', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-10T12:34:00Z'));
     const { appointmentSlots, resolveAffiliation, useCase } = setup();
-    resolveAffiliation.execute.mockResolvedValue({ affiliationId: 'aff-1', timezone: 'UTC' });
+    resolveAffiliation.execute.mockResolvedValue({ affiliationId: 'aff-1', timezone: 'Africa/Cairo' });
     appointmentSlots.findOpenInRange.mockResolvedValue([]);
 
     await useCase.execute('d1', 'b1', undefined, undefined, undefined);
@@ -32,8 +32,8 @@ describe('GetDoctorSlotsUseCase', () => {
     expect(appointmentSlots.findOpenInRange).toHaveBeenCalledWith(
       expect.anything(),
       'aff-1',
-      new Date('2026-03-10T00:00:00.000Z'),
-      new Date('2026-03-24T00:00:00.000Z'),
+      new Date('2026-03-10T12:34:00.000Z'),
+      new Date('2026-03-24T12:34:00.000Z'),
     );
   });
 
