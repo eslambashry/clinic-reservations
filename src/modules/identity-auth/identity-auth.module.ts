@@ -3,6 +3,7 @@ import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
 import { IdentityAuthController } from './api/identity-auth.controller';
 import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
 import { GetActiveRoleMembershipUseCase } from './application/get-active-role-membership.use-case';
+import { GrantRoleMembershipUseCase } from './application/grant-role-membership.use-case';
 import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
 import { GetUserSummaryUseCase } from './application/get-user-summary.use-case';
 import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
@@ -40,6 +41,10 @@ import { UserRepository } from './infrastructure/user.repository';
  * `GetUserSummaryUseCase` — a plain, tx-scoped `id -> {firstName, lastName,
  * phoneMasked}` lookup, the same shape need `pharmacy-fulfillment`'s
  * order-detail response now has for its patient/doctor projections.
+ * 2026-09-03 adds `GrantRoleMembershipUseCase` — same tx-scoped pattern,
+ * called by `provider-directory`'s `VerifyDoctorUseCase` so Admin
+ * verification actually grants a real DOCTOR role_membership, not just a
+ * `Doctor.status` flip (self-registration alone never grants one).
  */
 @Module({
   imports: [AuthCoreModule],
@@ -59,6 +64,7 @@ import { UserRepository } from './infrastructure/user.repository';
     UpdateCurrentUserUseCase,
     GetActiveRoleMembershipUseCase,
     GetUserSummaryUseCase,
+    GrantRoleMembershipUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
@@ -68,6 +74,6 @@ import { UserRepository } from './infrastructure/user.repository';
     PhoneRateLimiterService,
     { provide: OTP_SENDER, useClass: LoggingOtpSender },
   ],
-  exports: [UpdateUserProfileUseCase, GetActiveRoleMembershipUseCase, GetUserSummaryUseCase],
+  exports: [UpdateUserProfileUseCase, GetActiveRoleMembershipUseCase, GetUserSummaryUseCase, GrantRoleMembershipUseCase],
 })
 export class IdentityAuthModule {}

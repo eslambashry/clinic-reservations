@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { GetMyDoctorRegistrationStatusUseCase, MyDoctorRegistrationStatusResult } from '../application/get-my-doctor-registration-status.use-case';
 import { ListSpecialtiesUseCase } from '../application/list-specialties.use-case';
 import { SelfRegisterProviderResult, SelfRegisterProviderUseCase } from '../application/self-register-provider.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
@@ -30,6 +31,7 @@ export class ProviderRegistrationController {
   constructor(
     @Inject(SelfRegisterProviderUseCase) private readonly selfRegisterProvider: SelfRegisterProviderUseCase,
     @Inject(ListSpecialtiesUseCase) private readonly listSpecialties: ListSpecialtiesUseCase,
+    @Inject(GetMyDoctorRegistrationStatusUseCase) private readonly getMyStatus: GetMyDoctorRegistrationStatusUseCase,
   ) {}
 
   @Get('lookups')
@@ -50,5 +52,14 @@ export class ProviderRegistrationController {
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<SelfRegisterProviderResult> {
     return this.selfRegisterProvider.execute(dto, user);
+  }
+
+  @Get('status')
+  @ApiOperation({
+    summary:
+      "The caller's own doctor registration status (PENDING/VERIFIED/SUSPENDED) — lets a self-registered applicant poll their own approval state, since their role membership stays PATIENT until an Admin verifies them and GET /v1/doctors/:doctorId 404s for a non-Admin caller while PENDING.",
+  })
+  status(@CurrentUser() user: AccessTokenPayload): Promise<MyDoctorRegistrationStatusResult> {
+    return this.getMyStatus.execute(user);
   }
 }
