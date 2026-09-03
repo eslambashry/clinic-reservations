@@ -52,9 +52,22 @@ export class GetDoctorSlotsUseCase {
     };
   }
 
-  /** File 12 Part 33.16: optional `from`/`to`, default `[today, today+14days)`, capped at a 14-day span (File 10 §2.3). */
+  /**
+   * File 12 Part 33.16: optional `from`/`to`, default `[now, now+14days)`,
+   * capped at a 14-day span (File 10 §2.3). The default lower bound is
+   * `now`, not "start of today" (UTC or otherwise): the previous behavior —
+   * UTC midnight — meant a branch ahead of UTC (e.g. Africa/Cairo, UTC+2)
+   * had "today" start a couple of hours into what was already yesterday in
+   * its own local time, and even branch-local midnight would still admit
+   * *this morning's* already-elapsed slots once enough of today had
+   * passed. Since nothing sweeps/expires an `OPEN` slot once its time is
+   * up, either version let already-past, never-booked slots keep matching
+   * the range and appear to the patient as still bookable "today." `now`
+   * has no such gap and needs no timezone lookup to get right.
+   */
   private resolveDateRange(from: string | undefined, to: string | undefined): { fromDate: Date; toDate: Date } {
-    const fromDt = from ? DateTime.fromISO(from, { zone: 'utc' }) : DateTime.utc().startOf('day');
+    const now = DateTime.utc();
+    const fromDt = from ? DateTime.fromISO(from, { zone: 'utc' }) : now;
     if (!fromDt.isValid) {
       throw new DomainError(400, 'INVALID_DATE_RANGE', 'from is not a valid ISO date.');
     }

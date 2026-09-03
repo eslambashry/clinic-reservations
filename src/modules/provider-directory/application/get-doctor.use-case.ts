@@ -6,6 +6,7 @@ import { AffiliationRepository, AffiliationWithBranch } from '../infrastructure/
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 
 export interface DoctorAffiliationSummary {
+  affiliationId: string;
   clinicBranchId: string;
   clinicName: string;
   consultationFee: string;
@@ -32,6 +33,7 @@ export interface DoctorDetail {
   bio: string | null;
   degree: string | null;
   experienceYears: number | null;
+  affiliationId: string | null;
   clinicBranchId: string | null;
   clinicName: string | null;
   consultationFee: string | null;
@@ -86,6 +88,7 @@ export class GetDoctorUseCase {
       bio: doctor.bio,
       degree: doctor.degree,
       experienceYears: doctor.experience_years,
+      affiliationId: primary?.affiliationId ?? null,
       clinicBranchId: primary?.clinicBranchId ?? null,
       clinicName: primary?.clinicName ?? null,
       consultationFee: primary?.consultationFee ?? null,
@@ -98,6 +101,7 @@ export class GetDoctorUseCase {
 
 function toAffiliationSummary(a: AffiliationWithBranch): DoctorAffiliationSummary {
   return {
+    affiliationId: a.id,
     clinicBranchId: a.clinic_branch_id,
     clinicName: a.clinic_branch.clinic.brand_name,
     consultationFee: a.consult_fee.toString(),

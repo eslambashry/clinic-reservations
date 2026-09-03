@@ -12,6 +12,15 @@ describe('GetAppointmentUseCase', () => {
     cancelled_reason: null,
     rescheduled_from_appointment_id: null,
     slot: { start_at: new Date('2026-09-01T09:00:00Z'), end_at: new Date('2026-09-01T09:20:00Z') },
+    affiliation: {
+      doctor: { id: 'doctor-1', user: { first_name: 'Mona', last_name: 'Fahmy' } },
+      clinic_branch: {
+        id: 'branch-1',
+        phone: '+20 100 000 0000',
+        clinic: { brand_name: 'Nour Clinic' },
+        address: { line1: '12 Tahrir St', city: 'Cairo' },
+      },
+    },
   };
 
   function setup() {
@@ -50,6 +59,13 @@ describe('GetAppointmentUseCase', () => {
       doctorClinicAffiliationId: 'aff-1',
       cancelledReason: null,
       rescheduledFromAppointmentId: null,
+      doctorId: 'doctor-1',
+      doctorName: 'Mona Fahmy',
+      clinicBranchId: 'branch-1',
+      clinicName: 'Nour Clinic',
+      clinicAddressLine1: '12 Tahrir St',
+      clinicCity: 'Cairo',
+      clinicPhone: '+20 100 000 0000',
     });
   });
 });

@@ -14,9 +14,22 @@ export interface AppointmentSummary {
   doctorClinicAffiliationId: string;
   cancelledReason: string | null;
   rescheduledFromAppointmentId: string | null;
+  /** Added for display purposes (doctor/clinic name, branch address) — see `WITH_SLOT_TIMES`'s doc comment on why this include exists. */
+  doctorId: string;
+  doctorName: string;
+  clinicBranchId: string;
+  clinicName: string;
+  clinicAddressLine1: string;
+  clinicCity: string;
+  clinicPhone: string;
+}
+
+function fullName(user: { first_name: string | null; last_name: string | null }): string {
+  return [user.first_name, user.last_name].filter((part): part is string => !!part).join(' ');
 }
 
 export function toAppointmentSummary(appointment: AppointmentWithSlotTimes): AppointmentSummary {
+  const affiliation = appointment.affiliation;
   return {
     appointmentId: appointment.id,
     status: appointment.status,
@@ -26,6 +39,13 @@ export function toAppointmentSummary(appointment: AppointmentWithSlotTimes): App
     doctorClinicAffiliationId: appointment.doctor_clinic_affiliation_id,
     cancelledReason: appointment.cancelled_reason,
     rescheduledFromAppointmentId: appointment.rescheduled_from_appointment_id,
+    doctorId: affiliation.doctor.id,
+    doctorName: fullName(affiliation.doctor.user),
+    clinicBranchId: affiliation.clinic_branch.id,
+    clinicName: affiliation.clinic_branch.clinic.brand_name,
+    clinicAddressLine1: affiliation.clinic_branch.address.line1,
+    clinicCity: affiliation.clinic_branch.address.city,
+    clinicPhone: affiliation.clinic_branch.phone,
   };
 }
 

@@ -67,7 +67,7 @@ describe('GetDoctorUseCase', () => {
 
     expect(result.isVerified).toBe(false);
     expect(result.affiliations).toEqual([
-      { clinicBranchId: 'branch-1', clinicName: 'Nile Clinic', consultationFee: '150.00', currency: 'EGP', ianaTimezone: 'Africa/Cairo' },
+      { affiliationId: 'aff-paused', clinicBranchId: 'branch-1', clinicName: 'Nile Clinic', consultationFee: '150.00', currency: 'EGP', ianaTimezone: 'Africa/Cairo' },
     ]);
   });
 
@@ -91,6 +91,16 @@ describe('GetDoctorUseCase', () => {
     expect(result.name).toBe('Mona Hassan');
     expect(result.affiliations).toHaveLength(1);
     expect(result.affiliations[0].clinicBranchId).toBe('branch-1');
+  });
+
+  it('exposes the primary affiliation id at the top level, for the Phase 4 hold contract', async () => {
+    const { doctors, affiliations, useCase } = setup();
+    doctors.findByIdWithUser.mockResolvedValue(doctor());
+    affiliations.findByDoctorId.mockResolvedValue([affiliation({ id: 'aff-primary' })]);
+
+    const result = await useCase.execute('d1', undefined);
+
+    expect(result.affiliationId).toBe('aff-primary');
   });
 
   it('exposes bio/degree/experienceYears from the Doctor row (ADR-005 Part 34.2)', async () => {

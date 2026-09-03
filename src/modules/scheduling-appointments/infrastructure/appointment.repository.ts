@@ -13,9 +13,32 @@ export interface NewAppointment {
   paymentIntentId?: string;
 }
 
-const WITH_SLOT_TIMES = { slot: { select: { start_at: true, end_at: true } } } satisfies Prisma.AppointmentInclude;
+const WITH_SLOT_TIMES = {
+  slot: { select: { start_at: true, end_at: true } },
+  affiliation: {
+    select: {
+      doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
+      clinic_branch: {
+        select: {
+          id: true,
+          phone: true,
+          clinic: { select: { brand_name: true } },
+          address: { select: { line1: true, city: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.AppointmentInclude;
 
-/** File 12 Part 35.15/35.17: list/detail need the slot's timing to render — same module's own table, not a cross-module join (Part 33.3's rule). */
+/**
+ * File 12 Part 35.15/35.17: list/detail need the slot's timing to render.
+ * `doctor_clinic_affiliation` (and its `doctor`/`clinic_branch`) is a
+ * same-request read of another module's tables for display purposes only
+ * (doctor name, clinic name/address) — not a cross-module *write* or a
+ * business-rule dependency, so it doesn't violate Part 33.3's "no
+ * cross-module joins for business logic" rule the same way a WHERE-clause
+ * join would.
+ */
 export type AppointmentWithSlotTimes = Prisma.AppointmentGetPayload<{ include: typeof WITH_SLOT_TIMES }>;
 
 export interface ListAppointmentsForPatientParams {
