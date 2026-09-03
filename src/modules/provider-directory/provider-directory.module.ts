@@ -19,6 +19,7 @@ import { GetAffiliationBillingInfoUseCase } from './application/get-affiliation-
 import { GetClinicBranchUseCase } from './application/get-clinic-branch.use-case';
 import { GetClinicUseCase } from './application/get-clinic.use-case';
 import { GetDoctorUseCase } from './application/get-doctor.use-case';
+import { GetMyDoctorRegistrationStatusUseCase } from './application/get-my-doctor-registration-status.use-case';
 import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.use-case';
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
@@ -142,6 +143,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     ResolveAffiliationForSchedulingUseCase,
     ListSchedulableAffiliationsUseCase,
     SelfRegisterProviderUseCase,
+    GetMyDoctorRegistrationStatusUseCase,
     GetAffiliationBillingInfoUseCase,
   ],
   exports: [

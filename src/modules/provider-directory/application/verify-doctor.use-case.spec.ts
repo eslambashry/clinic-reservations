@@ -14,8 +14,9 @@ describe('VerifyDoctorUseCase', () => {
     const doctors = { findById: jest.fn(), setStatus: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const useCase = new VerifyDoctorUseCase(prisma as any, doctors as any, audit as any, outbox as any);
-    return { tx, prisma, doctors, audit, outbox, useCase };
+    const grantRoleMembership = { execute: jest.fn() };
+    const useCase = new VerifyDoctorUseCase(prisma as any, doctors as any, audit as any, outbox as any, grantRoleMembership as any);
+    return { tx, prisma, doctors, audit, outbox, grantRoleMembership, useCase };
   }
 
   it('throws NotFoundError when the doctor does not exist', async () => {
@@ -25,13 +26,18 @@ describe('VerifyDoctorUseCase', () => {
     await expect(useCase.execute('missing-id', actor)).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it('sets status to VERIFIED, records an audit entry, and emits ProviderVerified — all within the transaction', async () => {
-    const { tx, doctors, audit, outbox, useCase } = setup();
-    doctors.findById.mockResolvedValue({ id: 'doctor-1', status: 'PENDING', version: 3 });
+  it('sets status to VERIFIED, grants a DOCTOR role membership, records an audit entry, and emits ProviderVerified — all within the transaction', async () => {
+    const { tx, doctors, audit, outbox, grantRoleMembership, useCase } = setup();
+    doctors.findById.mockResolvedValue({ id: 'doctor-1', user_id: 'user-1', status: 'PENDING', version: 3 });
 
     await useCase.execute('doctor-1', actor);
 
     expect(doctors.setStatus).toHaveBeenCalledWith(tx, 'doctor-1', 3, 'VERIFIED');
+    expect(grantRoleMembership.execute).toHaveBeenCalledWith(tx, {
+      userId: 'user-1',
+      roleCode: 'DOCTOR',
+      contextType: 'DOCTOR',
+    });
     expect(audit.record).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
@@ -46,10 +52,11 @@ describe('VerifyDoctorUseCase', () => {
   });
 
   it('is idempotent-safe: verifying an already-VERIFIED doctor still succeeds (Part 32.13)', async () => {
-    const { doctors, outbox, useCase } = setup();
-    doctors.findById.mockResolvedValue({ id: 'doctor-1', status: 'VERIFIED', version: 5 });
+    const { doctors, outbox, grantRoleMembership, useCase } = setup();
+    doctors.findById.mockResolvedValue({ id: 'doctor-1', user_id: 'user-1', status: 'VERIFIED', version: 5 });
 
     await expect(useCase.execute('doctor-1', actor)).resolves.toBeUndefined();
     expect(outbox.emit).toHaveBeenCalledTimes(1);
+    expect(grantRoleMembership.execute).toHaveBeenCalledTimes(1);
   });
 });
