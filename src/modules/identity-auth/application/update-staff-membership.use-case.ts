@@ -1,9 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
+import * as argon2 from '@node-rs/argon2';
 import { Prisma, RoleContextType, UserStatus } from '@prisma/client';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { RoleMembershipRepository } from '../infrastructure/role-membership.repository';
 import { UserRepository } from '../infrastructure/user.repository';
 import { StaffMember } from './list-staff-by-context.use-case';
+
+export interface UpdatedStaffMember extends StaffMember {
+  generatedPassword?: string;
+}
 
 export interface UpdateStaffMembershipInput {
   roleMembershipId: string;
@@ -12,6 +17,7 @@ export interface UpdateStaffMembershipInput {
   contextId: string;
   displayName?: string;
   status?: UserStatus;
+  password?: string;
 }
 
 /**
@@ -29,7 +35,7 @@ export class UpdateStaffMembershipUseCase {
     @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
   ) {}
 
-  async execute(tx: Prisma.TransactionClient, input: UpdateStaffMembershipInput): Promise<StaffMember> {
+  async execute(tx: Prisma.TransactionClient, input: UpdateStaffMembershipInput): Promise<UpdatedStaffMember> {
     const membership = await this.roleMemberships.findByIdForContext(tx, {
       id: input.roleMembershipId,
       roleCode: input.roleCode,
@@ -48,6 +54,11 @@ export class UpdateStaffMembershipUseCase {
       user = await this.users.setStatus(tx, user.id, input.status);
     }
 
+    if (input.password !== undefined) {
+      const passwordHash = await argon2.hash(input.password);
+      user = await this.users.setPassword(tx, user.id, passwordHash);
+    }
+
     return {
       roleMembershipId: membership.id,
       userId: user.id,
@@ -55,6 +66,7 @@ export class UpdateStaffMembershipUseCase {
       displayName: user.first_name,
       status: user.status,
       createdAt: membership.created_at,
+      generatedPassword: input.password,
     };
   }
 }

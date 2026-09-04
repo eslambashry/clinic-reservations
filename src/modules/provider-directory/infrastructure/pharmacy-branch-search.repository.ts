@@ -73,7 +73,14 @@ export class PharmacyBranchSearchRepository {
     ];
 
     if (params.q) {
-      whereParts.push(Prisma.sql`similarity(p.brand_name, ${params.q}) > 0.2`);
+      const searchPattern = `%${params.q}%`;
+      whereParts.push(
+        Prisma.sql`(
+          p.brand_name ILIKE ${searchPattern}
+          OR p.legal_name ILIKE ${searchPattern}
+          OR similarity(p.brand_name, ${params.q}) > 0.2
+        )`,
+      );
     }
     if (params.deliveryCapable !== undefined) {
       whereParts.push(Prisma.sql`pb.delivery_capable = ${params.deliveryCapable}`);

@@ -66,6 +66,15 @@ describe('SearchPharmacyBranchesUseCase', () => {
     expect(repository.search).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: true }));
   });
 
+  it('passes a one-character pharmacy search query to the repository', async () => {
+    const { repository, useCase } = setup();
+    repository.search.mockResolvedValue([row()]);
+
+    await useCase.execute({ q: 'N' });
+
+    expect(repository.search).toHaveBeenCalledWith(expect.objectContaining({ q: 'N' }));
+  });
+
   it('caps limit at 50 and requests limit+1 rows to detect a next page', async () => {
     const { repository, useCase } = setup();
     repository.search.mockResolvedValue([row()]);

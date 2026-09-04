@@ -34,6 +34,7 @@ describe('UpdateAssistantUseCase', () => {
       phone: '+201001234567',
       displayName: 'New Name',
       status: 'SUSPENDED',
+      password: undefined,
       createdAt: new Date('2026-09-04T12:00:00Z'),
     });
 
@@ -58,5 +59,30 @@ describe('UpdateAssistantUseCase', () => {
       status: 'SUSPENDED',
       created_at: '2026-09-04T12:00:00.000Z',
     });
+  });
+
+  it('forwards a new password and returns it once without exposing it when absent', async () => {
+    const { tx, doctors, updateStaffMembership, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1' });
+    updateStaffMembership.execute.mockResolvedValue({
+      roleMembershipId: 'membership-99',
+      userId: 'assistant-user-1',
+      phone: '+201001234567',
+      displayName: 'Sara',
+      status: 'ACTIVE',
+      createdAt: new Date('2026-09-04T12:00:00Z'),
+      generatedPassword: 'NewPass1!',
+    });
+
+    const result = await useCase.execute(
+      'membership-99',
+      { password: 'NewPass1!' },
+      actor,
+    );
+
+    expect(updateStaffMembership.execute).toHaveBeenCalledWith(tx, expect.objectContaining({
+      password: 'NewPass1!',
+    }));
+    expect(result).toEqual(expect.objectContaining({ generated_password: 'NewPass1!' }));
   });
 });

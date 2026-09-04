@@ -6,7 +6,7 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { UpdateAssistantDto } from '../api/dto/update-assistant.dto';
-import { AssistantResponse, toAssistantResponse } from '../domain/assistant-response.util';
+import { AssistantResponse, toAssistantResponse, withGeneratedPassword } from '../domain/assistant-response.util';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 
 const ASSISTANT_ROLE_CODE = 'CLINIC_STAFF';
@@ -40,6 +40,7 @@ export class UpdateAssistantUseCase {
         contextId: doctor.id,
         displayName: dto.display_name,
         status: dto.status,
+        password: dto.password,
       });
 
       await this.audit.record(tx, {
@@ -50,7 +51,7 @@ export class UpdateAssistantUseCase {
         resourceId: staff.roleMembershipId,
       });
 
-      return toAssistantResponse(staff);
+      return withGeneratedPassword(toAssistantResponse(staff), staff.generatedPassword);
     });
   }
 }

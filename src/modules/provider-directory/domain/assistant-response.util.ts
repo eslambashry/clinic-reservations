@@ -13,6 +13,7 @@ export interface AssistantResponse {
   display_name: string;
   status: 'ACTIVE' | 'SUSPENDED';
   created_at: string;
+  generated_password?: string;
 }
 
 export interface ProvisionedAssistantResponse extends AssistantResponse {
@@ -27,6 +28,10 @@ export function toAssistantResponse(staff: StaffMember): AssistantResponse {
     status: staff.status,
     created_at: staff.createdAt.toISOString(),
   };
+}
+
+export function withGeneratedPassword(response: AssistantResponse, password?: string): AssistantResponse {
+  return password === undefined ? response : { ...response, generated_password: password };
 }
 
 export function toProvisionedAssistantResponse(result: ProvisionStaffUserResult): ProvisionedAssistantResponse {
