@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { RoleContextType } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
+import { RoleMembershipRepository } from '../../identity-auth/infrastructure/role-membership.repository';
+import { UserRepository } from '../../identity-auth/infrastructure/user.repository';
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -11,9 +14,13 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
 
+const PATIENT_ROLE_CODE = 'PATIENT';
+
 export interface CreateClinicStaffAppointmentInput {
   clinicBranchId: string;
-  patientId: string;
+  patientId?: string;
+  patientPhone?: string;
+  patientName?: string;
   slotId: string;
 }
 
@@ -28,6 +35,8 @@ export class CreateClinicStaffAppointmentUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ResolveDoctorScopeUseCase) private readonly doctorScope: ResolveDoctorScopeUseCase,
     @Inject(GetUserSummaryUseCase) private readonly users: GetUserSummaryUseCase,
+    @Inject(UserRepository) private readonly userRepository: UserRepository,
+    @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
     @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
     @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
     @Inject(CapturePayAtClinicPaymentUseCase) private readonly paymentsCapture: CapturePayAtClinicPaymentUseCase,
@@ -43,9 +52,34 @@ export class CreateClinicStaffAppointmentUseCase {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const patient = await this.users.execute(tx, input.patientId);
-      if (!patient) {
-        throw new NotFoundError('Patient', input.patientId);
+      let patientId: string;
+
+      if (input.patientPhone) {
+        // Find-or-create by phone, mirroring `VerifyOtpUseCase`'s
+        // self-registration path exactly: reuse an existing user (never
+        // overwrite their name) or create one plus a PATIENT role_membership.
+        let user = await this.userRepository.findByPhone(tx, input.patientPhone);
+        if (!user) {
+          user = await this.userRepository.create(tx, input.patientPhone, input.patientName);
+        }
+
+        let memberships = await this.roleMemberships.findActiveByUser(tx, user.id);
+        if (memberships.length === 0) {
+          const membership = await this.roleMemberships.create(tx, {
+            userId: user.id,
+            roleCode: PATIENT_ROLE_CODE,
+            contextType: RoleContextType.PATIENT,
+          });
+          memberships = [membership];
+        }
+
+        patientId = user.id;
+      } else {
+        const patient = await this.users.execute(tx, input.patientId!);
+        if (!patient) {
+          throw new NotFoundError('Patient', input.patientId!);
+        }
+        patientId = input.patientId!;
       }
 
       const slot = await this.slots.findById(tx, input.slotId);
@@ -63,7 +97,7 @@ export class CreateClinicStaffAppointmentUseCase {
 
       const appointmentId = randomUUID();
       const billing = await this.paymentsCapture.execute(tx, {
-        payerUserId: input.patientId,
+        payerUserId: patientId,
         payableType: 'APPOINTMENT',
         payableId: appointmentId,
         amount: affiliation.consultFee,
@@ -76,7 +110,7 @@ export class CreateClinicStaffAppointmentUseCase {
       const appointment = await this.appointments.create(tx, {
         id: appointmentId,
         slotId: slot.id,
-        patientId: input.patientId,
+        patientId,
         doctorClinicAffiliationId: affiliation.affiliationId,
         paymentIntentId: billing.paymentIntentId,
       });
@@ -87,12 +121,12 @@ export class CreateClinicStaffAppointmentUseCase {
         action: 'scheduling_appointments.appointment.create_by_clinic_staff',
         resourceType: 'appointment',
         resourceId: appointment.id,
-        subjectPatientId: input.patientId,
+        subjectPatientId: patientId,
       });
       await this.outbox.emit(tx, 'AppointmentConfirmed', {
         appointmentId: appointment.id,
         slotId: slot.id,
-        patientId: input.patientId,
+        patientId,
         createdBy: 'CLINIC_STAFF',
       });
 

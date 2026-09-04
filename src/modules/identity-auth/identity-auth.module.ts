@@ -98,6 +98,8 @@ import { UserRepository } from './infrastructure/user.repository';
     ListStaffByContextUseCase,
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
+    UserRepository,
+    RoleMembershipRepository,
   ],
 })
 export class IdentityAuthModule {}
