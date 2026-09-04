@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AppointmentsController } from './api/appointments.controller';
+import { DoctorScheduleTemplatesController } from './api/doctor-schedule-templates.controller';
 import { DoctorSlotsController } from './api/doctor-slots.controller';
 import { ScheduleTemplatesController } from './api/schedule-templates.controller';
 import { CancelAppointmentUseCase } from './application/cancel-appointment.use-case';
@@ -12,7 +13,9 @@ import { GenerateSlotsUseCase } from './application/generate-slots.use-case';
 import { GetAppointmentUseCase } from './application/get-appointment.use-case';
 import { GetDoctorSlotsUseCase } from './application/get-doctor-slots.use-case';
 import { ListAppointmentsUseCase } from './application/list-appointments.use-case';
+import { ListMyScheduleTemplatesUseCase } from './application/list-my-schedule-templates.use-case';
 import { ListScheduleTemplatesUseCase } from './application/list-schedule-templates.use-case';
+import { ManageMyScheduleTemplatesUseCase } from './application/manage-my-schedule-templates.use-case';
 import { RescheduleAppointmentUseCase } from './application/reschedule-appointment.use-case';
 import { UpdateScheduleTemplateUseCase } from './application/update-schedule-template.use-case';
 import { AppointmentRepository } from './infrastructure/appointment.repository';
@@ -35,7 +38,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  */
 @Module({
   imports: [AuditModule, ProviderDirectoryModule, PaymentsModule],
-  controllers: [ScheduleTemplatesController, DoctorSlotsController, AppointmentsController],
+  controllers: [ScheduleTemplatesController, DoctorScheduleTemplatesController, DoctorSlotsController, AppointmentsController],
   providers: [
     // infrastructure
     ScheduleTemplateRepository,
@@ -49,6 +52,8 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     UpdateScheduleTemplateUseCase,
     DeleteScheduleTemplateUseCase,
     ListScheduleTemplatesUseCase,
+    ListMyScheduleTemplatesUseCase,
+    ManageMyScheduleTemplatesUseCase,
     GenerateSlotsUseCase,
     GetDoctorSlotsUseCase,
     CreateHoldUseCase,

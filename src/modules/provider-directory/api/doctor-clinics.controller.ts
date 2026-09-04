@@ -1,0 +1,63 @@
+import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RoleContextType } from '@prisma/client';
+import { ListMyDoctorClinicsResult, ListMyDoctorClinicsUseCase, MyDoctorClinic } from '../application/list-my-doctor-clinics.use-case';
+import { UpdateMyAffiliationUseCase } from '../application/update-my-affiliation.use-case';
+import { UpdateMyClinicBranchUseCase } from '../application/update-my-clinic-branch.use-case';
+import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
+import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { Roles } from '../../../shared/core/auth/roles.decorator';
+import { UpdateMyAffiliationDto } from './dto/update-my-affiliation.dto';
+import { UpdateMyClinicBranchDto } from './dto/update-my-clinic-branch.dto';
+
+/**
+ * Doctor Dashboard — clinics and branches (File 12 Part 49.2-49.4).
+ *
+ * Mounted under `doctors/me/...` rather than a `/v1/provider/*` prefix, to
+ * match the convention the rest of this codebase already uses for
+ * "server resolves the caller's own scope" reads (`GET /v1/doctors/me`,
+ * `GET /v1/pharmacy-orders` for PHARMACY_STAFF). No `doctorId`,
+ * `clinicId` or `affiliationId` is ever accepted as a *scoping* input —
+ * path params here name a resource whose ownership is then re-checked
+ * against the JWT-derived scope inside the use-case, never trusted.
+ *
+ * `@Roles(DOCTOR)` at class level also blocks CLINIC_STAFF from reaching a
+ * doctor's own management surface, not just other doctors.
+ */
+@ApiTags('doctor-clinics')
+@ApiBearerAuth()
+@Roles(RoleContextType.DOCTOR)
+@Controller('doctors/me/clinics')
+export class DoctorClinicsController {
+  constructor(
+    @Inject(ListMyDoctorClinicsUseCase) private readonly listMyClinics: ListMyDoctorClinicsUseCase,
+    @Inject(UpdateMyClinicBranchUseCase) private readonly updateMyBranch: UpdateMyClinicBranchUseCase,
+    @Inject(UpdateMyAffiliationUseCase) private readonly updateMyAffiliation: UpdateMyAffiliationUseCase,
+  ) {}
+
+  @Get()
+  @ApiOperation({ summary: "The calling doctor's clinics and branches — legal clinic data (legal name, tax id) deliberately omitted" })
+  list(@CurrentUser() user: AccessTokenPayload): Promise<ListMyDoctorClinicsResult> {
+    return this.listMyClinics.execute(user);
+  }
+
+  @Patch('branches/:branchId')
+  @ApiOperation({ summary: 'Update operational branch data (phone, timezone, street/city) for a branch the caller is affiliated with' })
+  updateBranch(
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body() dto: UpdateMyClinicBranchDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<MyDoctorClinic> {
+    return this.updateMyBranch.execute(branchId, dto, user);
+  }
+
+  @Patch('affiliations/:affiliationId')
+  @ApiOperation({ summary: "Pause or reactivate the caller's own affiliation with a branch — no delete exists on this surface" })
+  updateAffiliation(
+    @Param('affiliationId', ParseUUIDPipe) affiliationId: string,
+    @Body() dto: UpdateMyAffiliationDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<MyDoctorClinic> {
+    return this.updateMyAffiliation.execute(affiliationId, dto, user);
+  }
+}

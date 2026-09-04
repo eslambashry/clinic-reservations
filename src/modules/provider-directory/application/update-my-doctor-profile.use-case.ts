@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AuditService } from '../../audit/application/audit.service';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
@@ -25,6 +26,7 @@ export class UpdateMyDoctorProfileUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
     @Inject(GetMyDoctorProfileUseCase) private readonly getMyDoctorProfile: GetMyDoctorProfileUseCase,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   async execute(actor: AccessTokenPayload, input: UpdateMyDoctorProfileInput): Promise<MyDoctorProfile> {
@@ -34,13 +36,24 @@ export class UpdateMyDoctorProfileUseCase {
     }
 
     if (input.bio !== undefined || input.degree !== undefined || input.experienceYears !== undefined) {
-      await this.prisma.$transaction((tx) =>
-        this.doctors.update(tx, doctor.id, doctor.version, {
+      await this.prisma.$transaction(async (tx) => {
+        await this.doctors.update(tx, doctor.id, doctor.version, {
           bio: input.bio,
           degree: input.degree,
           experienceYears: input.experienceYears,
-        }),
-      );
+        });
+
+        // File 12 Part 49.1: a doctor editing their own directory record is
+        // an audited write like every other provider-directory mutation —
+        // this was the one self-service edit missing an `audit_logs` row.
+        await this.audit.record(tx, {
+          actorUserId: actor.sub,
+          actorRoleMembershipId: actor.roleMembershipId,
+          action: 'provider_directory.doctor.update_self',
+          resourceType: 'doctor',
+          resourceId: doctor.id,
+        });
+      });
     }
 
     return this.getMyDoctorProfile.execute(actor);

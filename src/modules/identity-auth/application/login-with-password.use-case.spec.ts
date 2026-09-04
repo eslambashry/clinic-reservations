@@ -148,6 +148,26 @@ describe('LoginWithPasswordUseCase', () => {
     expect(tokens.issue).toHaveBeenCalledWith(tx, membership);
   });
 
+  it('selects the requested clinic assistant membership and preserves its owner scope', async () => {
+    const { tx, users, roleMemberships, tokens, useCase } = setup();
+    users.findByPhone.mockResolvedValue({ id: 'assistant-user', phone: '+201001234567', password_hash: 'hashed' });
+    verifyMock.mockResolvedValue(true);
+    const membership = {
+      id: 'assistant-membership',
+      user_id: 'assistant-user',
+      role_code: 'CLINIC_STAFF',
+      context_type: 'CLINIC_STAFF',
+      context_id: 'doctor-1',
+    };
+    roleMemberships.findActiveByUserRoleContextType.mockResolvedValue([membership]);
+    tokens.issue.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh', expiresIn: 1800 });
+
+    const result = await useCase.execute({ phone: '+201001234567', password: 'NewPass1!', role: 'CLINIC_STAFF' as any });
+
+    expect(result).toMatchObject({ userId: 'assistant-user', role: 'CLINIC_STAFF' });
+    expect(tokens.issue).toHaveBeenCalledWith(tx, membership);
+  });
+
   it('403s ROLE_NOT_PERMITTED when the requested role is not active', async () => {
     const { users, roleMemberships, useCase } = setup();
     users.findByPhone.mockResolvedValue({ id: 'user-1', phone: '+201001234567', password_hash: 'hashed' });

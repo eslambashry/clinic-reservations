@@ -10,8 +10,9 @@ describe('UpdateMyDoctorProfileUseCase', () => {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const doctors = { findByUserId: jest.fn(), update: jest.fn() };
     const getMyDoctorProfile = { execute: jest.fn() };
-    const useCase = new UpdateMyDoctorProfileUseCase(prisma as any, doctors as any, getMyDoctorProfile as any);
-    return { tx, doctors, getMyDoctorProfile, useCase };
+    const audit = { record: jest.fn() };
+    const useCase = new UpdateMyDoctorProfileUseCase(prisma as any, doctors as any, getMyDoctorProfile as any, audit as any);
+    return { tx, doctors, getMyDoctorProfile, audit, useCase };
   }
 
   it('404s when the caller has no doctor row', async () => {
@@ -33,13 +34,30 @@ describe('UpdateMyDoctorProfileUseCase', () => {
     expect(result).toBe(profile);
   });
 
+  it('writes an audit row in the same transaction as the update (File 12 Part 49.1)', async () => {
+    const { tx, doctors, getMyDoctorProfile, audit, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', version: 3 });
+    getMyDoctorProfile.execute.mockResolvedValue(profile);
+
+    await useCase.execute(actor, { bio: 'New bio' });
+
+    expect(audit.record).toHaveBeenCalledWith(tx, {
+      actorUserId: 'user-1',
+      actorRoleMembershipId: 'membership-1',
+      action: 'provider_directory.doctor.update_self',
+      resourceType: 'doctor',
+      resourceId: 'doctor-1',
+    });
+  });
+
   it('skips the write entirely when no field is given', async () => {
-    const { doctors, getMyDoctorProfile, useCase } = setup();
+    const { doctors, getMyDoctorProfile, audit, useCase } = setup();
     doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', version: 3 });
     getMyDoctorProfile.execute.mockResolvedValue(profile);
 
     await useCase.execute(actor, {});
 
     expect(doctors.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 });

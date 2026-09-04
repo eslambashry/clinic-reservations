@@ -45,6 +45,22 @@ export class ScheduleTemplateRepository {
     });
   }
 
+  /**
+   * File 12 Part 49.5 — batch form for the doctor-facing list: a doctor
+   * affiliated with two branches gets one combined weekly plan in a single
+   * query rather than N sequential `findByAffiliationId` calls. The caller
+   * has already narrowed `affiliationIds` to ids it owns.
+   */
+  findByAffiliationIds(db: Prisma.TransactionClient, affiliationIds: string[]): Promise<ScheduleTemplate[]> {
+    if (affiliationIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return db.scheduleTemplate.findMany({
+      where: { doctor_clinic_affiliation_id: { in: affiliationIds } },
+      orderBy: [{ weekday: 'asc' }, { start_time: 'asc' }, { id: 'asc' }],
+    });
+  }
+
   /** File 12 Part 33.9/33.10 — the slot-generation job's own entry point: every affiliation currently owning at least one template. */
   findDistinctAffiliationIds(db: Prisma.TransactionClient): Promise<string[]> {
     return db.scheduleTemplate

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AffiliationsController } from './api/affiliations.controller';
 import { AssistantsController } from './api/assistants.controller';
 import { ClinicBranchesController } from './api/clinic-branches.controller';
+import { DoctorClinicsController } from './api/doctor-clinics.controller';
 import { ClinicsController } from './api/clinics.controller';
 import { DoctorsController } from './api/doctors.controller';
 import { PharmacyBranchesController } from './api/pharmacy-branches.controller';
@@ -27,11 +28,13 @@ import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.u
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
 import { ListAssistantsUseCase } from './application/list-assistants.use-case';
+import { ListMyDoctorClinicsUseCase } from './application/list-my-doctor-clinics.use-case';
 import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
 import { ListSpecialtiesUseCase } from './application/list-specialties.use-case';
 import { ListVerificationDocumentsUseCase } from './application/list-verification-documents.use-case';
 import { RejectVerificationDocumentUseCase } from './application/reject-verification-document.use-case';
 import { ResolveAffiliationForSchedulingUseCase } from './application/resolve-affiliation-for-scheduling.use-case';
+import { ResolveDoctorScopeUseCase } from './application/resolve-doctor-scope.use-case';
 import { SearchDoctorsUseCase } from './application/search-doctors.use-case';
 import { SearchPharmacyBranchesUseCase } from './application/search-pharmacy-branches.use-case';
 import { SelfRegisterProviderUseCase } from './application/self-register-provider.use-case';
@@ -45,6 +48,8 @@ import { UpdateAssistantUseCase } from './application/update-assistant.use-case'
 import { UpdateClinicBranchUseCase } from './application/update-clinic-branch.use-case';
 import { UpdateClinicUseCase } from './application/update-clinic.use-case';
 import { UpdateDoctorUseCase } from './application/update-doctor.use-case';
+import { UpdateMyAffiliationUseCase } from './application/update-my-affiliation.use-case';
+import { UpdateMyClinicBranchUseCase } from './application/update-my-clinic-branch.use-case';
 import { UpdateMyDoctorProfileUseCase } from './application/update-my-doctor-profile.use-case';
 import { UpdatePharmacyBranchUseCase } from './application/update-pharmacy-branch.use-case';
 import { UpdatePharmacyUseCase } from './application/update-pharmacy.use-case';
@@ -95,6 +100,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     AffiliationsController,
     ClinicsController,
     ClinicBranchesController,
+    DoctorClinicsController,
     PharmaciesController,
     PharmacyBranchesController,
     VerificationDocumentsController,
@@ -162,6 +168,10 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     CreateAssistantUseCase,
     UpdateAssistantUseCase,
     DeleteAssistantUseCase,
+    ResolveDoctorScopeUseCase,
+    ListMyDoctorClinicsUseCase,
+    UpdateMyClinicBranchUseCase,
+    UpdateMyAffiliationUseCase,
   ],
   exports: [
     ResolveAffiliationForSchedulingUseCase,
@@ -169,6 +179,10 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     GetAffiliationBillingInfoUseCase,
     SearchPharmacyBranchesUseCase,
     GetPharmacyBranchUseCase,
+    // File 12 Part 49.1: the doctor-scoped ownership primitive, consumed by
+    // `scheduling-appointments` for schedule-template and appointment
+    // ownership checks — never its `infrastructure/`.
+    ResolveDoctorScopeUseCase,
   ],
 })
 export class ProviderDirectoryModule {}
