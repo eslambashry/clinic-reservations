@@ -47,3 +47,16 @@ export function assertOrderIsReadyToComplete(status: PharmacyOrderStatus): void 
     throw new BusinessRuleError('PHARMACY_ORDER_NOT_READY_TO_COMPLETE', 'هذا الطلب غير جاهز ليُسجّل كمكتمل.');
   }
 }
+
+/**
+ * 2026-09-04 addition: patient-triggered `confirm-receipt`, `OUT_FOR_DELIVERY`
+ * only — `READY_FOR_PICKUP` stays staff-only via `complete` (the pharmacy
+ * hands the order over in person and can mark it fulfilled itself; nobody on
+ * the pharmacy side is present when a home delivery actually arrives, so the
+ * patient is the only party who can trigger this hop).
+ */
+export function assertOrderIsOutForDelivery(status: PharmacyOrderStatus): void {
+  if (status !== 'OUT_FOR_DELIVERY') {
+    throw new BusinessRuleError('PHARMACY_ORDER_NOT_OUT_FOR_DELIVERY', 'هذا الطلب ليس في الطريق للتوصيل حاليًا.');
+  }
+}

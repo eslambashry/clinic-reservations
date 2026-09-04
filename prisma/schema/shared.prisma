@@ -233,6 +233,14 @@ enum PharmacyOrderRejectionReason {
 enum FulfillmentType {
   PICKUP
   DELIVERY
+  /// 2026-09-04 addition: patient collects the medication at their clinic
+  /// instead of a pharmacy branch. Deliberately routed through the exact
+  /// same rules as PICKUP everywhere (`nextStatusAfterFulfill`, branch
+  /// delivery-capability checks, audit action mapping) — there is no linked
+  /// clinic/appointment record and no new `PharmacyOrderStatus` for it, per
+  /// the product decision to keep this a labeling-only third option rather
+  /// than a distinct workflow.
+  CLINIC_HANDOVER
 
   @@map("pharmacy_orders_fulfillment_type_enum")
 }

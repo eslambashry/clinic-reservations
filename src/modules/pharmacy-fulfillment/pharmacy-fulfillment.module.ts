@@ -4,6 +4,7 @@ import { PharmacyOrdersController } from './api/pharmacy-orders.controller';
 import { AcceptPharmacyOrderBroadcastUseCase } from './application/accept-pharmacy-order-broadcast.use-case';
 import { ApprovePharmacyOrderUseCase } from './application/approve-pharmacy-order.use-case';
 import { CompletePharmacyOrderUseCase } from './application/complete-pharmacy-order.use-case';
+import { ConfirmPharmacyOrderReceiptUseCase } from './application/confirm-pharmacy-order-receipt.use-case';
 import { CreatePharmacyOrderUseCase } from './application/create-pharmacy-order.use-case';
 import { DeclinePharmacyOrderBroadcastUseCase } from './application/decline-pharmacy-order-broadcast.use-case';
 import { FulfillPharmacyOrderUseCase } from './application/fulfill-pharmacy-order.use-case';
@@ -52,6 +53,14 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * `CompletePharmacyOrderUseCase` (post-payment progression, previously
  * entirely missing), `ListPharmacyOrdersUseCase` (the queue listing File 12
  * Part 39 item 11 named but never built).
+ *
+ * 2026-09-04 addition: `ConfirmPharmacyOrderReceiptUseCase` —
+ * `POST /pharmacy-orders/{orderId}/confirm-receipt`, `PATIENT`-only,
+ * `OUT_FOR_DELIVERY --> FULFILLED`. Closes the gap left by
+ * `CompletePharmacyOrderUseCase` being staff-only: no courier module exists
+ * yet (Phase 9), so staff can't actually know when a home delivery arrives —
+ * the owning patient confirms receipt instead. `READY_FOR_PICKUP` is
+ * untouched by this addition, still closed by staff via `complete`.
  */
 @Module({
   imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule, PaymentsModule],
@@ -72,6 +81,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     ApprovePharmacyOrderUseCase,
     FulfillPharmacyOrderUseCase,
     CompletePharmacyOrderUseCase,
+    ConfirmPharmacyOrderReceiptUseCase,
     ListPharmacyOrdersUseCase,
     GetPharmacyOrderUseCase,
     ListPharmacyAuditUseCase,

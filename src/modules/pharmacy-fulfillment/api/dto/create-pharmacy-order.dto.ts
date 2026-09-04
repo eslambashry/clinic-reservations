@@ -23,8 +23,8 @@ export class CreatePharmacyOrderDto {
   @IsUUID()
   prescriptionId: string;
 
-  @ApiProperty({ enum: ['PICKUP', 'DELIVERY'] })
-  @IsIn(['PICKUP', 'DELIVERY'])
+  @ApiProperty({ enum: ['PICKUP', 'DELIVERY', 'CLINIC_HANDOVER'] })
+  @IsIn(['PICKUP', 'DELIVERY', 'CLINIC_HANDOVER'])
   fulfillmentType: FulfillmentType;
 
   @ApiPropertyOptional({ example: 30.0444 })
