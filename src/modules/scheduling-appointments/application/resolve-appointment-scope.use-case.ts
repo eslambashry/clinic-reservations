@@ -6,7 +6,7 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 /** The two ways a caller can legitimately reach an appointment (File 11 05.5's auth line). */
 export type AppointmentScope =
   | { kind: 'PATIENT'; patientUserId: string }
-  | { kind: 'DOCTOR'; doctorId: string; affiliationIds: string[] };
+  | { kind: 'DOCTOR' | 'CLINIC_STAFF'; doctorId: string; affiliationIds: string[] };
 
 /** Only the fields ownership actually depends on — deliberately not the whole row. */
 export interface OwnableAppointment {
@@ -47,6 +47,11 @@ export class ResolveAppointmentScopeUseCase {
     if (actor.contextType === RoleContextType.DOCTOR) {
       const scope = await this.doctorScope.execute(actor);
       return { kind: 'DOCTOR', doctorId: scope.doctorId, affiliationIds: scope.affiliationIds };
+    }
+
+    if (actor.contextType === RoleContextType.CLINIC_STAFF) {
+      const scope = await this.doctorScope.execute(actor);
+      return { kind: 'CLINIC_STAFF', doctorId: scope.doctorId, affiliationIds: scope.affiliationIds };
     }
 
     return { kind: 'PATIENT', patientUserId: actor.sub };

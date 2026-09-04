@@ -14,7 +14,7 @@ export const QUOTE_ESTIMATED_READY_MINUTES_MAX = 480;
 
 export function assertValidFlatQuoteInput(input: { totalPrice: string; estimatedReadyMinutes: number }): void {
   if (!(Number(input.totalPrice) > 0)) {
-    throw new BusinessRuleError('INVALID_TOTAL_PRICE', 'totalPrice must be greater than zero.');
+    throw new BusinessRuleError('INVALID_TOTAL_PRICE', 'الإجمالي يجب أن يكون أكبر من صفر.');
   }
   if (
     !Number.isInteger(input.estimatedReadyMinutes) ||
@@ -23,7 +23,7 @@ export function assertValidFlatQuoteInput(input: { totalPrice: string; estimated
   ) {
     throw new BusinessRuleError(
       'INVALID_ESTIMATED_READY_MINUTES',
-      `estimatedReadyMinutes must be between ${QUOTE_ESTIMATED_READY_MINUTES_MIN} and ${QUOTE_ESTIMATED_READY_MINUTES_MAX}.`,
+      `مدة التجهيز المتوقّعة يجب أن تكون بين ${QUOTE_ESTIMATED_READY_MINUTES_MIN} و${QUOTE_ESTIMATED_READY_MINUTES_MAX} دقيقة.`,
     );
   }
 }

@@ -39,23 +39,23 @@ export class RescheduleVisitUseCase {
   async execute(labOrderId: string, input: RescheduleVisitInput, actor: AccessTokenPayload): Promise<RescheduleVisitResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
-    assertFutureInstant(input.appointmentAt, 'VALIDATION_ERROR', 'Appointment must be a valid instant in the future.');
+    assertFutureInstant(input.appointmentAt, 'VALIDATION_ERROR', 'موعد الزيارة يجب أن يكون تاريخًا صحيحًا في المستقبل.');
 
     return this.prisma.$transaction(async (tx) => {
       const order = await this.labOrders.findById(tx, labOrderId);
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatusIn(order.status, ['QUOTED', 'AWAITING_SAMPLE'], 'LAB_ORDER_NOT_RESCHEDULABLE', 'Reschedule requires QUOTED or AWAITING_SAMPLE.');
+      assertStatusIn(order.status, ['QUOTED', 'AWAITING_SAMPLE'], 'LAB_ORDER_NOT_RESCHEDULABLE', 'لا يمكن تغيير الموعد إلا قبل سحب العيّنة.');
       if (!order.appointment_at) {
-        throw new BusinessRuleError('LAB_ORDER_NO_QUOTE_TO_RESCHEDULE', 'This order has no quoted appointment to reschedule.');
+        throw new BusinessRuleError('LAB_ORDER_NO_QUOTE_TO_RESCHEDULE', 'لا يوجد موعد مُسعّر في هذا الطلب لتغييره.');
       }
 
       const events = (await this.getCustodyEvents.executeForOrders(tx, [labOrderId])).get(labOrderId) ?? [];
       if (hasLiveSample(events)) {
-        throw new ConflictError('LAB_ORDER_SAMPLE_ALREADY_LIVE', 'A collected sample already anchors this visit.');
+        throw new ConflictError('LAB_ORDER_SAMPLE_ALREADY_LIVE', 'توجد عيّنة مسحوبة بالفعل مرتبطة بهذه الزيارة.');
       }
 
       await this.labOrders.rescheduleAppointment(tx, labOrderId, order.version, new Date(input.appointmentAt));

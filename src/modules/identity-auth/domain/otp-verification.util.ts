@@ -52,23 +52,23 @@ export async function validateOtpCode(
   incrementAttempts: (id: string) => Promise<{ attempts: number }>,
 ): Promise<void> {
   if (!otpRequest || otpRequest.consumed_at || otpRequest.purpose !== input.purpose) {
-    throw new DomainError(400, 'INVALID_CODE', 'The provided code is invalid.');
+    throw new DomainError(400, 'INVALID_CODE', 'رمز التحقق غير صحيح. راجع الرمز وأعد المحاولة.');
   }
 
   if (otpRequest.expires_at.getTime() < Date.now()) {
-    throw new DomainError(410, 'CODE_EXPIRED', 'This code has expired — request a new one.');
+    throw new DomainError(410, 'CODE_EXPIRED', 'انتهت صلاحية رمز التحقق. اطلب رمزًا جديدًا.');
   }
 
   if (otpRequest.attempts >= OTP_CONSTANTS.MAX_VERIFY_ATTEMPTS) {
-    throw new DomainError(423, 'TOO_MANY_ATTEMPTS', 'Too many failed attempts — request a new code.');
+    throw new DomainError(423, 'TOO_MANY_ATTEMPTS', 'تجاوزت عدد المحاولات المسموح بها. اطلب رمزًا جديدًا.');
   }
 
   const matches = await verifyOtpCode(otpRequest.code_hash, input.code);
   if (!matches) {
     const updated = await incrementAttempts(otpRequest.id);
     if (updated.attempts >= OTP_CONSTANTS.MAX_VERIFY_ATTEMPTS) {
-      throw new DomainError(423, 'TOO_MANY_ATTEMPTS', 'Too many failed attempts — request a new code.');
+      throw new DomainError(423, 'TOO_MANY_ATTEMPTS', 'تجاوزت عدد المحاولات المسموح بها. اطلب رمزًا جديدًا.');
     }
-    throw new DomainError(400, 'INVALID_CODE', 'The provided code is invalid.');
+    throw new DomainError(400, 'INVALID_CODE', 'رمز التحقق غير صحيح. راجع الرمز وأعد المحاولة.');
   }
 }

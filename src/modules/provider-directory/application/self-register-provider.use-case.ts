@@ -146,7 +146,7 @@ export class SelfRegisterProviderUseCase {
       if (dto.working_days && dto.working_days.length > 0) {
         for (const workingDay of dto.working_days) {
           if (!isValidScheduleWindow(workingDay.startTime, workingDay.endTime)) {
-            throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'endTime must be after startTime.', {
+            throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'وقت النهاية يجب أن يكون بعد وقت البداية.', {
               startTime: workingDay.startTime,
               endTime: workingDay.endTime,
             });
@@ -211,7 +211,7 @@ export class SelfRegisterProviderUseCase {
 
     const file = parseDataUri(photoDataUri, 'profile-photo');
     if (!file) {
-      throw new DomainError(400, 'INVALID_PHOTO_DATA_URI', 'photo_data_uri must be a data:<mime>;base64,<payload> string.');
+      throw new DomainError(400, 'INVALID_PHOTO_DATA_URI', 'صيغة الصورة المُرسَلة غير صحيحة. أعد رفع الصورة.');
     }
 
     assertValidMediaFiles([file], {

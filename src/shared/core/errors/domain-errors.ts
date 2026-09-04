@@ -1,3 +1,5 @@
+import { arNotFoundMessage } from './error-messages.ar';
+
 /**
  * Domain exception hierarchy mapping directly onto File 11 Part 06's error
  * category table. Use-cases/domain code throw these — never a bare `Error`
@@ -25,7 +27,7 @@ export class UnauthenticatedError extends AppError {
 
   constructor(
     code: 'UNAUTHENTICATED' | 'TOKEN_EXPIRED' | 'INVALID_REFRESH_TOKEN' | 'TOKEN_FAMILY_REVOKED' = 'UNAUTHENTICATED',
-    message = 'Authentication is required.',
+    message = 'يلزم تسجيل الدخول لإتمام هذا الإجراء.',
   ) {
     super(message);
     this.code = code;
@@ -37,7 +39,10 @@ export class ForbiddenError extends AppError {
   readonly httpStatus = 403;
   readonly code: string;
 
-  constructor(code: 'FORBIDDEN' | 'ROLE_NOT_PERMITTED' | 'RESOURCE_NOT_OWNED' = 'FORBIDDEN', message = 'You do not have permission to perform this action.') {
+  constructor(
+    code: 'FORBIDDEN' | 'ROLE_NOT_PERMITTED' | 'RESOURCE_NOT_OWNED' = 'FORBIDDEN',
+    message = 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
+  ) {
     super(message);
     this.code = code;
   }
@@ -49,7 +54,11 @@ export class NotFoundError extends AppError {
   readonly code = 'RESOURCE_NOT_FOUND';
 
   constructor(resourceType: string, resourceId: string) {
-    super(`${resourceType} not found.`, { resourceType, resourceId });
+    // Arabic is built from `resourceType` rather than written per call site:
+    // 24 resource types x ~90 throw sites is exactly the kind of repetition
+    // that drifts. `resourceType`/`resourceId` still travel in `details` for
+    // clients and logs.
+    super(arNotFoundMessage(resourceType), { resourceType, resourceId });
   }
 }
 
@@ -97,11 +106,14 @@ export class ExternalProviderError extends AppError {
   readonly code = 'GATEWAY_UNAVAILABLE';
 
   constructor(
-    provider: string,
+    public readonly provider: string,
     httpStatus: 502 | 503 = 502,
     public readonly cause?: unknown,
   ) {
-    super(`${provider} is temporarily unavailable.`);
+    // `provider` is a vendor name (ImageKit, a payment gateway) — deliberately
+    // absent from the client-facing sentence, which says only that the
+    // service is unavailable. It stays on the instance for the log line.
+    super('الخدمة غير متاحة مؤقتًا. أعد المحاولة بعد قليل.');
     this.httpStatus = httpStatus;
   }
 }

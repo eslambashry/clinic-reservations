@@ -43,7 +43,7 @@ export class RecordResultUseCase {
   async execute(labOrderId: string, input: RecordResultInput, actor: AccessTokenPayload): Promise<RecordResultResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -51,14 +51,14 @@ export class RecordResultUseCase {
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatusIn(order.status, ['IN_ANALYSIS', 'RESULTS_READY'], 'LAB_ORDER_NOT_IN_ANALYSIS', 'Results can only be recorded during or after analysis.');
+      assertStatusIn(order.status, ['IN_ANALYSIS', 'RESULTS_READY'], 'LAB_ORDER_NOT_IN_ANALYSIS', 'لا يمكن تسجيل النتائج إلا أثناء التحليل أو بعده.');
 
       const item = await this.labOrderItems.findById(tx, input.itemId);
       if (!item || item.lab_order_id !== labOrderId) {
         throw new NotFoundError('LabOrderItem', input.itemId);
       }
       if (item.result_state === 'RECORDED') {
-        throw new ConflictError('LAB_ORDER_ITEM_RESULT_ALREADY_RECORDED', 'A result has already been recorded for this item.');
+        throw new ConflictError('LAB_ORDER_ITEM_RESULT_ALREADY_RECORDED', 'تم تسجيل نتيجة لهذا التحليل بالفعل.');
       }
 
       const fileLabel = input.fileLabel.trim() || this.defaultFileLabel(item.catalog_code, labOrderId);

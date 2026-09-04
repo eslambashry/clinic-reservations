@@ -40,7 +40,7 @@ export class RequestOtpUseCase {
       throw new DomainError(
         429,
         'RATE_LIMITED',
-        'Too many OTP requests for this phone number — try again later.',
+        'طلبات كثيرة لرمز التحقق على هذا الرقم. انتظر قليلاً ثم أعد المحاولة.',
       );
     }
 

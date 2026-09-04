@@ -24,6 +24,10 @@ export class RoleMembershipRepository {
     });
   }
 
+  findActiveById(db: Prisma.TransactionClient, id: string): Promise<RoleMembership | null> {
+    return db.roleMembership.findFirst({ where: { id, status: 'ACTIVE' } });
+  }
+
   create(
     db: Prisma.TransactionClient,
     params: { userId: string; roleCode: string; contextType: RoleContextType; contextId?: string },

@@ -42,7 +42,7 @@ export class SetCriticalFlagUseCase {
   async execute(labOrderId: string, resultId: string, input: SetCriticalFlagInput, actor: AccessTokenPayload): Promise<SetCriticalFlagResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -55,7 +55,7 @@ export class SetCriticalFlagUseCase {
         throw new NotFoundError('LabResultDocument', resultId);
       }
       if (result.review_state === 'REVIEWED') {
-        throw new ConflictError('LAB_RESULT_ALREADY_REVIEWED', 'The critical/non-critical call has already been made for this result.');
+        throw new ConflictError('LAB_RESULT_ALREADY_REVIEWED', 'تم تحديد ما إذا كانت هذه النتيجة حرجة بالفعل.');
       }
 
       await this.labResults.setCriticalCall(tx, resultId, result.version, input.isCritical);

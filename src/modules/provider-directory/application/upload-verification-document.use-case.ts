@@ -85,12 +85,12 @@ export class UploadVerificationDocumentUseCase {
     actorUserId: string,
   ): Promise<void> {
     if (providerType !== 'DOCTOR') {
-      throw new ForbiddenError('FORBIDDEN', 'A doctor may only upload verification documents for their own doctor record.');
+      throw new ForbiddenError('FORBIDDEN', 'لا يمكن للطبيب رفع مستندات التوثيق إلا لملفه الشخصي.');
     }
 
     const ownDoctor = await this.doctors.findByUserId(tx, actorUserId);
     if (!ownDoctor || ownDoctor.id !== providerId) {
-      throw new ForbiddenError('FORBIDDEN', 'A doctor may only upload verification documents for their own doctor record.');
+      throw new ForbiddenError('FORBIDDEN', 'لا يمكن للطبيب رفع مستندات التوثيق إلا لملفه الشخصي.');
     }
   }
 
@@ -121,7 +121,7 @@ export class UploadVerificationDocumentUseCase {
         // hitting a confusing FK failure.
         throw new BusinessRuleError(
           'PROVIDER_TYPE_NOT_SUPPORTED',
-          'Laboratory verification is not supported yet (Laboratory is a postponed module).',
+          'توثيق المعامل غير متاح حاليًا.',
         );
     }
   }

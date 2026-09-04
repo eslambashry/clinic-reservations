@@ -40,7 +40,7 @@ export class DeleteScheduleTemplateUseCase {
       if (options.expectedVersion !== undefined && options.expectedVersion !== template.version) {
         throw new ConflictError(
           'OPTIMISTIC_LOCK_CONFLICT',
-          'This schedule was changed since you loaded it. Reload and try again.',
+          'تم تعديل جدول المواعيد بعد فتحك للصفحة. حدّث الصفحة ثم أعد المحاولة.',
           { scheduleTemplateId, expectedVersion: options.expectedVersion, currentVersion: template.version },
         );
       }

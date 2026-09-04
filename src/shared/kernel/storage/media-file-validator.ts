@@ -19,11 +19,11 @@ export function assertValidMediaFiles(files: UploadedMediaFile[], rules: MediaVa
   const minFileCount = rules.minFileCount ?? 1;
 
   if (files.length < minFileCount) {
-    throw new DomainError(400, 'FILE_REQUIRED', `At least ${minFileCount} file(s) required.`);
+    throw new DomainError(400, 'FILE_REQUIRED', `يلزم إرفاق ${minFileCount} ملف على الأقل.`);
   }
 
   if (rules.maxFileCount !== undefined && files.length > rules.maxFileCount) {
-    throw new DomainError(400, 'TOO_MANY_FILES', `A maximum of ${rules.maxFileCount} file(s) is allowed.`, {
+    throw new DomainError(400, 'TOO_MANY_FILES', `الحد الأقصى ${rules.maxFileCount} ملف.`, {
       maxFileCount: rules.maxFileCount,
       received: files.length,
     });
@@ -31,21 +31,21 @@ export function assertValidMediaFiles(files: UploadedMediaFile[], rules: MediaVa
 
   for (const file of files) {
     if (!rules.allowedMimeTypes.includes(file.mimeType)) {
-      throw new DomainError(400, 'UNSUPPORTED_FILE_TYPE', `File type "${file.mimeType}" is not supported.`, {
+      throw new DomainError(400, 'UNSUPPORTED_FILE_TYPE', `نوع الملف «${file.mimeType}» غير مدعوم.`, {
         allowedMimeTypes: rules.allowedMimeTypes,
         received: file.mimeType,
       });
     }
 
     if (file.sizeBytes > rules.maxFileSizeBytes) {
-      throw new DomainError(400, 'FILE_TOO_LARGE', `File exceeds the maximum size of ${rules.maxFileSizeBytes} bytes.`, {
+      throw new DomainError(400, 'FILE_TOO_LARGE', `حجم الملف أكبر من الحد المسموح به (${rules.maxFileSizeBytes} بايت).`, {
         maxFileSizeBytes: rules.maxFileSizeBytes,
         receivedBytes: file.sizeBytes,
       });
     }
 
     if (file.sizeBytes === 0) {
-      throw new DomainError(400, 'EMPTY_FILE', 'An uploaded file is empty.');
+      throw new DomainError(400, 'EMPTY_FILE', 'الملف المرفوع فارغ. تأكد من الملف وأعد رفعه.');
     }
   }
 }

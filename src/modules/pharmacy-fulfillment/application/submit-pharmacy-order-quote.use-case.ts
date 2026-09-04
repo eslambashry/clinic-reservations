@@ -68,7 +68,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
 
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
     }
     const branchId = membership.contextId;
 
@@ -90,7 +90,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
         }
         const claimed = await this.pharmacyOrders.claimForBranch(tx, pharmacyOrderId, order.version, branchId);
         if (!claimed) {
-          throw new ConflictError('ORDER_ALREADY_CLAIMED', 'Another pharmacy branch already claimed this order.');
+          throw new ConflictError('ORDER_ALREADY_CLAIMED', 'استلم فرع صيدلية آخر هذا الطلب قبلك.');
         }
         await this.broadcasts.markResponded(tx, broadcast.id, 'ACCEPTED');
         await this.outbox.emit(tx, 'PharmacyOrderAccepted', { pharmacyOrderId, pharmacyBranchId: branchId });
@@ -101,7 +101,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
       }
 
       if (status !== 'UNDER_REVIEW') {
-        throw new BusinessRuleError('PHARMACY_ORDER_NOT_UNDER_REVIEW', 'This order is not awaiting a quote.');
+        throw new BusinessRuleError('PHARMACY_ORDER_NOT_UNDER_REVIEW', 'هذا الطلب ليس في انتظار تسعير.');
       }
 
       // File 10 line 541: still enforced even without per-item substitution —
@@ -118,7 +118,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
       if (includesControlledSubstance && !input.controlledSubstanceConfirmed) {
         throw new BusinessRuleError(
           'CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED',
-          'This order includes a controlled substance — controlledSubstanceConfirmed must be explicitly true to quote it.',
+          'يشمل هذا الطلب دواءً خاضعًا للرقابة. يلزم تأكيد صريح من الصيدلي قبل التسعير.',
         );
       }
 

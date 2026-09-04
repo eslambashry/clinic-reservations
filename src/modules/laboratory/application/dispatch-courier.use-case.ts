@@ -30,7 +30,7 @@ export class DispatchCourierUseCase {
   async execute(labOrderId: string, input: DispatchCourierInput | undefined, actor: AccessTokenPayload): Promise<DispatchCourierResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -39,9 +39,9 @@ export class DispatchCourierUseCase {
         throw new NotFoundError('LabOrder', labOrderId);
       }
       if (order.collection_type !== 'HOME_COLLECTION') {
-        throw new BusinessRuleError('LAB_ORDER_NOT_HOME_COLLECTION', 'This is a visit order; record arrival instead of dispatching a courier.');
+        throw new BusinessRuleError('LAB_ORDER_NOT_HOME_COLLECTION', 'هذا طلب زيارة للفرع؛ سجّل وصول المريض بدلاً من إرسال مندوب.');
       }
-      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'Courier dispatch requires a confirmed booking awaiting sample.');
+      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'إرسال المندوب يتطلّب حجزًا مؤكّدًا في انتظار العيّنة.');
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,

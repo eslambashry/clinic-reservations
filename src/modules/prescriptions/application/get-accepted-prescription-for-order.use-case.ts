@@ -48,7 +48,7 @@ export class GetAcceptedPrescriptionForOrderUseCase {
       throw new NotFoundError('Prescription', prescriptionId);
     }
     if (prescription.status !== 'ACCEPTED' && prescription.status !== 'QUALITY_CHECK_PASSED') {
-      throw new BusinessRuleError('PRESCRIPTION_NOT_ACCEPTED', 'This prescription has not passed its quality check or been accepted by a pharmacist review yet.');
+      throw new BusinessRuleError('PRESCRIPTION_NOT_ACCEPTED', 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.');
     }
 
     const items = await this.items.findByPrescriptionId(tx, prescriptionId);

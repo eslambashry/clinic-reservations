@@ -45,7 +45,7 @@ export class LoginWithPasswordUseCase {
       windowSeconds: PASSWORD_CONSTANTS.LOGIN_RATE_LIMIT_WINDOW_SECONDS,
     });
     if (!allowed) {
-      throw new DomainError(429, 'RATE_LIMITED', 'Too many login attempts for this phone number — try again later.');
+      throw new DomainError(429, 'RATE_LIMITED', 'محاولات تسجيل دخول كثيرة على هذا الرقم. انتظر قليلاً ثم أعد المحاولة.');
     }
 
     const user = await this.users.findByPhone(this.prisma, input.phone);
@@ -53,12 +53,12 @@ export class LoginWithPasswordUseCase {
     // No password set yet is not a crash — same "invalid credentials", never
     // reveal whether the phone/password_hash exists.
     if (!user || !user.password_hash) {
-      throw new UnauthenticatedError('UNAUTHENTICATED', 'Invalid phone number or password.');
+      throw new UnauthenticatedError('UNAUTHENTICATED', 'رقم الهاتف أو كلمة المرور غير صحيحة.');
     }
 
     const matches = await argon2.verify(user.password_hash, input.password);
     if (!matches) {
-      throw new UnauthenticatedError('UNAUTHENTICATED', 'Invalid phone number or password.');
+      throw new UnauthenticatedError('UNAUTHENTICATED', 'رقم الهاتف أو كلمة المرور غير صحيحة.');
     }
 
     // A SUSPENDED account (e.g. a doctor suspending a clinic assistant via
@@ -66,7 +66,7 @@ export class LoginWithPasswordUseCase {
     // with a correct password — checked after credential verification so a
     // guess against a suspended phone still reveals nothing extra.
     if (user.status === 'SUSPENDED') {
-      throw new UnauthenticatedError('UNAUTHENTICATED', 'Invalid phone number or password.');
+      throw new UnauthenticatedError('UNAUTHENTICATED', 'رقم الهاتف أو كلمة المرور غير صحيحة.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -80,9 +80,9 @@ export class LoginWithPasswordUseCase {
       const activeMembership = memberships[0];
       if (!activeMembership) {
         if (input.role) {
-          throw new ForbiddenError('ROLE_NOT_PERMITTED', `This account has no active ${input.role} role.`);
+          throw new ForbiddenError('ROLE_NOT_PERMITTED', `لا يوجد دور «${input.role}» نشِط لهذا الحساب.`);
         }
-        throw new UnauthenticatedError('UNAUTHENTICATED', 'No active role membership for this account.');
+        throw new UnauthenticatedError('UNAUTHENTICATED', 'لا يوجد دور نشِط لهذا الحساب. تواصل مع الدعم.');
       }
 
       const issued = await this.tokens.issue(tx, activeMembership);

@@ -68,7 +68,7 @@ export class RejectPharmacyOrderUseCase {
   async execute(pharmacyOrderId: string, input: RejectPharmacyOrderInput, actor: AccessTokenPayload): Promise<RejectPharmacyOrderResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
     }
     const branchId = membership.contextId;
 
@@ -87,7 +87,7 @@ export class RejectPharmacyOrderUseCase {
       if (broadcast && broadcast.response === null) {
         const declined = await this.broadcasts.markResponded(tx, broadcast.id, 'DECLINED');
         if (!declined) {
-          throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'This branch has already responded to this order.');
+          throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'سبق لهذا الفرع الرد على هذا الطلب.');
         }
 
         await this.audit.record(tx, {
@@ -105,11 +105,11 @@ export class RejectPharmacyOrderUseCase {
         throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
       }
       if (!REJECTABLE_STATUSES.includes(order.status)) {
-        throw new BusinessRuleError('PHARMACY_ORDER_NOT_REJECTABLE', 'This order is not awaiting a decision.');
+        throw new BusinessRuleError('PHARMACY_ORDER_NOT_REJECTABLE', 'هذا الطلب ليس في انتظار قرار.');
       }
       const reason = input.reason;
       if (!reason) {
-        throw new BusinessRuleError('REJECTION_REASON_REQUIRED', 'reason is required to reject a claimed order.');
+        throw new BusinessRuleError('REJECTION_REASON_REQUIRED', 'اكتب سبب الرفض قبل المتابعة.');
       }
 
       await this.pharmacyOrders.rejectOrder(tx, pharmacyOrderId, order.version, { reason, note: input.note ?? null });

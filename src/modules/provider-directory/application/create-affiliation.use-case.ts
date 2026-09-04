@@ -44,7 +44,7 @@ export class CreateAffiliationUseCase {
         affiliation = await this.affiliations.create(tx, { doctorId, ...input });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          throw new ConflictError('AFFILIATION_ALREADY_EXISTS', 'This doctor is already affiliated with this branch.', {
+          throw new ConflictError('AFFILIATION_ALREADY_EXISTS', 'هذا الطبيب مرتبط بهذا الفرع بالفعل.', {
             doctorId,
             clinicBranchId: input.clinicBranchId,
           });

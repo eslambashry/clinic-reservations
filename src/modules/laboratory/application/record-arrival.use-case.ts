@@ -38,7 +38,7 @@ export class RecordArrivalUseCase {
   async execute(labOrderId: string, input: RecordArrivalInput | undefined, actor: AccessTokenPayload): Promise<RecordArrivalResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -46,14 +46,14 @@ export class RecordArrivalUseCase {
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'Arrival requires a confirmed booking awaiting sample.');
+      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'تسجيل الوصول يتطلّب حجزًا مؤكّدًا في انتظار العيّنة.');
       if (order.collection_type !== 'VISIT') {
-        throw new BusinessRuleError('LAB_ORDER_NOT_VISIT', 'This is a home-collection order; dispatch a courier instead of recording arrival.');
+        throw new BusinessRuleError('LAB_ORDER_NOT_VISIT', 'هذا طلب سحب منزلي؛ أرسل مندوبًا بدلاً من تسجيل الوصول.');
       }
 
       const events = (await this.getCustodyEvents.executeForOrders(tx, [labOrderId])).get(labOrderId) ?? [];
       if (hasCustodyEventAfter(events, ['ARRIVAL_CONFIRMED'])) {
-        throw new ConflictError('LAB_ORDER_ARRIVAL_ALREADY_RECORDED', 'Arrival has already been recorded for this order.');
+        throw new ConflictError('LAB_ORDER_ARRIVAL_ALREADY_RECORDED', 'تم تسجيل وصول المريض لهذا الطلب بالفعل.');
       }
 
       await this.audit.record(tx, {

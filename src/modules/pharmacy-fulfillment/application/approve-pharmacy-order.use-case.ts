@@ -47,7 +47,7 @@ export class ApprovePharmacyOrderUseCase {
         throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
       }
       if (order.status !== APPROVABLE_STATUS || !order.total_price || !order.currency) {
-        throw new BusinessRuleError('PHARMACY_ORDER_NOT_APPROVABLE', 'This order is not awaiting approval.');
+        throw new BusinessRuleError('PHARMACY_ORDER_NOT_APPROVABLE', 'هذا الطلب ليس في انتظار موافقة.');
       }
       // order.pharmacy_branch_id is guaranteed non-null here: reaching ACCEPTED
       // requires having gone through claimForBranch (File 11 line 456), which always sets it.
@@ -73,7 +73,7 @@ export class ApprovePharmacyOrderUseCase {
 
       const paid = await this.pharmacyOrders.markPaid(tx, pharmacyOrderId, order.version, capture.paymentIntentId);
       if (!paid) {
-        throw new ConflictError('PHARMACY_ORDER_STATUS_CHANGED', 'This order was already approved or modified concurrently.');
+        throw new ConflictError('PHARMACY_ORDER_STATUS_CHANGED', 'تمت الموافقة على هذا الطلب أو تعديله من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.');
       }
 
       await this.audit.record(tx, {

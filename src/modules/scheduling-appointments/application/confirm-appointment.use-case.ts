@@ -23,7 +23,7 @@ export interface ConfirmAppointmentResult {
 }
 
 function holdExpired(holdId: string): DomainError {
-  return new DomainError(410, 'HOLD_EXPIRED', 'This hold has expired or was already used. Start a new hold.', { holdId });
+  return new DomainError(410, 'HOLD_EXPIRED', 'انتهت مهلة الحجز المؤقت أو تم استخدامه. ابدأ حجزًا جديدًا.', { holdId });
 }
 
 /**
@@ -49,7 +49,7 @@ export class ConfirmAppointmentUseCase {
 
   async execute(holdId: string, input: ConfirmAppointmentInput, actor: AccessTokenPayload): Promise<ConfirmAppointmentResult> {
     if (input.paymentMethod === 'ONLINE') {
-      throw new DomainError(422, 'PAYMENT_METHOD_NOT_SUPPORTED', 'Online payment is not yet available (File 12 Part 35.4).');
+      throw new DomainError(422, 'PAYMENT_METHOD_NOT_SUPPORTED', 'الدفع الإلكتروني غير متاح حاليًا. الدفع في العيادة هو الخيار المتاح.');
     }
 
     // Explicit timeout (Prisma's default is 5000ms): this transaction now

@@ -66,14 +66,14 @@ export class CapturePayAtClinicPaymentUseCase {
       'COMMISSION_RATE',
     );
     if (rate === null) {
-      throw new DomainError(500, 'COMMISSION_RATE_NOT_CONFIGURED', 'No COMMISSION_RATE policy_config is set for this region.');
+      throw new DomainError(500, 'COMMISSION_RATE_NOT_CONFIGURED', 'نسبة العمولة غير مُهيّأة لهذه المنطقة. تواصل مع الدعم.');
     }
 
     const split = computeCommissionSplit({ amount: input.amount, commissionRatePercent: rate.ratePercent });
 
     const captured = await this.paymentIntents.markCaptured(tx, intent.id, intent.version);
     if (!captured) {
-      throw new DomainError(500, 'PAYMENT_CAPTURE_FAILED', 'Payment intent could not be captured.', { paymentIntentId: intent.id });
+      throw new DomainError(500, 'PAYMENT_CAPTURE_FAILED', 'تعذّر تحصيل الدفعة. أعد المحاولة.', { paymentIntentId: intent.id });
     }
 
     await this.paymentSplits.create(tx, {

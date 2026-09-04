@@ -53,7 +53,7 @@ export function assertStatusIn(status: LabOrderStatus, expected: LabOrderStatus[
 /** Mirrors `submitQuote`'s guard: a prescription-only request needs at least one transcribed item before it can be quoted. */
 export function assertHasItems(itemCount: number): void {
   if (itemCount === 0) {
-    throw new BusinessRuleError('NO_ITEMS_TO_QUOTE', 'This request has no test items to quote yet.');
+    throw new BusinessRuleError('NO_ITEMS_TO_QUOTE', 'لا توجد تحاليل في هذا الطلب لتسعيرها بعد.');
   }
 }
 
@@ -62,11 +62,11 @@ const REJECTABLE_STATUSES: LabOrderStatus[] = ['REQUESTED', 'QUOTED', 'AWAITING_
 /** Mirrors the mock's `rejectOrder` guard: blocked once analysis has started, terminal, or a live sample exists. */
 export function assertOrderIsRejectable(status: LabOrderStatus, hasLive: boolean): void {
   if (!REJECTABLE_STATUSES.includes(status) || hasLive) {
-    throw new BusinessRuleError('LAB_ORDER_NOT_REJECTABLE', 'This order has already passed the quoting window.');
+    throw new BusinessRuleError('LAB_ORDER_NOT_REJECTABLE', 'انتهت المهلة التي يمكن فيها رفض هذا الطلب.');
   }
 }
 
-export function assertNoLiveSample(hasLive: boolean, code = 'LAB_ORDER_SAMPLE_ALREADY_LIVE', message = 'A sample is already anchored to this order.'): void {
+export function assertNoLiveSample(hasLive: boolean, code = 'LAB_ORDER_SAMPLE_ALREADY_LIVE', message = 'توجد عيّنة مرتبطة بهذا الطلب بالفعل.'): void {
   if (hasLive) {
     throw new ConflictError(code, message);
   }
@@ -74,26 +74,26 @@ export function assertNoLiveSample(hasLive: boolean, code = 'LAB_ORDER_SAMPLE_AL
 
 export function assertHasLiveSample(hasLive: boolean): void {
   if (!hasLive) {
-    throw new BusinessRuleError('LAB_ORDER_NO_LIVE_SAMPLE', 'No valid sample exists since the last rejection.');
+    throw new BusinessRuleError('LAB_ORDER_NO_LIVE_SAMPLE', 'لا توجد عيّنة صالحة بعد آخر رفض.');
   }
 }
 
 export function assertCollectionGateSatisfied(satisfied: boolean): void {
   if (!satisfied) {
-    throw new BusinessRuleError('LAB_ORDER_COLLECTION_GATE_NOT_SATISFIED', 'Record arrival or dispatch the courier before collecting a sample.');
+    throw new BusinessRuleError('LAB_ORDER_COLLECTION_GATE_NOT_SATISFIED', 'سجّل وصول المريض أو أرسل المندوب قبل سحب العيّنة.');
   }
 }
 
 export function assertRecollectionRequired(required: boolean): void {
   if (!required) {
-    throw new BusinessRuleError('LAB_ORDER_RECOLLECTION_NOT_REQUIRED', 'Recollection only applies after a rejected sample.');
+    throw new BusinessRuleError('LAB_ORDER_RECOLLECTION_NOT_REQUIRED', 'إعادة السحب متاحة فقط بعد رفض عيّنة.');
   }
 }
 
 /** Mirrors `recordResultDelivery`'s guard: every result must have gone through the human critical/non-critical call first. */
 export function assertNoPendingReview(hasPending: boolean): void {
   if (hasPending) {
-    throw new BusinessRuleError('LAB_ORDER_RESULTS_PENDING_REVIEW', 'Make the critical/non-critical call on every result before attesting delivery.');
+    throw new BusinessRuleError('LAB_ORDER_RESULTS_PENDING_REVIEW', 'حدّد الحالة الحرجة لكل نتيجة قبل توثيق التسليم.');
   }
 }
 

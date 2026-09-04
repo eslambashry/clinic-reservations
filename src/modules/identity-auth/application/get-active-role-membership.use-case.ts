@@ -41,4 +41,12 @@ export class GetActiveRoleMembershipUseCase {
     const match = memberships.find((membership) => membership.context_type === contextType);
     return match ? { roleMembershipId: match.id, contextId: match.context_id } : null;
   }
+
+  async executeByRoleMembershipId(roleMembershipId: string, contextType: RoleContextType): Promise<ActiveRoleMembership | null> {
+    const membership = await this.roleMemberships.findActiveById(this.prisma, roleMembershipId);
+    if (!membership || membership.context_type !== contextType) {
+      return null;
+    }
+    return { roleMembershipId: membership.id, contextId: membership.context_id };
+  }
 }

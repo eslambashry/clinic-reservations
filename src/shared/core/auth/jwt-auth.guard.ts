@@ -57,9 +57,9 @@ export class JwtAuthGuard implements CanActivate {
         return true;
       }
       if (error instanceof Error && error.name === 'TokenExpiredError') {
-        throw new UnauthenticatedError('TOKEN_EXPIRED', 'Access token has expired.');
+        throw new UnauthenticatedError('TOKEN_EXPIRED', 'انتهت صلاحية جلستك. سجّل الدخول مرة أخرى للمتابعة.');
       }
-      throw new UnauthenticatedError('UNAUTHENTICATED', 'Invalid access token.');
+      throw new UnauthenticatedError('UNAUTHENTICATED', 'جلستك غير صالحة. سجّل الدخول مرة أخرى.');
     }
   }
 

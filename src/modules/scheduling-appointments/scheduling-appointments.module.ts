@@ -7,6 +7,7 @@ import { ScheduleTemplatesController } from './api/schedule-templates.controller
 import { CancelAppointmentUseCase } from './application/cancel-appointment.use-case';
 import { ConfirmAppointmentUseCase } from './application/confirm-appointment.use-case';
 import { CreateHoldUseCase } from './application/create-hold.use-case';
+import { CreateClinicStaffAppointmentUseCase } from './application/create-clinic-staff-appointment.use-case';
 import { CreateScheduleTemplateUseCase } from './application/create-schedule-template.use-case';
 import { DeleteScheduleTemplateUseCase } from './application/delete-schedule-template.use-case';
 import { ExpireHoldsUseCase } from './application/expire-holds.use-case';
@@ -31,6 +32,7 @@ import { SlotGenerationJob } from './infrastructure/slot-generation.job';
 import { AuditModule } from '../audit/audit.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
+import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 
 /**
  * File 11 Part 03: owns `schedule_templates`, `appointment_slots`,
@@ -41,7 +43,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * never reaches into either module's repositories.
  */
 @Module({
-  imports: [AuditModule, ProviderDirectoryModule, PaymentsModule],
+  imports: [AuditModule, ProviderDirectoryModule, PaymentsModule, IdentityAuthModule],
   controllers: [
     ScheduleTemplatesController,
     DoctorScheduleTemplatesController,
@@ -67,6 +69,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     GenerateSlotsUseCase,
     GetDoctorSlotsUseCase,
     CreateHoldUseCase,
+    CreateClinicStaffAppointmentUseCase,
     ConfirmAppointmentUseCase,
     CancelAppointmentUseCase,
     RescheduleAppointmentUseCase,

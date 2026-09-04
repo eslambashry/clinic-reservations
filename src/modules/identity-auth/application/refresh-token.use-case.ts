@@ -32,7 +32,7 @@ export class RefreshTokenUseCase {
     const existing = await this.refreshTokens.findByTokenHash(this.prisma, tokenHash);
 
     if (!existing) {
-      throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'This refresh token is not recognized.');
+      throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'جلستك غير معروفة أو منتهية. سجّل الدخول مرة أخرى.');
     }
 
     if (existing.revoked_at) {
@@ -43,12 +43,12 @@ export class RefreshTokenUseCase {
       this.logger.warn(`Refresh token reuse detected for user ${existing.user_id} — token family revoked.`);
       throw new UnauthenticatedError(
         'TOKEN_FAMILY_REVOKED',
-        'This session was revoked for security reasons — please sign in again.',
+        'تم إنهاء هذه الجلسة لأسباب أمنية. سجّل الدخول مرة أخرى.',
       );
     }
 
     if (existing.expires_at.getTime() < Date.now()) {
-      throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'This refresh token has expired.');
+      throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'انتهت صلاحية جلستك. سجّل الدخول مرة أخرى.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -59,7 +59,7 @@ export class RefreshTokenUseCase {
         // Treat it the same as an unrecognized token, not as a theft
         // signal — this isn't a replay of an already-rotated token, it's
         // two legitimate calls racing on the same still-valid one.
-        throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'This refresh token has already been used.');
+        throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'تم استخدام هذه الجلسة من قبل. سجّل الدخول مرة أخرى.');
       }
 
       // Phase 1 scope: exactly one (PATIENT) membership per user — see the
@@ -67,7 +67,7 @@ export class RefreshTokenUseCase {
       const memberships = await this.roleMemberships.findActiveByUser(tx, existing.user_id);
       const activeMembership = memberships[0];
       if (!activeMembership) {
-        throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'No active role membership for this account.');
+        throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'لا يوجد دور نشِط لهذا الحساب. تواصل مع الدعم.');
       }
 
       const issued = await this.tokens.rotate(tx, activeMembership, existing.id, existing.device_id ?? undefined);

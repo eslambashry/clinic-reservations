@@ -39,7 +39,7 @@ export class AcceptPharmacyOrderBroadcastUseCase {
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<AcceptPharmacyOrderBroadcastResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
     }
     const branchId = membership.contextId;
 
@@ -49,7 +49,7 @@ export class AcceptPharmacyOrderBroadcastUseCase {
         throw new NotFoundError('PharmacyOrderBroadcast', pharmacyOrderId);
       }
       if (broadcast.response !== null) {
-        throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'This branch has already responded to this order.');
+        throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'سبق لهذا الفرع الرد على هذا الطلب.');
       }
 
       const order = await this.pharmacyOrders.findById(tx, pharmacyOrderId);
@@ -59,13 +59,13 @@ export class AcceptPharmacyOrderBroadcastUseCase {
 
       const claimed = await this.pharmacyOrders.claimForBranch(tx, pharmacyOrderId, order.version, branchId);
       if (!claimed) {
-        throw new ConflictError('ORDER_ALREADY_CLAIMED', 'Another pharmacy branch already claimed this order.');
+        throw new ConflictError('ORDER_ALREADY_CLAIMED', 'استلم فرع صيدلية آخر هذا الطلب قبلك.');
       }
 
       const responded = await this.broadcasts.markResponded(tx, broadcast.id, 'ACCEPTED');
       if (!responded) {
         // Defense-in-depth: the `response !== null` check above already covers this in practice.
-        throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'This branch has already responded to this order.');
+        throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'سبق لهذا الفرع الرد على هذا الطلب.');
       }
 
       await this.audit.record(tx, {

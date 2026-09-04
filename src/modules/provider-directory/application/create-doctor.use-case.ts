@@ -64,8 +64,8 @@ export function translateCreateDoctorError(error: unknown, userId: string): Erro
       return new NotFoundError('User', userId);
     }
     if (error.code === 'P2002') {
-      return new ConflictError('DOCTOR_ALREADY_EXISTS', 'This user already has a doctor profile.', { userId });
+      return new ConflictError('DOCTOR_ALREADY_EXISTS', 'هذا الحساب لديه ملف طبيب بالفعل.', { userId });
     }
   }
-  return new DomainError(500, 'INTERNAL_ERROR', 'Unexpected error while creating the doctor.');
+  return new DomainError(500, 'INTERNAL_ERROR', 'تعذّر إنشاء ملف الطبيب. أعد المحاولة.');
 }

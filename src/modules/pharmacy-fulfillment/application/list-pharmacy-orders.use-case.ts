@@ -67,11 +67,11 @@ export class ListPharmacyOrdersUseCase {
     } else if (actor.contextType === 'PHARMACY_STAFF') {
       const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
       if (!membership || !membership.contextId) {
-        throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
+        throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
       }
       rows = await this.pharmacyOrders.findForBranch(this.prisma, membership.contextId, page);
     } else {
-      throw new ForbiddenError('FORBIDDEN', 'This role cannot list pharmacy orders.');
+      throw new ForbiddenError('FORBIDDEN', 'صلاحيات حسابك لا تسمح بعرض طلبات الصيدلية.');
     }
 
     const hasMore = rows.length > limit;

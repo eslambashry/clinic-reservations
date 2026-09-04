@@ -52,7 +52,7 @@ export class ResetPasswordUseCase {
       // as any other invalid-code case rather than a 500.
       const user = await this.users.findByPhone(tx, otpRequest.phone);
       if (!user) {
-        throw new DomainError(400, 'INVALID_CODE', 'The provided code is invalid.');
+        throw new DomainError(400, 'INVALID_CODE', 'رمز التحقق غير صحيح. راجع الرمز وأعد المحاولة.');
       }
 
       const passwordHash = await argon2.hash(input.newPassword);

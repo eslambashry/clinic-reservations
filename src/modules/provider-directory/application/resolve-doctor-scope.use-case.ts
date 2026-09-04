@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AffiliationStatus, ProviderStatus } from '@prisma/client';
+import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
@@ -83,10 +84,17 @@ export class ResolveDoctorScopeUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
     @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
+    @Optional() @Inject(GetActiveRoleMembershipUseCase) private readonly memberships?: GetActiveRoleMembershipUseCase,
   ) {}
 
   async execute(actor: AccessTokenPayload): Promise<DoctorScope> {
-    const doctor = await this.doctors.findByUserId(this.prisma, actor.sub);
+    const ownerDoctorId =
+      actor.contextType === 'CLINIC_STAFF'
+        ? (await this.memberships?.executeByRoleMembershipId(actor.roleMembershipId, 'CLINIC_STAFF'))?.contextId
+        : null;
+    const doctor = ownerDoctorId
+      ? await this.doctors.findById(this.prisma, ownerDoctorId)
+      : await this.doctors.findByUserId(this.prisma, actor.sub);
     if (!doctor || doctor.deleted_at) {
       throw new NotFoundError('Doctor', actor.sub);
     }

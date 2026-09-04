@@ -67,7 +67,7 @@ export class CreatePharmacyOrderUseCase {
       if (input.lat === undefined || input.lng === undefined) {
         throw new BusinessRuleError(
           'PHARMACY_ORDER_LOCATION_REQUIRED',
-          'lat/lng are required when pharmacyBranchId is not provided.',
+          'حدّد موقعك أو اختر فرع صيدلية لإتمام الطلب.',
         );
       }
       branchIds = await this.findNearestBranches(input.lat, input.lng, input.fulfillmentType);
@@ -116,7 +116,7 @@ export class CreatePharmacyOrderUseCase {
   private async resolveChosenBranch(branchId: string, fulfillmentType: FulfillmentType): Promise<string> {
     const branch = await this.getPharmacyBranch.execute(branchId, undefined);
     if (fulfillmentType === 'DELIVERY' && !branch.delivery_capable) {
-      throw new BusinessRuleError('PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE', 'The chosen pharmacy branch does not offer delivery.');
+      throw new BusinessRuleError('PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE', 'فرع الصيدلية المختار لا يوفّر خدمة التوصيل.');
     }
     return branch.id;
   }
@@ -130,7 +130,7 @@ export class CreatePharmacyOrderUseCase {
       limit: PHARMACY_CONSTANTS.BROADCAST_FANOUT_COUNT,
     });
     if (branchResults.items.length === 0) {
-      throw new BusinessRuleError('NO_PHARMACY_BRANCHES_AVAILABLE', 'No verified pharmacy branches were found near the given location.');
+      throw new BusinessRuleError('NO_PHARMACY_BRANCHES_AVAILABLE', 'لا توجد فروع صيدليات موثّقة قريبة من الموقع المحدّد.');
     }
     return branchResults.items.map((branch) => branch.branchId);
   }

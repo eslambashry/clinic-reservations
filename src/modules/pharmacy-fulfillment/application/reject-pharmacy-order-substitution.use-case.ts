@@ -35,7 +35,7 @@ export class RejectPharmacyOrderSubstitutionUseCase {
         throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
       }
       if (order.status !== 'SUBSTITUTION_PROPOSED') {
-        throw new BusinessRuleError('PHARMACY_ORDER_NOT_SUBSTITUTION_PROPOSED', 'This order has no pending substitution to reject.');
+        throw new BusinessRuleError('PHARMACY_ORDER_NOT_SUBSTITUTION_PROPOSED', 'لا يوجد بديل مقترح في هذا الطلب لرفضه.');
       }
 
       await this.substitutions.rejectAllPendingForOrder(tx, pharmacyOrderId);

@@ -38,7 +38,7 @@ export class ProcessCancellationRefundUseCase {
       throw new NotFoundError('PaymentIntent', input.paymentIntentId);
     }
     if (intent.status !== 'CAPTURED') {
-      throw new BusinessRuleError('PAYMENT_INTENT_NOT_REFUNDABLE', 'Only a captured payment can be refunded.', {
+      throw new BusinessRuleError('PAYMENT_INTENT_NOT_REFUNDABLE', 'لا يمكن استرداد مبلغ لم يتم تحصيله.', {
         status: intent.status,
       });
     }
@@ -51,7 +51,7 @@ export class ProcessCancellationRefundUseCase {
 
     const updated = await this.paymentIntents.markRefunded(tx, intent.id, intent.version, newStatus);
     if (!updated) {
-      throw new ConflictError('PAYMENT_INTENT_STATE_CHANGED', 'This payment was modified concurrently.', {
+      throw new ConflictError('PAYMENT_INTENT_STATE_CHANGED', 'تم تعديل عملية الدفع من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', {
         paymentIntentId: intent.id,
       });
     }

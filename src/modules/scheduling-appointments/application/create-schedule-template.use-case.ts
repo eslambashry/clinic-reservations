@@ -22,7 +22,7 @@ export class CreateScheduleTemplateUseCase {
 
   async execute(input: CreateScheduleTemplateInput, actor: AccessTokenPayload): Promise<ScheduleTemplate> {
     if (!isValidScheduleWindow(input.startTime, input.endTime)) {
-      throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'endTime must be after startTime.', {
+      throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'وقت النهاية يجب أن يكون بعد وقت البداية.', {
         startTime: input.startTime,
         endTime: input.endTime,
       });
@@ -54,5 +54,5 @@ export function translateScheduleTemplateError(error: unknown, affiliationId: st
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
     return new NotFoundError('DoctorClinicAffiliation', affiliationId);
   }
-  return new DomainError(500, 'INTERNAL_ERROR', 'Unexpected error while creating the schedule template.');
+  return new DomainError(500, 'INTERNAL_ERROR', 'تعذّر إنشاء قالب المواعيد. أعد المحاولة.');
 }

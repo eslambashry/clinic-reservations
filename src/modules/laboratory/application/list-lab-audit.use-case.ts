@@ -72,7 +72,7 @@ export class ListLabAuditUseCase {
   async execute(input: ListLabAuditInput, actor: AccessTokenPayload): Promise<ListLabAuditResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     const orders = await this.labOrders.findAllForBranch(this.prisma, membership.contextId);

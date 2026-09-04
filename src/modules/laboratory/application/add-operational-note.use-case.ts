@@ -31,11 +31,11 @@ export class AddOperationalNoteUseCase {
   async execute(labOrderId: string, input: AddOperationalNoteInput, actor: AccessTokenPayload): Promise<AddOperationalNoteResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
     const body = input.body.trim();
     if (!body) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'Note body cannot be empty.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'نص الملاحظة لا يمكن أن يكون فارغًا.');
     }
 
     return this.prisma.$transaction(async (tx) => {

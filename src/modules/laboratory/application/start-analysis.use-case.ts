@@ -40,7 +40,7 @@ export class StartAnalysisUseCase {
   async execute(labOrderId: string, input: StartAnalysisInput | undefined, actor: AccessTokenPayload): Promise<StartAnalysisResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -48,7 +48,7 @@ export class StartAnalysisUseCase {
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'Analysis requires a collected sample first.');
+      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'بدء التحليل يتطلّب سحب العيّنة أولاً.');
 
       const events = (await this.getCustodyEvents.executeForOrders(tx, [labOrderId])).get(labOrderId) ?? [];
       assertHasLiveSample(hasLiveSample(events));

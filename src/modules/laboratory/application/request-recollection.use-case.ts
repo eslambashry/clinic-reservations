@@ -31,10 +31,10 @@ export class RequestRecollectionUseCase {
   async execute(labOrderId: string, input: RequestRecollectionInput, actor: AccessTokenPayload): Promise<RequestRecollectionResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
     if (!input.reason?.trim()) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'A recollection reason is required.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'اكتب سبب إعادة سحب العيّنة.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -42,7 +42,7 @@ export class RequestRecollectionUseCase {
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'Recollection applies to an order awaiting a fresh sample.');
+      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'إعادة السحب تنطبق على طلب في انتظار عيّنة جديدة.');
       assertRecollectionRequired(order.recollection_required);
 
       await this.audit.record(tx, {

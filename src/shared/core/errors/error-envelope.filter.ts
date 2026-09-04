@@ -7,13 +7,16 @@ import {
   HttpStatus,
   Inject,
   Logger,
+  ValidationError,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 import { OptimisticLockError } from '../../kernel/prisma/optimistic-lock';
 import { RequestContextService } from '../context/request-context.service';
+import { toArabicValidationMessages } from '../validation/validation-messages.ar';
 import { AppError } from './domain-errors';
+import { arErrorMessage } from './error-messages.ar';
 
 interface ErrorEnvelope {
   success: false;
@@ -31,12 +34,25 @@ interface Resolved {
   code: string;
   message: string;
   details: Record<string, unknown>;
+  /**
+   * Developer-facing English/raw text for the log line only. Never
+   * serialized — `message` above is what the client reads, and it is always
+   * Arabic (see `error-messages.ar.ts`).
+   */
+  logMessage?: string;
 }
 
 /**
  * The single place File 11 Part 06's "hard rule" is enforced: no raw DB
  * error, stack trace, or file path ever reaches a client response. Every
  * exception funnels through here and comes out as the standard envelope.
+ *
+ * It is also where MedSuper's Arabic-only guarantee is enforced. `resolve`
+ * routes every message through `arErrorMessage(code, message)`, which keeps
+ * an Arabic message written at the throw site and replaces anything else —
+ * a Nest exception, a Prisma error, an untranslated throw added later — with
+ * the Arabic catalog entry for that code. English never reaches a client;
+ * it is preserved in `logMessage` for the server log instead.
  *
  * `requestId` is fresh per error occurrence (for support/log lookup of this
  * specific failure); `correlationId` is the end-to-end ID threaded via
@@ -70,8 +86,11 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
       requestId,
       correlationId: this.context.correlationId ?? null,
     };
-    if (resolved.status >= 500) this.logger.error({ err: exception, ...logContext }, resolved.message);
-    else this.logger.warn(logContext, resolved.message);
+    // Log the developer-facing text (English, raw vendor/DB wording) — the
+    // Arabic client copy is deliberately not what an engineer greps for.
+    const logLine = resolved.logMessage ?? resolved.message;
+    if (resolved.status >= 500) this.logger.error({ err: exception, ...logContext }, logLine);
+    else this.logger.warn(logContext, logLine);
 
     const envelope: ErrorEnvelope = {
       success: false,
@@ -92,8 +111,11 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
       return {
         status: exception.httpStatus,
         code: exception.code,
-        message: exception.message,
+        // Arabic at the throw site wins; anything else is swapped for the
+        // catalog entry so a missed translation can never leak.
+        message: arErrorMessage(exception.code, exception.message),
         details: exception.details ?? {},
+        logMessage: exception.message,
       };
     }
 
@@ -101,31 +123,33 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
       return {
         status: HttpStatus.CONFLICT,
         code: 'OPTIMISTIC_LOCK_CONFLICT',
-        message: 'This record was changed by someone else — please retry with the latest version.',
+        message: arErrorMessage('OPTIMISTIC_LOCK_CONFLICT'),
         details: { entityId: exception.entityId },
+        logMessage: exception.message,
       };
     }
 
     if (exception instanceof BadRequestException) {
-      const body = exception.getResponse();
-      const fields =
-        typeof body === 'object' && body !== null && 'message' in body
-          ? (body as { message: unknown }).message
-          : exception.message;
       return {
         status: HttpStatus.BAD_REQUEST,
         code: 'VALIDATION_ERROR',
-        message: 'The request failed validation.',
-        details: { fields: Array.isArray(fields) ? fields : [fields] },
+        message: arErrorMessage('VALIDATION_ERROR'),
+        details: { fields: this.validationFields(exception) },
+        logMessage: exception.message,
       };
     }
 
     if (exception instanceof HttpException) {
+      const code = httpStatusToGenericCode(exception.getStatus());
       return {
         status: exception.getStatus(),
-        code: httpStatusToGenericCode(exception.getStatus()),
-        message: exception.message,
+        code,
+        // Nest writes these in English ("Cannot POST /v1/…", throttler's
+        // "ThrottlerException: Too Many Requests"); the catalog answers for
+        // all of them.
+        message: arErrorMessage(code, exception.message),
         details: {},
+        logMessage: exception.message,
       };
     }
 
@@ -137,16 +161,18 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
         return {
           status: HttpStatus.CONFLICT,
           code: 'UNIQUE_CONSTRAINT_VIOLATION',
-          message: 'This action conflicts with an existing record.',
+          message: arErrorMessage('UNIQUE_CONSTRAINT_VIOLATION'),
           details: {},
+          logMessage: exception.message,
         };
       }
       if (exception.code === 'P2003') {
         return {
           status: HttpStatus.NOT_FOUND,
           code: 'RESOURCE_NOT_FOUND',
-          message: 'A referenced resource was not found.',
+          message: arErrorMessage('RESOURCE_NOT_FOUND'),
           details: {},
+          logMessage: exception.message,
         };
       }
     }
@@ -154,9 +180,28 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       code: 'INTERNAL_ERROR',
-      message: 'An unexpected error occurred.',
+      message: arErrorMessage('INTERNAL_ERROR'),
       details: {},
+      logMessage: exception instanceof Error ? exception.message : String(exception),
     };
+  }
+
+  /**
+   * Per-field Arabic copy for a 400. The global pipe's `exceptionFactory`
+   * (`core.module.ts`) already translates and attaches the sentences; this
+   * reads them back out. A `BadRequestException` thrown anywhere else — by
+   * Nest itself, or by hand — still lands here, and is answered with the
+   * generic Arabic validation line rather than its English body.
+   */
+  private validationFields(exception: BadRequestException): string[] {
+    const body = exception.getResponse();
+    if (typeof body === 'object' && body !== null && 'arFields' in body) {
+      return (body as { arFields: string[] }).arFields;
+    }
+    if (typeof body === 'object' && body !== null && 'validationErrors' in body) {
+      return toArabicValidationMessages((body as { validationErrors: ValidationError[] }).validationErrors);
+    }
+    return [arErrorMessage('VALIDATION_ERROR')];
   }
 }
 

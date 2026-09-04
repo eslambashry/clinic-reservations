@@ -11,8 +11,10 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 import { IdempotencyInterceptor } from '../../../shared/core/idempotency/idempotency-key.interceptor';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { CancelDoctorAppointmentDto } from './dto/cancel-doctor-appointment.dto';
+import { CreateClinicStaffAppointmentDto } from './dto/create-clinic-staff-appointment.dto';
 import { ListDoctorAppointmentsQueryDto } from './dto/list-doctor-appointments-query.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
+import { CreateClinicStaffAppointmentResult, CreateClinicStaffAppointmentUseCase } from '../application/create-clinic-staff-appointment.use-case';
 
 /**
  * Doctor Dashboard — appointments (File 12 Part 49.7-49.9). The provider
@@ -33,7 +35,7 @@ import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
  */
 @ApiTags('doctor-appointments')
 @ApiBearerAuth()
-@Roles(RoleContextType.DOCTOR)
+@Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
 @Controller('doctors/me/appointments')
 export class DoctorAppointmentsController {
   constructor(
@@ -41,7 +43,20 @@ export class DoctorAppointmentsController {
     @Inject(GetDoctorAppointmentUseCase) private readonly getDoctorAppointment: GetDoctorAppointmentUseCase,
     @Inject(CancelAppointmentUseCase) private readonly cancelAppointment: CancelAppointmentUseCase,
     @Inject(RescheduleAppointmentUseCase) private readonly rescheduleAppointment: RescheduleAppointmentUseCase,
+    @Inject(CreateClinicStaffAppointmentUseCase) private readonly createClinicStaffAppointment: CreateClinicStaffAppointmentUseCase,
   ) {}
+
+  @Post('branch/:clinicBranchId/create')
+  @Roles(RoleContextType.CLINIC_STAFF)
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({ summary: 'Clinic staff books a patient into an open slot in their own branch' })
+  create(
+    @Param('clinicBranchId', ParseUUIDPipe) clinicBranchId: string,
+    @Body() dto: CreateClinicStaffAppointmentDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<CreateClinicStaffAppointmentResult> {
+    return this.createClinicStaffAppointment.execute({ ...dto, clinicBranchId }, user);
+  }
 
   @Get()
   @ApiOperation({ summary: "The calling doctor's own appointment queue — filter by date range, status and branch; cursor-paginated" })

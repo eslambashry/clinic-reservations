@@ -64,11 +64,11 @@ export class ListLabOrdersUseCase {
     } else if (actor.contextType === 'LAB_STAFF') {
       const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
       if (!membership || !membership.contextId) {
-        throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+        throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
       }
       rows = await this.labOrders.findForBranch(this.prisma, membership.contextId, page);
     } else {
-      throw new ForbiddenError('FORBIDDEN', 'This role cannot list lab orders.');
+      throw new ForbiddenError('FORBIDDEN', 'صلاحيات حسابك لا تسمح بعرض طلبات التحاليل.');
     }
 
     const hasMore = rows.length > limit;

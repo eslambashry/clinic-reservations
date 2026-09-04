@@ -42,7 +42,11 @@ export function IsStrongPassword(validationOptions?: ValidationOptions) {
           return true;
         },
         defaultMessage(_args: ValidationArguments) {
-          return 'password must be 8-64 characters and include at least one uppercase letter, one lowercase letter, one digit, and one symbol';
+          // Arabic like every other user-facing message (see
+          // `shared/core/errors/error-messages.ar.ts`). `validation-messages.ar.ts`
+          // also maps the `isStrongPassword` constraint key, so this text only
+          // shows if the constraint is read outside the global pipe.
+          return 'كلمة المرور يجب أن تتكوّن من 8 إلى 64 حرفًا وتشمل حرفًا كبيرًا وحرفًا صغيرًا ورقمًا ورمزًا.';
         },
       },
     });

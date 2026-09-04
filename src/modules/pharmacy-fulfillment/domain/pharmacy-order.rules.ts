@@ -11,14 +11,14 @@ export function isActiveOrderStatus(status: PharmacyOrderStatus): boolean {
 /** File 12 Part 39: a prescription may only ever have one active `PharmacyOrder` at a time. */
 export function assertNoActiveOrderExists(existing: { status: PharmacyOrderStatus } | null): void {
   if (existing && isActiveOrderStatus(existing.status)) {
-    throw new ConflictError('PHARMACY_ORDER_ALREADY_EXISTS', 'This prescription already has an active pharmacy order.');
+    throw new ConflictError('PHARMACY_ORDER_ALREADY_EXISTS', 'يوجد طلب صيدلية نشِط لهذه الروشتة بالفعل.');
   }
 }
 
 /** File 12 Part 39.3/44: an order needs at least one fulfillable (quantity-bearing) prescription item to be worth creating. */
 export function assertHasFulfillableItems(items: unknown[]): void {
   if (items.length === 0) {
-    throw new BusinessRuleError('NO_FULFILLABLE_ITEMS', 'This prescription has no items a pharmacy order can be built from.');
+    throw new BusinessRuleError('NO_FULFILLABLE_ITEMS', 'لا توجد أصناف قابلة للصرف في هذه الروشتة.');
   }
 }
 
@@ -36,7 +36,7 @@ export function nextStatusAfterFulfill(fulfillmentType: FulfillmentType): Pharma
 
 export function assertOrderIsPaid(status: PharmacyOrderStatus): void {
   if (status !== 'PAID') {
-    throw new BusinessRuleError('PHARMACY_ORDER_NOT_PAID', 'This order has not been paid for yet.');
+    throw new BusinessRuleError('PHARMACY_ORDER_NOT_PAID', 'لم يتم دفع هذا الطلب بعد.');
   }
 }
 
@@ -44,6 +44,6 @@ const FULFILLED_FROM_STATUSES: PharmacyOrderStatus[] = ['READY_FOR_PICKUP', 'OUT
 
 export function assertOrderIsReadyToComplete(status: PharmacyOrderStatus): void {
   if (!FULFILLED_FROM_STATUSES.includes(status)) {
-    throw new BusinessRuleError('PHARMACY_ORDER_NOT_READY_TO_COMPLETE', 'This order is not ready to be marked complete.');
+    throw new BusinessRuleError('PHARMACY_ORDER_NOT_READY_TO_COMPLETE', 'هذا الطلب غير جاهز ليُسجّل كمكتمل.');
   }
 }

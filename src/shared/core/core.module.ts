@@ -1,4 +1,11 @@
-import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
+import {
+  BadRequestException,
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  ValidationError,
+  ValidationPipe,
+} from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { RATE_LIMIT_DEFAULT } from '../config/constants';
@@ -10,6 +17,7 @@ import { ErrorEnvelopeFilter } from './errors/error-envelope.filter';
 import { ResponseInterceptor } from './http/response.interceptor';
 import { AppLoggingModule } from './logging/logging.module';
 import { CorrelationIdMiddleware } from './middleware/correlation-id.middleware';
+import { toArabicValidationMessages } from './validation/validation-messages.ar';
 import { OutboxModule } from './outbox/outbox.module';
 
 /**
@@ -42,6 +50,13 @@ import { OutboxModule } from './outbox/outbox.module';
         whitelist: true,
         forbidNonWhitelisted: true,
         transform: true,
+        // Arabic-only guarantee for 400s. class-validator writes English
+        // sentences ("phone must be a string") straight into the field list
+        // the clients render under each input; translating once here beats
+        // a `message` option on every one of ~350 decorators, and keeps new
+        // DTOs Arabic by default instead of by remembering.
+        exceptionFactory: (errors: ValidationError[]) =>
+          new BadRequestException({ arFields: toArabicValidationMessages(errors) }),
       }),
     },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },

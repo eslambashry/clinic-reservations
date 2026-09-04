@@ -69,19 +69,19 @@ export class GetDoctorSlotsUseCase {
     const now = DateTime.utc();
     const fromDt = from ? DateTime.fromISO(from, { zone: 'utc' }) : now;
     if (!fromDt.isValid) {
-      throw new DomainError(400, 'INVALID_DATE_RANGE', 'from is not a valid ISO date.');
+      throw new DomainError(400, 'INVALID_DATE_RANGE', 'تاريخ البداية غير صحيح.');
     }
 
     const toDt = to ? DateTime.fromISO(to, { zone: 'utc' }) : fromDt.plus({ days: 14 });
     if (!toDt.isValid) {
-      throw new DomainError(400, 'INVALID_DATE_RANGE', 'to is not a valid ISO date.');
+      throw new DomainError(400, 'INVALID_DATE_RANGE', 'تاريخ النهاية غير صحيح.');
     }
 
     if (toDt <= fromDt) {
-      throw new DomainError(400, 'INVALID_DATE_RANGE', 'to must be after from.');
+      throw new DomainError(400, 'INVALID_DATE_RANGE', 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية.');
     }
     if (toDt.diff(fromDt, 'days').days > 14) {
-      throw new DomainError(400, 'INVALID_DATE_RANGE', 'The date range cannot exceed 14 days (File 10 §2.3).');
+      throw new DomainError(400, 'INVALID_DATE_RANGE', 'النطاق الزمني لا يمكن أن يتجاوز 14 يومًا.');
     }
 
     return { fromDate: fromDt.toJSDate(), toDate: toDt.toJSDate() };

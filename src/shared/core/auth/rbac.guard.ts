@@ -39,13 +39,13 @@ export class RbacGuard implements CanActivate {
     }
 
     if (requiredContexts?.length && !requiredContexts.includes(user.contextType)) {
-      throw new ForbiddenError('ROLE_NOT_PERMITTED', `This action requires one of: ${requiredContexts.join(', ')}.`);
+      throw new ForbiddenError('ROLE_NOT_PERMITTED', `هذا الإجراء يتطلّب أحد الأدوار التالية: ${requiredContexts.join('، ')}.`);
     }
 
     if (requiredPermissions?.length) {
       const missing = requiredPermissions.filter((code) => !user.permissions.includes(code));
       if (missing.length > 0) {
-        throw new ForbiddenError('ROLE_NOT_PERMITTED', `Missing required permission(s): ${missing.join(', ')}.`);
+        throw new ForbiddenError('ROLE_NOT_PERMITTED', `ينقص حسابك الصلاحيات التالية: ${missing.join('، ')}.`);
       }
     }
 

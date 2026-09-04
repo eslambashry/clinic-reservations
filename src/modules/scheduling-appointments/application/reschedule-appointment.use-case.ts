@@ -94,7 +94,7 @@ export class RescheduleAppointmentUseCase {
           throw new NotFoundError('Appointment', appointmentId);
         }
         if (appointment.status !== 'CONFIRMED') {
-          throw new BusinessRuleError('APPOINTMENT_NOT_RESCHEDULABLE', 'Only a confirmed appointment can be rescheduled.', {
+          throw new BusinessRuleError('APPOINTMENT_NOT_RESCHEDULABLE', 'لا يمكن تغيير هذا الموعد إلا وهو مؤكّد.', {
             status: appointment.status,
           });
         }
@@ -107,14 +107,14 @@ export class RescheduleAppointmentUseCase {
 
         const rescheduled = await this.appointments.markRescheduled(tx, appointment.id, appointment.version);
         if (!rescheduled) {
-          throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'This appointment was modified concurrently. Reload and try again.', { appointmentId });
+          throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'تم تعديل هذا الموعد من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', { appointmentId });
         }
 
         await this.slots.releaseBooked(tx, appointment.slot_id);
 
         const claimed = await this.slots.markHeld(tx, newSlot.id);
         if (!claimed) {
-          throw new ConflictError('SLOT_ALREADY_BOOKED', 'This slot is no longer open.', { slotId: newSlot.id });
+          throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: newSlot.id });
         }
 
         const expiresAt = holdExpiresAt(new Date());
@@ -142,7 +142,7 @@ export class RescheduleAppointmentUseCase {
           subjectPatientId: appointment.patient_id,
         });
 
-        if (scope.kind !== 'DOCTOR') {
+        if (scope.kind === 'PATIENT') {
           await this.outbox.emit(tx, 'AppointmentHeld', {
             holdId: hold.id,
             slotId: newSlot.id,
@@ -168,7 +168,7 @@ export class RescheduleAppointmentUseCase {
             // Unreachable in practice — the hold was created two statements
             // ago inside this transaction, so nothing else can have seen it.
             // Surfaced as a conflict rather than a 500 if it ever happens.
-            throw new ConflictError('HOLD_STATE_CHANGED', 'The replacement hold was modified concurrently. Reload and try again.', {
+            throw new ConflictError('HOLD_STATE_CHANGED', 'تم تعديل الحجز المؤقت البديل من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', {
               holdId: hold.id,
             });
           }
@@ -177,7 +177,7 @@ export class RescheduleAppointmentUseCase {
 
         const slotBooked = await this.slots.markBooked(tx, newSlot.id);
         if (!slotBooked) {
-          throw new ConflictError('SLOT_ALREADY_BOOKED', 'This slot is no longer open.', { slotId: newSlot.id });
+          throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: newSlot.id });
         }
 
         const replacement = await this.appointments.create(tx, {

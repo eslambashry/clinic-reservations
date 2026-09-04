@@ -70,7 +70,7 @@ describe('LoginWithPasswordUseCase', () => {
     await expect(useCase.execute({ phone: '+201001234567', password: 'NewPass1!' })).rejects.toMatchObject({
       code: 'UNAUTHENTICATED',
       httpStatus: 401,
-      message: 'Invalid phone number or password.',
+      message: 'رقم الهاتف أو كلمة المرور غير صحيحة.',
     });
     expect(verifyMock).not.toHaveBeenCalled();
   });
@@ -95,7 +95,7 @@ describe('LoginWithPasswordUseCase', () => {
     await expect(useCase.execute({ phone: '+201001234567', password: 'NewPass1!' })).rejects.toMatchObject({
       code: 'UNAUTHENTICATED',
       httpStatus: 401,
-      message: 'Invalid phone number or password.',
+      message: 'رقم الهاتف أو كلمة المرور غير صحيحة.',
     });
     expect(roleMemberships.findActiveByUser).not.toHaveBeenCalled();
   });

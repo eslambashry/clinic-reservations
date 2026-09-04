@@ -69,7 +69,7 @@ export class ProvisionStaffUserUseCase {
       });
 
       if (existingMembership?.status === 'ACTIVE') {
-        throw new ConflictError('STAFF_ALREADY_PROVISIONED', 'This phone number is already provisioned for this owner.', {
+        throw new ConflictError('STAFF_ALREADY_PROVISIONED', 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.', {
           phone: input.phone,
         });
       }
@@ -82,7 +82,7 @@ export class ProvisionStaffUserUseCase {
       if (activeElsewhere.some((m) => m.context_id !== input.contextId)) {
         throw new ConflictError(
           'STAFF_ASSIGNED_ELSEWHERE',
-          'This phone number is already provisioned under a different owner.',
+          'رقم الهاتف مرتبط بفريق جهة أخرى.',
           { phone: input.phone },
         );
       }
@@ -93,7 +93,7 @@ export class ProvisionStaffUserUseCase {
       // the original provisioning, so overwriting it now is expected, not an
       // account-takeover path.
       if (!existingMembership && user.password_hash) {
-        throw new ConflictError('PHONE_ALREADY_REGISTERED', 'This phone number is already registered to an existing account.', {
+        throw new ConflictError('PHONE_ALREADY_REGISTERED', 'رقم الهاتف مسجّل بالفعل في حساب آخر.', {
           phone: input.phone,
         });
       }
@@ -146,7 +146,7 @@ export class ProvisionStaffUserUseCase {
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictError('STAFF_ALREADY_PROVISIONED', 'This phone number is already provisioned for this owner.', {
+        throw new ConflictError('STAFF_ALREADY_PROVISIONED', 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.', {
           phone: input.phone,
         });
       }

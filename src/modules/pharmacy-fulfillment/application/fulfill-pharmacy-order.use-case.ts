@@ -33,7 +33,7 @@ export class FulfillPharmacyOrderUseCase {
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<FulfillPharmacyOrderResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
     }
     const branchId = membership.contextId;
 

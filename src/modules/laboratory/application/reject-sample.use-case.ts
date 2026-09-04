@@ -45,10 +45,10 @@ export class RejectSampleUseCase {
   async execute(labOrderId: string, input: RejectSampleInput, actor: AccessTokenPayload): Promise<RejectSampleResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
     if (!input.reason?.trim()) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'A rejection reason is required.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'اكتب سبب الرفض.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -58,7 +58,7 @@ export class RejectSampleUseCase {
       }
       const events = (await this.getCustodyEvents.executeForOrders(tx, [labOrderId])).get(labOrderId) ?? [];
       if (!hasLiveSample(events)) {
-        throw new BusinessRuleError('LAB_ORDER_NO_LIVE_SAMPLE', 'No live sample exists to reject.');
+        throw new BusinessRuleError('LAB_ORDER_NO_LIVE_SAMPLE', 'لا توجد عيّنة صالحة لرفضها.');
       }
 
       await this.labResults.deleteByOrderId(tx, labOrderId);

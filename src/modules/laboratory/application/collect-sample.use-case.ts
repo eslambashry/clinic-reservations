@@ -37,7 +37,7 @@ export class CollectSampleUseCase {
   async execute(labOrderId: string, input: CollectSampleInput | undefined, actor: AccessTokenPayload): Promise<CollectSampleResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -45,11 +45,11 @@ export class CollectSampleUseCase {
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'Collection requires a confirmed booking awaiting sample.');
+      assertStatus(order.status, 'AWAITING_SAMPLE', 'LAB_ORDER_NOT_AWAITING_SAMPLE', 'سحب العيّنة يتطلّب حجزًا مؤكّدًا في انتظار العيّنة.');
 
       const events = (await this.getCustodyEvents.executeForOrders(tx, [labOrderId])).get(labOrderId) ?? [];
       if (hasLiveSample(events)) {
-        throw new ConflictError('LAB_ORDER_SAMPLE_ALREADY_COLLECTED', 'A sample has already been collected for this order.');
+        throw new ConflictError('LAB_ORDER_SAMPLE_ALREADY_COLLECTED', 'تم سحب عيّنة لهذا الطلب بالفعل.');
       }
       assertCollectionGateSatisfied(collectionGateSatisfied(events, order.collection_type));
 

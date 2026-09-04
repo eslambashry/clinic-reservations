@@ -26,7 +26,7 @@ import { UpdateMyClinicBranchDto } from './dto/update-my-clinic-branch.dto';
  */
 @ApiTags('doctor-clinics')
 @ApiBearerAuth()
-@Roles(RoleContextType.DOCTOR)
+@Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
 @Controller('doctors/me/clinics')
 export class DoctorClinicsController {
   constructor(
@@ -42,6 +42,7 @@ export class DoctorClinicsController {
   }
 
   @Patch('branches/:branchId')
+  @Roles(RoleContextType.DOCTOR)
   @ApiOperation({ summary: 'Update operational branch data (phone, timezone, street/city) for a branch the caller is affiliated with' })
   updateBranch(
     @Param('branchId', ParseUUIDPipe) branchId: string,
@@ -52,6 +53,7 @@ export class DoctorClinicsController {
   }
 
   @Patch('affiliations/:affiliationId')
+  @Roles(RoleContextType.DOCTOR)
   @ApiOperation({ summary: "Pause or reactivate the caller's own affiliation with a branch — no delete exists on this surface" })
   updateAffiliation(
     @Param('affiliationId', ParseUUIDPipe) affiliationId: string,

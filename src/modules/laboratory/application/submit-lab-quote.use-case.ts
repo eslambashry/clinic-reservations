@@ -44,22 +44,22 @@ export class SubmitLabQuoteUseCase {
   async execute(labOrderId: string, input: SubmitLabQuoteInput, actor: AccessTokenPayload): Promise<SubmitLabQuoteResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
     const branchId = membership.contextId;
 
     if (!(Number(input.totalPrice) > 0)) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'The quoted total must be a positive amount.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'إجمالي عرض السعر يجب أن يكون أكبر من صفر.');
     }
     if (!input.prepInstructions.trim()) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'Preparation instructions are required.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'تعليمات التحضير مطلوبة.');
     }
     if (!Number.isInteger(input.queueNumber) || input.queueNumber <= 0) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'Queue number must be a positive integer.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'رقم الدور يجب أن يكون رقمًا صحيحًا أكبر من صفر.');
     }
     const appointmentMs = new Date(input.appointmentAt).getTime();
     if (!Number.isFinite(appointmentMs) || appointmentMs <= Date.now()) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'Appointment must be a valid instant in the future.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'موعد الزيارة يجب أن يكون تاريخًا صحيحًا في المستقبل.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -67,7 +67,7 @@ export class SubmitLabQuoteUseCase {
       if (!order || order.lab_branch_id !== branchId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatus(order.status, 'REQUESTED', 'LAB_ORDER_NOT_REQUESTED', 'Approval requires a request awaiting quote.');
+      assertStatus(order.status, 'REQUESTED', 'LAB_ORDER_NOT_REQUESTED', 'الموافقة متاحة فقط لطلب في انتظار عرض سعر.');
 
       const items = await this.labOrderItems.findByOrderId(tx, labOrderId);
       assertHasItems(items.length);

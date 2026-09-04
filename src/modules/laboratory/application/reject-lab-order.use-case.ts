@@ -38,10 +38,10 @@ export class RejectLabOrderUseCase {
   async execute(labOrderId: string, input: RejectLabOrderInput, actor: AccessTokenPayload): Promise<RejectLabOrderResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
     if (!input.reason?.trim()) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'A rejection reason is required.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'اكتب سبب الرفض.');
     }
 
     return this.prisma.$transaction(async (tx) => {

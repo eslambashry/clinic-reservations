@@ -64,7 +64,7 @@ export class IdempotencyInterceptor implements NestInterceptor {
         if (existing?.status === 'IN_PROGRESS') {
           throw new ConflictError(
             'IDEMPOTENCY_KEY_REUSE',
-            'A request with this idempotency key is already in progress.',
+            'هناك طلب مطابق قيد التنفيذ بالفعل. انتظر حتى ينتهي قبل إعادة المحاولة.',
           );
         }
 

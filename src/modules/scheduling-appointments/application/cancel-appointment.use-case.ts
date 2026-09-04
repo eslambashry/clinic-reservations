@@ -66,10 +66,10 @@ export class CancelAppointmentUseCase {
     // charge the patient a cancellation fee for the clinic's own decision.
     // Rejected explicitly rather than silently rewritten, so a mis-sending
     // client is fixed rather than masked.
-    if (scope.kind === 'DOCTOR' && input.reason !== 'PROVIDER_REQUEST') {
+    if (scope.kind !== 'PATIENT' && input.reason !== 'PROVIDER_REQUEST') {
       throw new BusinessRuleError(
         'CANCELLATION_REASON_NOT_PERMITTED',
-        'A provider-initiated cancellation must use reason PROVIDER_REQUEST.',
+        'الإلغاء من جانب مقدّم الخدمة يجب أن يكون بسبب «طلب مقدّم الخدمة».',
         { reason: input.reason },
       );
     }
@@ -83,7 +83,7 @@ export class CancelAppointmentUseCase {
         throw new NotFoundError('Appointment', appointmentId);
       }
       if (appointment.status !== 'CONFIRMED') {
-        throw new BusinessRuleError('APPOINTMENT_NOT_CANCELLABLE', 'Only a confirmed appointment can be cancelled.', {
+        throw new BusinessRuleError('APPOINTMENT_NOT_CANCELLABLE', 'لا يمكن إلغاء هذا الموعد إلا وهو مؤكّد.', {
           status: appointment.status,
         });
       }
@@ -91,7 +91,7 @@ export class CancelAppointmentUseCase {
       const cancelledReason = input.note ? `${input.reason}: ${input.note}` : input.reason;
       const cancelled = await this.appointments.cancel(tx, appointment.id, appointment.version, actor.sub, cancelledReason);
       if (!cancelled) {
-        throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'This appointment was modified concurrently. Reload and try again.', { appointmentId });
+        throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'تم تعديل هذا الموعد من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', { appointmentId });
       }
 
       await this.slots.releaseBooked(tx, appointment.slot_id);
@@ -125,7 +125,7 @@ export class CancelAppointmentUseCase {
         // (Notifications, Phase 8) needs to reach them, not the canceller.
         patientId: appointment.patient_id,
         reason: input.reason,
-        cancelledBy: scope.kind === 'DOCTOR' ? 'DOCTOR' : 'PATIENT',
+        cancelledBy: scope.kind === 'PATIENT' ? 'PATIENT' : scope.kind,
       });
 
       return { status: 'CANCELLED' as const, refundAmount, feeApplied };
@@ -139,7 +139,7 @@ export class CancelAppointmentUseCase {
       'CANCELLATION_TIER',
     );
     if (value === null) {
-      throw new DomainError(500, 'CANCELLATION_TIER_NOT_CONFIGURED', 'No CANCELLATION_TIER policy_config is set for this region.');
+      throw new DomainError(500, 'CANCELLATION_TIER_NOT_CONFIGURED', 'سياسة الإلغاء غير مُهيّأة لهذه المنطقة. تواصل مع الدعم.');
     }
     return value.feePercent;
   }

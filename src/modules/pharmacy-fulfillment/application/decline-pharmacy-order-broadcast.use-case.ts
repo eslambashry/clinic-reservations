@@ -29,7 +29,7 @@ export class DeclinePharmacyOrderBroadcastUseCase {
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<DeclinePharmacyOrderBroadcastResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active pharmacy branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
     }
     const branchId = membership.contextId;
 
@@ -41,7 +41,7 @@ export class DeclinePharmacyOrderBroadcastUseCase {
 
       const responded = await this.broadcasts.markResponded(tx, broadcast.id, 'DECLINED');
       if (!responded) {
-        throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'This branch has already responded to this order.');
+        throw new ConflictError('BROADCAST_ALREADY_RESPONDED', 'سبق لهذا الفرع الرد على هذا الطلب.');
       }
 
       await this.audit.record(tx, {

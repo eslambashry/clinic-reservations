@@ -41,7 +41,7 @@ export class CreateHoldUseCase {
 
   async execute(input: CreateHoldInput, actor: AccessTokenPayload): Promise<CreateHoldResult> {
     if (input.patientId !== actor.sub) {
-      throw new ForbiddenError('RESOURCE_NOT_OWNED', 'patientId must be the authenticated user (File 10 §2.3 — MVP: no dependents).');
+      throw new ForbiddenError('RESOURCE_NOT_OWNED', 'لا يمكن الحجز إلا لحسابك الشخصي.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -52,7 +52,7 @@ export class CreateHoldUseCase {
 
       const claimed = await this.slots.markHeld(tx, slot.id);
       if (!claimed) {
-        throw new ConflictError('SLOT_ALREADY_BOOKED', 'This slot is no longer open.', { slotId: slot.id });
+        throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: slot.id });
       }
 
       const expiresAt = holdExpiresAt(new Date());
@@ -88,7 +88,7 @@ export class CreateHoldUseCase {
  */
 export function translateCreateHoldError(error: unknown, slotId: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-    return new ConflictError('SLOT_ALREADY_HELD', 'This slot already has an active hold.', { slotId });
+    return new ConflictError('SLOT_ALREADY_HELD', 'هذا الموعد محجوز مؤقتًا لمريض آخر. اختر موعدًا آخر.', { slotId });
   }
-  return new DomainError(500, 'INTERNAL_ERROR', 'Unexpected error while creating the hold.');
+  return new DomainError(500, 'INTERNAL_ERROR', 'تعذّر إتمام الحجز المؤقت. أعد المحاولة.');
 }

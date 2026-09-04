@@ -47,11 +47,11 @@ export class RecordResultDeliveryUseCase {
   async execute(labOrderId: string, input: RecordResultDeliveryInput, actor: AccessTokenPayload): Promise<RecordResultDeliveryResult> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || !membership.contextId) {
-      throw new ForbiddenError('FORBIDDEN', 'This account has no active lab branch assignment.');
+      throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
     const name = input.recipientName.trim();
     if (!name) {
-      throw new BusinessRuleError('VALIDATION_ERROR', 'Recipient name is required.');
+      throw new BusinessRuleError('VALIDATION_ERROR', 'اسم المستلِم مطلوب.');
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -59,7 +59,7 @@ export class RecordResultDeliveryUseCase {
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
-      assertStatus(order.status, 'RESULTS_READY', 'LAB_ORDER_RESULTS_NOT_READY', 'Results are not ready to deliver yet.');
+      assertStatus(order.status, 'RESULTS_READY', 'LAB_ORDER_RESULTS_NOT_READY', 'النتائج غير جاهزة للتسليم بعد.');
 
       const results = await this.labResults.findByOrderId(tx, labOrderId);
       assertNoPendingReview(results.some((r) => r.review_state === 'UNREVIEWED'));

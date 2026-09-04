@@ -47,7 +47,7 @@ export class UpdateScheduleTemplateUseCase {
       if (options.expectedVersion !== undefined && options.expectedVersion !== template.version) {
         throw new ConflictError(
           'OPTIMISTIC_LOCK_CONFLICT',
-          'This schedule was changed since you loaded it. Reload and try again.',
+          'تم تعديل جدول المواعيد بعد فتحك للصفحة. حدّث الصفحة ثم أعد المحاولة.',
           { scheduleTemplateId, expectedVersion: options.expectedVersion, currentVersion: template.version },
         );
       }
@@ -55,7 +55,7 @@ export class UpdateScheduleTemplateUseCase {
       const startTime = input.startTime ?? template.start_time;
       const endTime = input.endTime ?? template.end_time;
       if (!isValidScheduleWindow(startTime, endTime)) {
-        throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'endTime must be after startTime.', { startTime, endTime });
+        throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'وقت النهاية يجب أن يكون بعد وقت البداية.', { startTime, endTime });
       }
 
       await this.scheduleTemplates.update(tx, scheduleTemplateId, template.version, input);

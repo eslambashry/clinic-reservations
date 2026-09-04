@@ -37,7 +37,7 @@ export class GetLabBranchUseCase {
   async execute(branchId: string, actor: AccessTokenPayload): Promise<LabBranchDetail> {
     const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
     if (!membership || membership.contextId !== branchId) {
-      throw new ForbiddenError('RESOURCE_NOT_OWNED', 'This account is not assigned to this lab branch.');
+      throw new ForbiddenError('RESOURCE_NOT_OWNED', 'هذا الحساب غير مرتبط بفرع المعمل هذا.');
     }
 
     const branch = await this.labBranches.findByIdWithRelations(this.prisma, branchId);

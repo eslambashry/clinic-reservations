@@ -79,7 +79,7 @@ export class ReviewPrescriptionUseCase {
         if (needsConfirmation && !input.controlledSubstanceConfirmed) {
           throw new BusinessRuleError(
             'CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED',
-            'This prescription includes a controlled substance — controlledSubstanceConfirmed must be explicitly true to review it.',
+            'تشمل هذه الروشتة دواءً خاضعًا للرقابة. يلزم تأكيد صريح من الصيدلي قبل المراجعة.',
           );
         }
       }

@@ -44,7 +44,7 @@ export class CreateLabOrderUseCase {
   async execute(input: CreateLabOrderInput, actor: AccessTokenPayload): Promise<CreateLabOrderResult> {
     const testCodes = input.testCodes ?? [];
     if (testCodes.length === 0 && !input.prescriptionId) {
-      throw new BusinessRuleError('LAB_ORDER_NEEDS_TESTS_OR_PRESCRIPTION', 'Select at least one test or attach a prescription.');
+      throw new BusinessRuleError('LAB_ORDER_NEEDS_TESTS_OR_PRESCRIPTION', 'اختر تحليلاً واحدًا على الأقل أو أرفق روشتة.');
     }
 
     const branch = await this.labBranches.findById(this.prisma, input.labBranchId);
@@ -52,14 +52,14 @@ export class CreateLabOrderUseCase {
       throw new NotFoundError('LabBranch', input.labBranchId);
     }
     if (input.collectionType === 'HOME_COLLECTION' && !branch.home_collection_capable) {
-      throw new BusinessRuleError('LAB_BRANCH_NOT_HOME_COLLECTION_CAPABLE', 'The chosen lab branch does not offer home collection.');
+      throw new BusinessRuleError('LAB_BRANCH_NOT_HOME_COLLECTION_CAPABLE', 'فرع المعمل المختار لا يوفّر سحب العيّنة من المنزل.');
     }
 
     if (testCodes.length > 0) {
       const found = await this.testCatalog.findAllCodes(this.prisma, testCodes);
       const missing = testCodes.filter((code) => !found.includes(code));
       if (missing.length > 0) {
-        throw new BusinessRuleError('UNKNOWN_TEST_CODE', `Unknown test catalog code(s): ${missing.join(', ')}`);
+        throw new BusinessRuleError('UNKNOWN_TEST_CODE', `يوجد تحليل غير معروف ضمن الطلب: ${missing.join('، ')}`);
       }
     }
 
