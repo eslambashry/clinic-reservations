@@ -18,6 +18,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx src/db/seed.ts",
+    "db:seed:doctor-mahmoud": "tsx src/db/seed-doctor-mahmoud.ts",
     "db:studio": "prisma studio"
   },
   "keywords": [
