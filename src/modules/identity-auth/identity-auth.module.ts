@@ -8,12 +8,16 @@ import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
 import { GetUserSummaryUseCase } from './application/get-user-summary.use-case';
 import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
+import { ListStaffByContextUseCase } from './application/list-staff-by-context.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
+import { ProvisionStaffUserUseCase } from './application/provision-staff-user.use-case';
 import { RefreshTokenUseCase } from './application/refresh-token.use-case';
 import { RequestOtpUseCase } from './application/request-otp.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
+import { RevokeStaffMembershipUseCase } from './application/revoke-staff-membership.use-case';
 import { SetPasswordUseCase } from './application/set-password.use-case';
 import { UpdateCurrentUserUseCase } from './application/update-current-user.use-case';
+import { UpdateStaffMembershipUseCase } from './application/update-staff-membership.use-case';
 import { UpdateUserProfileUseCase } from './application/update-user-profile.use-case';
 import { VerifyOtpUseCase } from './application/verify-otp.use-case';
 import { VerifyResetCodeUseCase } from './application/verify-reset-code.use-case';
@@ -45,6 +49,13 @@ import { UserRepository } from './infrastructure/user.repository';
  * called by `provider-directory`'s `VerifyDoctorUseCase` so Admin
  * verification actually grants a real DOCTOR role_membership, not just a
  * `Doctor.status` flip (self-registration alone never grants one).
+ * Also adds the generic owner-scoped staff-provisioning trio —
+ * `ProvisionStaffUserUseCase` (create/reactivate), `ListStaffByContextUseCase`
+ * (read), `UpdateStaffMembershipUseCase`/`RevokeStaffMembershipUseCase`
+ * (ownership-scoped mutate) — first used by `provider-directory`'s clinic
+ * assistant endpoints (`role_code='CLINIC_STAFF'`, `contextId=doctor.id`),
+ * but intentionally not doctor-specific, same reusability reasoning as
+ * `GetActiveRoleMembershipUseCase`.
  */
 @Module({
   imports: [AuthCoreModule],
@@ -65,6 +76,10 @@ import { UserRepository } from './infrastructure/user.repository';
     GetActiveRoleMembershipUseCase,
     GetUserSummaryUseCase,
     GrantRoleMembershipUseCase,
+    ProvisionStaffUserUseCase,
+    ListStaffByContextUseCase,
+    UpdateStaffMembershipUseCase,
+    RevokeStaffMembershipUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
@@ -74,6 +89,15 @@ import { UserRepository } from './infrastructure/user.repository';
     PhoneRateLimiterService,
     { provide: OTP_SENDER, useClass: LoggingOtpSender },
   ],
-  exports: [UpdateUserProfileUseCase, GetActiveRoleMembershipUseCase, GetUserSummaryUseCase, GrantRoleMembershipUseCase],
+  exports: [
+    UpdateUserProfileUseCase,
+    GetActiveRoleMembershipUseCase,
+    GetUserSummaryUseCase,
+    GrantRoleMembershipUseCase,
+    ProvisionStaffUserUseCase,
+    ListStaffByContextUseCase,
+    UpdateStaffMembershipUseCase,
+    RevokeStaffMembershipUseCase,
+  ],
 })
 export class IdentityAuthModule {}
