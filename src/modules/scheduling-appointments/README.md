@@ -12,3 +12,26 @@
 - `HoldExpiryJob` reaper (every minute).
 
 All of the above are patient-only for now — doctor/clinic-staff read/write access needs a branch-scoped authorization primitive that doesn't exist yet anywhere in this codebase (Part 35.8/35.14), not just here; that's a cross-cutting `shared/core` piece for whoever builds the Provider Dashboard backend, not a gap specific to this module.
+
+Added 2026-09-04 (Part 49): the **doctor-facing half** of this module.
+
+`/v1/doctors/me/schedule-templates` (CRUD) un-defers Part 33.1's Admin-only
+restriction, and `/v1/doctors/me/appointments` (list/detail/cancel/reschedule)
+un-defers Part 35.8/35.14's patient-only restriction. Both take ownership from
+`provider-directory`'s exported `ResolveDoctorScopeUseCase` — never from a
+path param, and never with a cross-module query.
+
+Neither is a second implementation. Schedule templates delegate to the same
+`Create/Update/DeleteScheduleTemplateUseCase` with an `assertOwned` predicate
+pushed into the write transaction; cancel and reschedule are the *same*
+use-cases the patient routes call, with ownership resolved through
+`ResolveAppointmentScopeUseCase` instead of a hard-coded `patient_id` check.
+The Admin (`/v1/schedule-templates`) and patient (`/v1/appointments`) routes
+are unchanged.
+
+One behavioural difference worth knowing: a **provider**-initiated reschedule
+completes in one transaction (hold → convert → book → new `CONFIRMED`
+appointment) rather than returning a 5-minute hold the patient must confirm,
+because the old appointment is already `RESCHEDULED` by then and an expired
+hold would strand the patient with nothing. `payment_intent_id` carries over.
+See Part 49.9 for the full reasoning.

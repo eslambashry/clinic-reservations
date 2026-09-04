@@ -1261,3 +1261,293 @@ against a real Postgres and any live browser click-through — no local DB
 is provisioned in this environment. The seeded `LAB_STAFF` account (item 3)
 means that verification pass, whenever it happens, needs no manual setup
 first — a meaningful difference from Part 47's own hand-off state.
+
+---
+
+## PART 49 — Doctor Dashboard Backend Integration (2026-09-04)
+
+Closes the last major MVP surface that had no backend at all: `med-super`'s
+`lib/features/provider_dashboard/`, which until now called seven invented
+`/v1/provider/*` routes (`appointments`, `patients`, `notifications`,
+`clinic-settings`, `schedule`, `change-password`, `avatar`) that exist nowhere
+in this repo. Profile was the sole exception, wired to the real
+`GET`/`PATCH /v1/doctors/me` by Part 45.
+
+This Part builds the **doctor-scoped authorization primitive** that Part 33.1
+and Part 35.8/35.14 each deferred for want of one, then uses it to un-defer
+schedule-template self-service and doctor appointment access. Both deferrals
+said explicitly that the primitive "belongs to whoever does the Provider
+Dashboard backend work" — this is that work.
+
+**Nothing on the existing patient or Admin surface changes.**
+`/v1/appointments/*` stays `@Roles(PATIENT)` and byte-identical;
+`/v1/schedule-templates` stays `@Roles(ADMIN)`.
+
+### 49.1 The ownership primitive: `ResolveDoctorScopeUseCase`
+
+New, in `provider-directory` (the module that owns `doctors` and
+`doctor_clinic_affiliations`), and **exported** so `scheduling-appointments`
+can consume it without reaching into that module's `infrastructure/` (Part
+05). It resolves the caller's `Doctor` row from the JWT's `sub` and returns
+`{ doctorId, affiliations[], affiliationIds[], clinicBranchIds[] }`.
+
+Three decisions inside it:
+
+1. **Ownership is derived from `Doctor.user_id`, never from a token claim or
+   a client-supplied id.** `RoleMembership.context_id` is `null` for `DOCTOR`
+   memberships (see the `@@unique` comment on that model), so the `doctors`
+   row is the only authority on which affiliations a caller owns.
+2. **A `PAUSED` affiliation stays in scope.** Pausing is how a doctor steps
+   back from a branch; it is not a loss of ownership, and a paused
+   affiliation must remain readable and resumable.
+3. **A soft-deleted doctor resolves to 404**, checked here rather than by
+   changing `DoctorRepository.findByUserId` (which other callers share).
+
+Everything doctor-scoped in this Part decides authorization by membership of
+`affiliationIds`/`clinicBranchIds`, inside the application layer — never in a
+controller, and never by trusting a path param. A non-member id is reported
+as **404, never 403** (existence hiding, the convention Part 35.11 already
+set), so an id cannot be probed for membership of another clinic.
+
+`PATCH /v1/doctors/me` also gains the `audit_logs` row it was missing — the
+one self-service edit in `provider-directory` that wasn't audited.
+
+### 49.2 Route shape: `/v1/doctors/me/...`, not `/v1/provider/...`
+
+Every doctor-scoped route is mounted under `doctors/me`, matching the
+convention already used by `GET /v1/doctors/me` (Part 45) and the
+"server resolves the caller's own scope" reads elsewhere. The frontend's
+invented `/v1/provider/*` prefix is **not** adopted, with one exception left
+alone: `/v1/provider/assistants` already shipped under it.
+
+Added routes:
+
+| Route | Purpose |
+|---|---|
+| `GET /v1/doctors/me/clinics` | the caller's clinics/branches |
+| `PATCH /v1/doctors/me/clinics/branches/{branchId}` | operational branch data |
+| `PATCH /v1/doctors/me/clinics/affiliations/{affiliationId}` | pause/resume |
+| `GET /v1/doctors/me/schedule-templates` | weekly availability |
+| `POST /v1/doctors/me/schedule-templates` | create a window |
+| `PATCH /v1/doctors/me/schedule-templates/{id}` | update a window |
+| `DELETE /v1/doctors/me/schedule-templates/{id}` | stop future generation |
+| `GET /v1/doctors/me/appointments` | the appointment queue |
+| `GET /v1/doctors/me/appointments/{id}` | detail incl. patient contact |
+| `POST /v1/doctors/me/appointments/{id}/cancel` | provider cancellation |
+| `POST /v1/doctors/me/appointments/{id}/reschedule` | provider reschedule |
+
+`/v1/provider/{patients,notifications,change-password,avatar}` are **not**
+built: patients/notifications belong to modules that do not exist yet
+(Notifications is Phase 8), password change already exists as
+`POST /v1/auth/password/set`, and avatar upload is blocked on `DEC-009`.
+They stay mock-only in the client and are labelled as such.
+
+### 49.3 Sensitive/legal clinic data vs. operational branch data
+
+`GET /v1/doctors/me/clinics` deliberately omits `Clinic.legal_name`,
+`Clinic.tax_id` and `Clinic.verified_at`: a doctor affiliated with a clinic
+is not its legal operator. `clinicStatus`/`branchStatus` **are** returned,
+read-only — an unverified or suspended branch is the most common reason a
+doctor's slots stop being generated, and the dashboard has to be able to
+explain an empty calendar.
+
+The doctor may edit only `phone`, `ianaTimezone`, `address.line1` and
+`address.city`. `regionCode`/`countryCode` partition search results and stay
+on the Admin route; verification is Admin-only (File 11 07.3).
+
+A clinic branch is a **shared** resource — several doctors can be affiliated
+with the same one, so this edit is visible to all of them. That is why every
+call writes an `audit_logs` row naming the acting doctor
+(`provider_directory.clinic_branch.update_by_doctor`).
+
+### 49.4 Deactivation without deletion
+
+There is no `DELETE` anywhere on the doctor surface. The single deactivation
+primitive is `PATCH .../clinics/affiliations/{id}` with
+`status: ACTIVE|PAUSED`, which:
+
+- stops future slot generation for that affiliation
+  (`ListSchedulableAffiliationsUseCase` filters on `AffiliationStatus`);
+- leaves every existing `appointment_slots`/`appointments` row untouched, so
+  stepping back from a branch can never silently drop appointments patients
+  already hold. Cancelling those stays an explicit per-appointment action.
+
+`consultFee`/`currency` stay Admin-only: the fee feeds the payments
+commission split, so it is commercial rather than operational data.
+
+### 49.5 Schedule templates: a thin ownership shell, not a second CRUD
+
+Part 33.1 made schedule-template CRUD Admin-only *because* "provider
+self-service requires the Provider Web Dashboard + a `role_membership` for
+`DOCTOR`" — both now exist. `ManageMyScheduleTemplatesUseCase` therefore adds
+**only** the ownership question and delegates everything else to the existing
+`Create/Update/DeleteScheduleTemplateUseCase`: window validation, the audit
+write, the optimistic lock and Part 33.8's "future generation only" semantics
+are not reimplemented.
+
+Ownership is pushed *into* those use-cases as an `assertOwned` predicate, so
+the check runs inside the same transaction as the write rather than in a read
+that could go stale before the write lands.
+
+Two contract differences from the Admin routes, both deliberate:
+
+- The doctor routes return **camelCase** (Part 09). The Admin routes still
+  return the raw snake_case Prisma model; changing them would break an
+  existing public contract for no benefit here.
+- The response carries `version`, `clinicBranchId`, `clinicName` and
+  `ianaTimezone`, so the dashboard can round-trip the lock token and render
+  `"HH:mm"` against the right zone without a second lookup.
+
+### 49.6 Client-supplied optimistic locking
+
+`UpdateScheduleTemplateUseCase`/`DeleteScheduleTemplateUseCase` gain an
+optional `expectedVersion`. The Admin routes omit it and keep their original
+read-then-write behaviour; the doctor routes round-trip the `version` they
+read, so a stale edit loses with `409 OPTIMISTIC_LOCK_CONFLICT` instead of
+silently clobbering a concurrent change. Checked inside the write
+transaction, so it is a real lock and not a pre-flight guess.
+
+Implementation note: the delete's `version` is carried by a query **DTO**,
+not `@Query('version', new ParseIntPipe({ optional: true }))` — under this
+app's global `ValidationPipe`, an absent scalar param still reaches
+`ParseIntPipe` as a non-nil value, so the `optional: true` form 400s every
+caller that omits it. A DTO with an optional field is the pattern every other
+query surface here already uses, and behaves correctly.
+
+### 49.7 Appointments: one set of use-cases, two ownership paths
+
+File 11 05.5 always specified appointment access as "the owning patient, or
+clinic staff of the associated branch, or the doctor". Part 35.8/35.14 built
+the patient half and deferred the rest. This builds the **doctor** half.
+
+`ResolveAppointmentScopeUseCase` returns either
+`{kind: PATIENT, patientUserId}` or `{kind: DOCTOR, doctorId, affiliationIds}`
+from the actor's `contextType`, and `isAppointmentInScope` decides membership.
+`CancelAppointmentUseCase` and `RescheduleAppointmentUseCase` now take their
+ownership from that instead of a hard-coded `patient_id === actor.sub`, which
+is what lets both routes share one implementation. The scope is resolved
+*before* the transaction opens — it reads tables the transaction never writes.
+
+**CLINIC_STAFF stays deferred.** A `CLINIC_STAFF` membership's `context_id`
+is the provisioning *doctor*, not a branch, so branch-scoped staff access
+still needs a product decision about what a clinic assistant may see. That is
+not this change's to make.
+
+Three supporting pieces:
+
+- A separate `WITH_DOCTOR_VIEW` Prisma include, not a widened
+  `WITH_SLOT_TIMES`: the patient list must not start paying for a `users`
+  join it never renders, and the patient's phone number must not become
+  reachable from a shape a patient can request.
+- `clinicBranchId` is a *narrowing* filter — it is intersected with the
+  JWT-derived affiliation set, never substituted for it, so another clinic's
+  branch id yields 404 rather than that clinic's appointments.
+- **Bug fixed in passing**: `listForPatient`'s date filter spread `from` and
+  `to` as two conditional `start_at` keys, so the second silently overwrote
+  the first and a `from`+`to` range degraded into `to`-only. Both bounds now
+  build one `start_at` object (`slotStartAtFilter`). This affected the
+  existing patient list too; the doctor day view, which always sends both
+  bounds, is what surfaced it.
+
+### 49.8 Provider cancellation must say `PROVIDER_REQUEST`
+
+`reason` drives the refund policy — Part 36.8 waives the fee entirely for
+`PROVIDER_REQUEST` (File 11 line 475). A doctor sending `PATIENT_REQUEST`
+would charge the patient a cancellation fee for the clinic's own decision, so
+a `DOCTOR`-scope caller sending anything else is rejected with
+`422 CANCELLATION_REASON_NOT_PERMITTED` (and `400` at the DTO boundary on the
+doctor route, whose enum has one value). Rejected explicitly rather than
+silently rewritten, so a mis-sending client gets fixed rather than masked.
+
+`AppointmentCancelled` now carries `patientId` as the appointment's **own**
+patient rather than the actor, plus `cancelledBy: 'DOCTOR'|'PATIENT'` — a
+provider-initiated cancellation still concerns the patient, and any future
+consumer (Notifications, Phase 8) needs to reach them, not the canceller.
+
+### 49.9 Provider reschedule completes in one transaction
+
+The patient path is unchanged: release the old slot, claim the new one,
+create an `AppointmentHold`, mark the old appointment `RESCHEDULED`, return
+the unconfirmed hold for the patient to confirm.
+
+The provider path runs that **same spine** and then converts the hold in the
+same transaction, producing the new `CONFIRMED` appointment immediately. Every
+guard still runs in order (`markHeld` → `markConverted` → `markBooked`); the
+hold row is really written and really converted. What it skips is the client
+round-trip, and deliberately:
+
+> The hold TTL exists to reserve a slot while a **patient** decides and pays
+> (`HOLD_TTL_MINUTES`, 5 minutes). Handing a doctor-initiated move back as a
+> patient-owned 5-minute hold would strand the patient with **no**
+> appointment whenever they were not holding their phone at that moment — the
+> old row is already `RESCHEDULED`, and the reaper would release the new slot.
+> There is nothing for the patient to decide or pay here: the consult fee was
+> captured at the original confirm.
+
+Consequences, all deliberate:
+
+- The hold is always owned by `appointment.patient_id`, never the actor.
+  Identical to the old behaviour on the patient path (ownership guarantees
+  they are the same user there), and correct on the provider path.
+- `payment_intent_id` is **carried over** to the new appointment rather than
+  re-captured, so a later cancellation refunds the right intent.
+  `PaymentIntent.payable_id` still names the original appointment — the money
+  trail is the chain of `rescheduled_from_appointment_id` links, not a
+  re-pointed FK.
+- The new slot must belong to the **same affiliation** (Part 35.11's 404),
+  which also means a doctor can never move a patient onto another provider's
+  calendar.
+- The response is a discriminated union on `status`: `HELD` (patient) or
+  `CONFIRMED` (provider). The patient route's arm is unchanged.
+- A new outbox event, `AppointmentRescheduledByProvider`, is emitted instead
+  of `AppointmentHeld` — the patient did not ask for this and needs telling.
+
+### 49.10 Frontend reconciliation (`med-super`)
+
+The seven invented routes are gone from the client. `provider_dashboard`'s
+data layer was rebuilt against the real contract:
+
+- `Appointment` (with its fabricated `medId`/`locationStatus` and a `pending`
+  status that never existed) → `DoctorAppointment`, and the accept/reject
+  queue → cancel/reschedule. A real appointment is already `CONFIRMED` when
+  the doctor first sees it, so there was never anything to "accept".
+- `ClinicSettings` (one hardcoded clinic with an `email` column no clinic
+  table has) → `DoctorClinic[]`.
+- `{working_days: [...]}` → `DoctorScheduleTemplate[]`, which can finally
+  express per-branch plans, slot length, buffer and the branch timezone.
+- `UploadAvatarUseCase` deleted — dead code pointing at `/v1/provider/avatar`.
+- New localization block `provider_dashboard.*` in both `en.json` and
+  `ar.json` (kept symmetric), rather than extending the feature's known
+  hardcoded-string debt.
+- `providerFailureMessage` maps 401/403/404/409/422 and the named business
+  codes to distinct user-facing strings; no raw exception text reaches the UI.
+- Mock handlers now mirror the real routes, statuses and error codes,
+  including the 409 optimistic-lock path and both date bounds — so "works
+  against mocks" finally implies something about the real backend.
+
+### 49.11 Verification
+
+Backend, against real Docker Postgres + Redis: `npm run build` ✅,
+`npm run lint` ✅ (0 errors), `npm test` 103/105 suites ✅,
+`npm run test:e2e` **4/4 suites, 91/91 tests** ✅ — including a new
+`test/doctor-dashboard.e2e-spec.ts` (47 tests) covering the full journey with
+two doctors at two clinics, every cross-tenant 404, the 409 lock, concurrent
+provider cancels, and explicit no-regression checks on the patient and Admin
+surfaces.
+
+Frontend: `flutter analyze` 0 errors ✅, `flutter test` 509 passing ✅,
+`dart run build_runner build` ✅.
+
+Two **pre-existing** backend unit failures remain, both unrelated and outside
+this work: `PrescriptionsModule` injects `MEDIA_STORAGE` but imports only
+`[AuditModule]` (it works in the real app because `MediaStorageModule` is
+`@Global()`, but any isolated test module that pulls `PrescriptionsModule` in
+fails), and one `upload-prescription` assertion about `notes`. Five
+pre-existing frontend failures remain, all in the `BLOCKED` `lab_booking`
+feature, from the documented `intl` 12h-format change.
+
+Environment note: the local dev Postgres had never had the PostGIS extension
+enabled despite running the `postgis/postgis` image, so
+`doctor-search.repository.integration.spec.ts` had always failed here.
+`CREATE EXTENSION postgis` fixes it; no migration creates it, which is worth
+knowing before trusting a "the suite was already red" claim in this repo.
