@@ -9,6 +9,15 @@ import { prisma } from './client';
  */
 const DEFAULT_REGION = REGION_CONSTANTS.DEFAULT_REGION_CODE;
 
+/**
+ * Local-dev-only login password for seeded PHARMACY_STAFF/LAB_STAFF demo
+ * accounts — never a real credential, but kept out of source as a literal
+ * so scanners (and habit) don't treat this seed script as an example of how
+ * to handle a real one. Override via `.env` if you want a different value
+ * locally; the fallback here is fine for a throwaway local Postgres.
+ */
+const DEMO_STAFF_PASSWORD = process.env.SEED_DEMO_STAFF_PASSWORD ?? 'DevPass123!';
+
 /** Same derivation the original specialtiesData loop used inline — factored out so doctor seed blocks below can resolve a specialty's code from its English name without a second literal. */
 function specialtyCode(nameEn: string): string {
   return nameEn.toUpperCase().replace(/[^A-Z]+/g, '_');
@@ -424,7 +433,6 @@ async function main() {
   // `medsuper-laboratory-dashboard`'s real-auth bridge is testable end-to-end
   // against a real local Postgres without a manual DB edit first. Same
   // hashing call `SetPasswordUseCase`/`LoginWithPasswordUseCase` use.
-  const labStaffPassword = 'DevPass123!';
   let labStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000004' } });
   if (!labStaffUser) {
     labStaffUser = await prisma.user.create({
@@ -432,10 +440,10 @@ async function main() {
         phone: '+201000000004',
         first_name: 'Amina',
         last_name: 'Tarek',
-        password_hash: await argon2.hash(labStaffPassword),
+        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
       },
     });
-    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone} (password: ${labStaffPassword})`);
+    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
   }
   const labStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF' },
@@ -594,7 +602,6 @@ async function main() {
   // branch from `membership.contextId`, so a PHARMACY_STAFF membership
   // without it (like the single `pharmacyStaffUser` seeded above) can never
   // actually claim a broadcast — these accounts are branch-scoped on purpose.
-  const pharmacyStaffPassword = 'DevPass123!';
   const demoPharmacyChains = [
     {
       id: '00000000-0000-0000-0000-000000000130',
@@ -733,7 +740,7 @@ async function main() {
             phone: branch.staffPhone,
             first_name: branch.staffFirstName,
             last_name: branch.staffLastName,
-            password_hash: await argon2.hash(pharmacyStaffPassword),
+            password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
           },
         });
       }
@@ -746,7 +753,7 @@ async function main() {
         });
       }
       console.log(
-        `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${pharmacyStaffPassword})`,
+        `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
       );
     }
   }
@@ -906,7 +913,7 @@ async function main() {
             phone: branch.staffPhone,
             first_name: branch.staffFirstName,
             last_name: branch.staffLastName,
-            password_hash: await argon2.hash(labStaffPassword),
+            password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
           },
         });
       }
@@ -919,7 +926,7 @@ async function main() {
         });
       }
       console.log(
-        `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${labStaffPassword})`,
+        `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
       );
     }
   }

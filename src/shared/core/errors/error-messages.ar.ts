@@ -82,6 +82,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_NOT_RESCHEDULABLE: 'لا يمكن تغيير هذا الموعد إلا وهو مؤكَّد.',
   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
+  SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
   INVALID_DATE_RANGE: 'النطاق الزمني المطلوب غير صحيح.',
   CANCELLATION_REASON_NOT_PERMITTED: 'سبب الإلغاء غير مسموح به في هذا الإجراء.',
   CANCELLATION_TIER_NOT_CONFIGURED: 'سياسة الإلغاء غير مُهيَّأة لهذه المنطقة. تواصل مع الدعم.',
@@ -90,6 +91,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Provider directory ──────────────────────────────────────────────────
   DOCTOR_ALREADY_EXISTS: 'هذا الحساب لديه ملف طبيب بالفعل.',
   AFFILIATION_ALREADY_EXISTS: 'هذا الطبيب مرتبط بهذا الفرع بالفعل.',
+  BRANCH_HAS_BOOKINGS: 'لا يمكن حذف الفرع لأنه يحتوي على مواعيد محجوزة.',
   PROVIDER_TYPE_NOT_SUPPORTED: 'هذا النوع من مقدّمي الخدمة غير مدعوم في هذا الإجراء.',
 
   // ── Payments ────────────────────────────────────────────────────────────

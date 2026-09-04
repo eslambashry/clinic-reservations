@@ -45,6 +45,17 @@ export class ScheduleTemplateRepository {
     });
   }
 
+  /** Same-affiliation, same-weekday rows — the only ones a new/edited window can possibly overlap. */
+  findByAffiliationIdAndWeekday(
+    db: Prisma.TransactionClient,
+    affiliationId: string,
+    weekday: number,
+  ): Promise<ScheduleTemplate[]> {
+    return db.scheduleTemplate.findMany({
+      where: { doctor_clinic_affiliation_id: affiliationId, weekday },
+    });
+  }
+
   /**
    * File 12 Part 49.5 — batch form for the doctor-facing list: a doctor
    * affiliated with two branches gets one combined weekly plan in a single

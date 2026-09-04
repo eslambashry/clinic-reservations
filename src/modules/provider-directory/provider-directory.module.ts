@@ -15,7 +15,9 @@ import { CreateAffiliationUseCase } from './application/create-affiliation.use-c
 import { CreateAssistantUseCase } from './application/create-assistant.use-case';
 import { CreateClinicBranchUseCase } from './application/create-clinic-branch.use-case';
 import { CreateClinicUseCase } from './application/create-clinic.use-case';
+import { CreateMyClinicBranchUseCase } from './application/create-my-clinic-branch.use-case';
 import { CreateDoctorUseCase } from './application/create-doctor.use-case';
+import { DeleteMyClinicBranchUseCase } from './application/delete-my-clinic-branch.use-case';
 import { DeleteAssistantUseCase } from './application/delete-assistant.use-case';
 import { CreatePharmacyBranchUseCase } from './application/create-pharmacy-branch.use-case';
 import { CreatePharmacyUseCase } from './application/create-pharmacy.use-case';
@@ -139,6 +141,8 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     SuspendClinicUseCase,
     GetClinicUseCase,
     CreateClinicBranchUseCase,
+    CreateMyClinicBranchUseCase,
+    DeleteMyClinicBranchUseCase,
     UpdateClinicBranchUseCase,
     VerifyClinicBranchUseCase,
     SuspendClinicBranchUseCase,

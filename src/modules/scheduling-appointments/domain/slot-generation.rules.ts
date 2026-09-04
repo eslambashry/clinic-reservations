@@ -56,3 +56,13 @@ export function isoWeekdayOf(dateIso: string, timezone: string): number {
 export function isValidScheduleWindow(startTime: string, endTime: string): boolean {
   return endTime > startTime;
 }
+
+/**
+ * Two same-weekday windows on the same affiliation overlap (including an
+ * exact duplicate) when one starts before the other ends and vice versa.
+ * `"HH:mm"` strings compare correctly with plain `<`/`>=` since they're
+ * fixed-width and zero-padded — no need to parse them into minutes.
+ */
+export function windowsOverlap(a: ScheduleTemplateWindow, b: ScheduleTemplateWindow): boolean {
+  return a.startTime < b.endTime && b.startTime < a.endTime;
+}
