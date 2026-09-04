@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -16,6 +16,7 @@ import { VerifyOtpResult, VerifyOtpUseCase } from '../application/verify-otp.use
 import { VerifyResetCodeResult, VerifyResetCodeUseCase } from '../application/verify-reset-code.use-case';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginWithPasswordDto } from './dto/login-with-password.dto';
+import { LoginWithPasswordQueryDto } from './dto/login-with-password-query.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -98,8 +99,8 @@ export class IdentityAuthController {
 
   @Public()
   @Post('password/login')
-  loginWithPasswordEndpoint(@Body() dto: LoginWithPasswordDto): Promise<LoginWithPasswordResult> {
-    return this.loginWithPassword.execute({ phone: dto.phone, password: dto.password });
+  loginWithPasswordEndpoint(@Body() dto: LoginWithPasswordDto, @Query() query: LoginWithPasswordQueryDto): Promise<LoginWithPasswordResult> {
+    return this.loginWithPassword.execute({ phone: dto.phone, password: dto.password, role: query.role });
   }
 
   @Public()

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { RoleContextType } from '@prisma/client';
 import * as argon2 from '@node-rs/argon2';
-import { DomainError, UnauthenticatedError } from '../../../shared/core/errors/domain-errors';
+import { DomainError, ForbiddenError, UnauthenticatedError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { PASSWORD_CONSTANTS } from '../domain/password.constants';
 import { PhoneRateLimiterService } from '../infrastructure/phone-rate-limiter.service';
@@ -11,6 +12,7 @@ import { UserRepository } from '../infrastructure/user.repository';
 export interface LoginWithPasswordInput {
   phone: string;
   password: string;
+  role?: RoleContextType;
 }
 
 export interface LoginWithPasswordResult {
@@ -18,6 +20,7 @@ export interface LoginWithPasswordResult {
   refreshToken: string;
   expiresIn: number;
   userId: string;
+  role: string;
 }
 
 @Injectable()
@@ -67,23 +70,31 @@ export class LoginWithPasswordUseCase {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Phase 1 scope: exactly one (PATIENT) membership per user — see the
-      // same note in `verify-otp.use-case.ts`.
-      const memberships = await this.roleMemberships.findActiveByUser(tx, user.id);
+      const memberships = input.role
+        ? await this.roleMemberships.findActiveByUserRoleContextType(tx, {
+            userId: user.id,
+            roleCode: input.role,
+            contextType: input.role,
+          })
+        : await this.roleMemberships.findActiveByUser(tx, user.id);
       const activeMembership = memberships[0];
       if (!activeMembership) {
+        if (input.role) {
+          throw new ForbiddenError('ROLE_NOT_PERMITTED', `This account has no active ${input.role} role.`);
+        }
         throw new UnauthenticatedError('UNAUTHENTICATED', 'No active role membership for this account.');
       }
 
       const issued = await this.tokens.issue(tx, activeMembership);
 
-      this.logger.log(`Logged in user ${user.id} via password`);
+      this.logger.log({ userId: user.id, role: activeMembership.role_code }, 'Password login succeeded');
 
       return {
         accessToken: issued.accessToken,
         refreshToken: issued.refreshToken,
         expiresIn: issued.expiresIn,
         userId: user.id,
+        role: activeMembership.role_code,
       };
     });
   }

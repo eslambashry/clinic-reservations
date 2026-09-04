@@ -61,9 +61,17 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
 
     const resolved = this.resolve(exception);
 
-    if (resolved.status >= 500) {
-      this.logger.error({ err: exception, path: request.url }, resolved.message);
-    }
+    const requestId = randomUUID();
+    const logContext = {
+      status: resolved.status,
+      code: resolved.code,
+      method: request.method,
+      path: request.path,
+      requestId,
+      correlationId: this.context.correlationId ?? null,
+    };
+    if (resolved.status >= 500) this.logger.error({ err: exception, ...logContext }, resolved.message);
+    else this.logger.warn(logContext, resolved.message);
 
     const envelope: ErrorEnvelope = {
       success: false,
@@ -71,7 +79,7 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
         code: resolved.code,
         message: resolved.message,
         details: resolved.details,
-        requestId: randomUUID(),
+        requestId,
         correlationId: this.context.correlationId ?? null,
       },
     };

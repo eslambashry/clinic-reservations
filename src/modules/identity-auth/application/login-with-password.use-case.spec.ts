@@ -20,7 +20,10 @@ describe('LoginWithPasswordUseCase', () => {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const users = { findByPhone: jest.fn() };
-    const roleMemberships = { findActiveByUser: jest.fn() };
+    const roleMemberships = {
+      findActiveByUser: jest.fn(),
+      findActiveByUserRoleContextType: jest.fn(),
+    };
     const tokens = { issue: jest.fn() };
     const rateLimiter = { consume: jest.fn().mockResolvedValue(true) };
     const useCase = new LoginWithPasswordUseCase(
@@ -120,9 +123,40 @@ describe('LoginWithPasswordUseCase', () => {
 
     const result = await useCase.execute({ phone: '+201001234567', password: 'NewPass1!' });
 
-    expect(result).toEqual({ accessToken: 'access', refreshToken: 'refresh', expiresIn: 1800, userId: 'user-1' });
+    expect(result).toEqual({ accessToken: 'access', refreshToken: 'refresh', expiresIn: 1800, userId: 'user-1', role: 'PATIENT' });
     expect(verifyMock).toHaveBeenCalledWith('hashed', 'NewPass1!');
     expect(roleMemberships.findActiveByUser).toHaveBeenCalledWith(tx, 'user-1');
     expect(tokens.issue).toHaveBeenCalledWith(tx, membership);
+  });
+
+  it('selects the requested doctor membership instead of the oldest patient membership', async () => {
+    const { tx, users, roleMemberships, tokens, useCase } = setup();
+    users.findByPhone.mockResolvedValue({ id: 'user-1', phone: '+201001234567', password_hash: 'hashed' });
+    verifyMock.mockResolvedValue(true);
+    const membership = { id: 'doctor-membership', user_id: 'user-1', role_code: 'DOCTOR', context_type: 'DOCTOR' };
+    roleMemberships.findActiveByUserRoleContextType.mockResolvedValue([membership]);
+    tokens.issue.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh', expiresIn: 1800 });
+
+    const result = await useCase.execute({ phone: '+201001234567', password: 'NewPass1!', role: 'DOCTOR' as any });
+
+    expect(result.role).toBe('DOCTOR');
+    expect(roleMemberships.findActiveByUserRoleContextType).toHaveBeenCalledWith(tx, {
+      userId: 'user-1',
+      roleCode: 'DOCTOR',
+      contextType: 'DOCTOR',
+    });
+    expect(tokens.issue).toHaveBeenCalledWith(tx, membership);
+  });
+
+  it('403s ROLE_NOT_PERMITTED when the requested role is not active', async () => {
+    const { users, roleMemberships, useCase } = setup();
+    users.findByPhone.mockResolvedValue({ id: 'user-1', phone: '+201001234567', password_hash: 'hashed' });
+    verifyMock.mockResolvedValue(true);
+    roleMemberships.findActiveByUserRoleContextType.mockResolvedValue([]);
+
+    await expect(useCase.execute({ phone: '+201001234567', password: 'NewPass1!', role: 'DOCTOR' as any })).rejects.toMatchObject({
+      code: 'ROLE_NOT_PERMITTED',
+      httpStatus: 403,
+    });
   });
 });

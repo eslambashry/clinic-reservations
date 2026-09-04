@@ -21,6 +21,19 @@ import { RequestContextService } from '../context/request-context.service';
       useFactory: (config: ConfigService, context: RequestContextService) => ({
         pinoHttp: {
           level: config.get<string>('nodeEnv') === 'production' ? 'info' : 'debug',
+          ...(config.get<string>('nodeEnv') === 'production'
+            ? {}
+            : {
+                transport: {
+                  target: 'pino-pretty',
+                  options: {
+                    colorize: true,
+                    singleLine: true,
+                    translateTime: 'SYS:standard',
+                    ignore: 'pid,hostname,req,res',
+                  },
+                },
+              }),
           autoLogging: true,
           customProps: () => ({
             correlationId: context.correlationId,
