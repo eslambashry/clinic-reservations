@@ -1,14 +1,25 @@
 import 'reflect-metadata';
+import { json } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { MEDIA_CONSTANTS } from './shared/config/constants';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const logger = app.get(Logger);
   app.useLogger(logger);
+
+  // Express defaults the JSON body-parser limit to 100kb — far too small for
+  // `SubmitProviderRegistrationDto.photo_data_uri` (a base64 `data:` URI,
+  // ~33% larger than the raw image bytes it encodes, up to
+  // `MEDIA_CONSTANTS.MAX_IMAGE_SIZE_BYTES`). Left at the default, any real
+  // photo triggers Express's own `PayloadTooLargeError` before the request
+  // ever reaches Nest's routing/validation/`ErrorEnvelopeFilter` — surfaced
+  // to the client as an opaque 500, not the 413 it actually is.
+  app.use(json({ limit: Math.ceil(MEDIA_CONSTANTS.MAX_IMAGE_SIZE_BYTES * 1.4) }));
 
   // File 11 Part 04: base path /v1, additive changes never bump the version.
   app.setGlobalPrefix('v1');
