@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { CreateScheduleTemplateUseCase } from './create-schedule-template.use-case';
 
 function buildTx() {
@@ -17,7 +17,7 @@ describe('CreateScheduleTemplateUseCase', () => {
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const scheduleTemplates = { create: jest.fn() };
+    const scheduleTemplates = { create: jest.fn(), findByAffiliationIdAndWeekday: jest.fn().mockResolvedValue([]) };
     const audit = { record: jest.fn() };
     const useCase = new CreateScheduleTemplateUseCase(prisma as any, scheduleTemplates as any, audit as any);
     return { tx, scheduleTemplates, audit, useCase };
@@ -49,5 +49,27 @@ describe('CreateScheduleTemplateUseCase', () => {
       tx,
       expect.objectContaining({ actorUserId: 'admin-1', action: 'scheduling_appointments.schedule_template.create', resourceId: 'template-1' }),
     );
+  });
+
+  it('rejects a same-day window that overlaps an existing template, including an exact duplicate', async () => {
+    const { scheduleTemplates, useCase } = setup();
+    scheduleTemplates.findByAffiliationIdAndWeekday.mockResolvedValue([
+      { id: 'existing-1', start_time: '09:00', end_time: '13:00' },
+    ]);
+
+    await expect(useCase.execute(input, actor)).rejects.toBeInstanceOf(ConflictError);
+    expect(scheduleTemplates.create).not.toHaveBeenCalled();
+  });
+
+  it('allows a same-day window that does not overlap an existing template', async () => {
+    const { scheduleTemplates, useCase } = setup();
+    scheduleTemplates.findByAffiliationIdAndWeekday.mockResolvedValue([
+      { id: 'existing-1', start_time: '14:00', end_time: '16:00' },
+    ]);
+    scheduleTemplates.create.mockResolvedValue({ id: 'template-1', ...input });
+
+    const result = await useCase.execute(input, actor);
+
+    expect(result.id).toBe('template-1');
   });
 });

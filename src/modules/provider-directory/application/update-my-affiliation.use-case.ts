@@ -9,6 +9,7 @@ import { ResolveDoctorScopeUseCase } from './resolve-doctor-scope.use-case';
 
 export interface UpdateMyAffiliationInput {
   status: 'ACTIVE' | 'PAUSED';
+  consultFee?: number;
 }
 
 /**
@@ -23,9 +24,8 @@ export interface UpdateMyAffiliationInput {
  * back from a branch can never silently drop appointments patients already
  * hold. Cancelling those stays a separate, explicit per-appointment action.
  *
- * `consultFee`/`currency` remain Admin-only (`PATCH /v1/affiliations/{id}`):
- * the fee feeds `payments`' commission split, so it is commercial data, not
- * operational data a doctor changes unilaterally.
+ * The doctor owns the commercial consultation fee for their affiliation; the
+ * application Admin only verifies the doctor and documents.
  */
 @Injectable()
 export class UpdateMyAffiliationUseCase {
@@ -49,7 +49,10 @@ export class UpdateMyAffiliationUseCase {
         throw new NotFoundError('DoctorClinicAffiliation', affiliationId);
       }
 
-      await this.affiliations.update(tx, affiliationId, affiliation.version, { status: input.status });
+      await this.affiliations.update(tx, affiliationId, affiliation.version, {
+        status: input.status,
+        consultFee: input.consultFee?.toFixed(2),
+      });
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,

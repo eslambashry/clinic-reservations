@@ -47,7 +47,7 @@ export class DoctorAppointmentsController {
   ) {}
 
   @Post('branch/:clinicBranchId/create')
-  @Roles(RoleContextType.CLINIC_STAFF)
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Clinic staff books a patient into an open slot in their own branch' })
   create(
