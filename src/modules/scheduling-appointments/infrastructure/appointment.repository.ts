@@ -41,6 +41,35 @@ const WITH_SLOT_TIMES = {
  */
 export type AppointmentWithSlotTimes = Prisma.AppointmentGetPayload<{ include: typeof WITH_SLOT_TIMES }>;
 
+/**
+ * File 12 Part 49.7 — the doctor-facing view. Kept as a *separate* include
+ * from `WITH_SLOT_TIMES` on purpose: the patient list/detail path must not
+ * start paying for a `users` join it never renders, and the patient's phone
+ * number must not become reachable from a response shape a patient can ask
+ * for. `iana_timezone` is added here because the Doctor Dashboard renders a
+ * clinic-local day view and would otherwise have to guess the offset.
+ */
+const WITH_DOCTOR_VIEW = {
+  slot: { select: { start_at: true, end_at: true } },
+  patient: { select: { id: true, first_name: true, last_name: true, phone: true } },
+  affiliation: {
+    select: {
+      doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
+      clinic_branch: {
+        select: {
+          id: true,
+          phone: true,
+          iana_timezone: true,
+          clinic: { select: { id: true, brand_name: true } },
+          address: { select: { line1: true, city: true } },
+        },
+      },
+    },
+  },
+} satisfies Prisma.AppointmentInclude;
+
+export type AppointmentWithDoctorView = Prisma.AppointmentGetPayload<{ include: typeof WITH_DOCTOR_VIEW }>;
+
 export interface ListAppointmentsForPatientParams {
   patientId: string;
   status?: AppointmentStatus;
@@ -48,6 +77,39 @@ export interface ListAppointmentsForPatientParams {
   to?: Date;
   cursor?: { startAt: string; id: string };
   limit: number;
+}
+
+/**
+ * File 12 Part 49.7. `affiliationIds` is resolved server-side from the
+ * caller's JWT (`ResolveDoctorScopeUseCase`) — it is never a client-supplied
+ * filter, which is what makes this list impossible to widen from the
+ * outside. A `clinicBranchId` request filter is applied by *narrowing this
+ * array* in the use-case rather than adding a `where` clause, so the branch
+ * filter can only ever shrink an already-JWT-derived set.
+ */
+export interface ListAppointmentsForDoctorParams {
+  affiliationIds: string[];
+  status?: AppointmentStatus;
+  from?: Date;
+  to?: Date;
+  cursor?: { startAt: string; id: string };
+  limit: number;
+}
+
+/**
+ * Both bounds have to go into **one** `start_at` object. Spreading them as
+ * two conditional keys (`...(from && { start_at: { gte } })`,
+ * `...(to && { start_at: { lt } })`) silently drops the first whenever both
+ * are supplied — the second key overwrites it — so a `from`+`to` range
+ * filter degraded into a `to`-only filter. Fixed in File 12 Part 49.7 while
+ * adding the doctor-facing list, which sends both bounds for its day view;
+ * the patient list shared the same defect and is fixed by the same helper.
+ */
+function slotStartAtFilter(from?: Date, to?: Date): Prisma.AppointmentSlotWhereInput | undefined {
+  if (!from && !to) {
+    return undefined;
+  }
+  return { start_at: { ...(from && { gte: from }), ...(to && { lt: to }) } };
 }
 
 @Injectable()
@@ -82,10 +144,7 @@ export class AppointmentRepository {
       where: {
         patient_id: params.patientId,
         ...(params.status && { status: params.status }),
-        slot: {
-          ...(params.from && { start_at: { gte: params.from } }),
-          ...(params.to && { start_at: { lt: params.to } }),
-        },
+        ...(slotStartAtFilter(params.from, params.to) && { slot: slotStartAtFilter(params.from, params.to) }),
         ...(params.cursor && {
           OR: [
             { slot: { start_at: { gt: new Date(params.cursor.startAt) } } },
@@ -94,6 +153,41 @@ export class AppointmentRepository {
         }),
       },
       include: WITH_SLOT_TIMES,
+      orderBy: [{ slot: { start_at: 'asc' } }, { id: 'asc' }],
+      take: params.limit,
+    });
+  }
+
+  /** File 12 Part 49.7: doctor-facing detail — same row plus the patient identity the provider legitimately needs. */
+  findByIdWithDoctorView(db: Prisma.TransactionClient, id: string): Promise<AppointmentWithDoctorView | null> {
+    return db.appointment.findUnique({ where: { id }, include: WITH_DOCTOR_VIEW });
+  }
+
+  /**
+   * File 12 Part 49.7: the Doctor Dashboard queue. Same `(slot.start_at, id)`
+   * cursor shape as `listForPatient` (Part 35.15) so both surfaces paginate
+   * identically; the only difference is the scoping predicate —
+   * `doctor_clinic_affiliation_id IN (caller's own affiliations)` rather
+   * than `patient_id = caller`.
+   */
+  listForDoctor(db: Prisma.TransactionClient, params: ListAppointmentsForDoctorParams): Promise<AppointmentWithDoctorView[]> {
+    if (params.affiliationIds.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    return db.appointment.findMany({
+      where: {
+        doctor_clinic_affiliation_id: { in: params.affiliationIds },
+        ...(params.status && { status: params.status }),
+        ...(slotStartAtFilter(params.from, params.to) && { slot: slotStartAtFilter(params.from, params.to) }),
+        ...(params.cursor && {
+          OR: [
+            { slot: { start_at: { gt: new Date(params.cursor.startAt) } } },
+            { slot: { start_at: new Date(params.cursor.startAt) }, id: { gt: params.cursor.id } },
+          ],
+        }),
+      },
+      include: WITH_DOCTOR_VIEW,
       orderBy: [{ slot: { start_at: 'asc' } }, { id: 'asc' }],
       take: params.limit,
     });

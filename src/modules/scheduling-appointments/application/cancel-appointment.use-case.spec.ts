@@ -20,6 +20,7 @@ describe('CancelAppointmentUseCase', () => {
     const refund = { execute: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
+    const appointmentScope = { execute: jest.fn().mockResolvedValue({ kind: 'PATIENT', patientUserId: 'patient-1' }) };
     const useCase = new CancelAppointmentUseCase(
       prisma as any,
       appointments as any,
@@ -28,8 +29,9 @@ describe('CancelAppointmentUseCase', () => {
       refund as any,
       audit as any,
       outbox as any,
+      appointmentScope as any,
     );
-    return { tx, appointments, slots, policyConfig, refund, audit, outbox, useCase };
+    return { tx, appointments, slots, policyConfig, refund, audit, outbox, appointmentScope, useCase };
   }
 
   it('404s when the appointment does not exist or belongs to a different patient', async () => {

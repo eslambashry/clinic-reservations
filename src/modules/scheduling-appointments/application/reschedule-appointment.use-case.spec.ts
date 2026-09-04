@@ -31,8 +31,17 @@ describe('RescheduleAppointmentUseCase', () => {
     const holds = { create: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const useCase = new RescheduleAppointmentUseCase(prisma as any, appointments as any, slots as any, holds as any, audit as any, outbox as any);
-    return { tx, appointments, slots, holds, audit, outbox, useCase };
+    const appointmentScope = { execute: jest.fn().mockResolvedValue({ kind: 'PATIENT', patientUserId: 'patient-1' }) };
+    const useCase = new RescheduleAppointmentUseCase(
+      prisma as any,
+      appointments as any,
+      slots as any,
+      holds as any,
+      audit as any,
+      outbox as any,
+      appointmentScope as any,
+    );
+    return { tx, appointments, slots, holds, audit, outbox, appointmentScope, useCase };
   }
 
   it('404s when the appointment does not exist or belongs to a different patient', async () => {

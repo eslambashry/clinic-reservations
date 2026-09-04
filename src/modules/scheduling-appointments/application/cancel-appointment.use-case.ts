@@ -8,6 +8,7 @@ import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { REGION_CONSTANTS } from '../../../shared/config/constants';
 import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
 
@@ -23,9 +24,17 @@ export interface CancelAppointmentResult {
 }
 
 /**
- * File 10 §2.3 `POST /v1/appointments/{appointmentId}/cancel` / File 12 Part
- * 35.7-35.8/36: patient-only in this increment (clinic-staff cancel
- * deferred, Part 35.8). Only a `CONFIRMED` appointment is cancellable.
+ * File 10 §2.3 `POST /v1/appointments/{appointmentId}/cancel` (patient) and
+ * `POST /v1/doctors/me/appointments/{appointmentId}/cancel` (provider) —
+ * **one use-case, two routes**. File 12 Part 49.8 un-defers the provider
+ * half of Part 35.8 by making ownership pluggable
+ * (`ResolveAppointmentScopeUseCase`) instead of hard-coding
+ * `patient_id === actor.sub`; every other rule below — cancellable-status
+ * check, version-guarded transition, slot release, refund policy, audit,
+ * outbox — is shared verbatim by both callers rather than reimplemented for
+ * the provider path. CLINIC_STAFF stays deferred (see that use-case).
+ *
+ * Only a `CONFIRMED` appointment is cancellable.
  * `feeApplied`/`refundAmount` are now computed for real (Part 36) from the
  * flat `CANCELLATION_TIER` policy against the appointment's captured
  * payment — provider-initiated cancellations always waive the fee entirely
@@ -43,15 +52,34 @@ export class CancelAppointmentUseCase {
     @Inject(ProcessCancellationRefundUseCase) private readonly refund: ProcessCancellationRefundUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(ResolveAppointmentScopeUseCase) private readonly appointmentScope: ResolveAppointmentScopeUseCase,
   ) {}
 
   async execute(appointmentId: string, input: CancelAppointmentInput, actor: AccessTokenPayload): Promise<CancelAppointmentResult> {
+    // Resolved before the transaction opens: it is an authorization lookup
+    // against tables this transaction never writes (File 12 Part 49.7).
+    const scope = await this.appointmentScope.execute(actor);
+
+    // File 12 Part 49.8: a provider-initiated cancellation must say so.
+    // `reason` drives the refund policy (Part 36.8 — PROVIDER_REQUEST waives
+    // the fee entirely), so letting a doctor send PATIENT_REQUEST would
+    // charge the patient a cancellation fee for the clinic's own decision.
+    // Rejected explicitly rather than silently rewritten, so a mis-sending
+    // client is fixed rather than masked.
+    if (scope.kind === 'DOCTOR' && input.reason !== 'PROVIDER_REQUEST') {
+      throw new BusinessRuleError(
+        'CANCELLATION_REASON_NOT_PERMITTED',
+        'A provider-initiated cancellation must use reason PROVIDER_REQUEST.',
+        { reason: input.reason },
+      );
+    }
+
     // Explicit timeout (Prisma's default is 5000ms) — same reasoning as
     // ConfirmAppointmentUseCase: this transaction now also runs the refund
     // use-case's several sequential writes when a payment was captured.
     return this.prisma.$transaction(async (tx) => {
       const appointment = await this.appointments.findById(tx, appointmentId);
-      if (!appointment || appointment.patient_id !== actor.sub) {
+      if (!appointment || !isAppointmentInScope(appointment, scope)) {
         throw new NotFoundError('Appointment', appointmentId);
       }
       if (appointment.status !== 'CONFIRMED') {
@@ -92,8 +120,12 @@ export class CancelAppointmentUseCase {
       await this.outbox.emit(tx, 'AppointmentCancelled', {
         appointmentId: appointment.id,
         slotId: appointment.slot_id,
-        patientId: actor.sub,
+        // The appointment's own patient, not the actor — a doctor-initiated
+        // cancellation still concerns the patient, and any consumer
+        // (Notifications, Phase 8) needs to reach them, not the canceller.
+        patientId: appointment.patient_id,
         reason: input.reason,
+        cancelledBy: scope.kind === 'DOCTOR' ? 'DOCTOR' : 'PATIENT',
       });
 
       return { status: 'CANCELLED' as const, refundAmount, feeApplied };

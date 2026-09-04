@@ -10,6 +10,7 @@ import { CreateHoldUseCase } from '../application/create-hold.use-case';
 import { GetAppointmentUseCase } from '../application/get-appointment.use-case';
 import { ListAppointmentsUseCase } from '../application/list-appointments.use-case';
 import { RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
+import { ResolveAppointmentScopeUseCase } from '../application/resolve-appointment-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AuditLogRepository } from '../../audit/infrastructure/audit-log.repository';
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
@@ -19,7 +20,9 @@ import { PaymentSplitRepository } from '../../payments/infrastructure/payment-sp
 import { ProviderLedgerRepository } from '../../payments/infrastructure/provider-ledger.repository';
 import { RefundRepository } from '../../payments/infrastructure/refund.repository';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AffiliationRepository } from '../../provider-directory/infrastructure/affiliation.repository';
+import { DoctorRepository } from '../../provider-directory/infrastructure/doctor.repository';
 import { AppConfigModule } from '../../../shared/config/config.module';
 import { RequestContextService } from '../../../shared/core/context/request-context.service';
 import { ConflictError } from '../../../shared/core/errors/domain-errors';
@@ -72,7 +75,12 @@ describe('Appointment booking loop (integration)', () => {
         OutboxService,
         PolicyConfigReader,
         AffiliationRepository,
+        DoctorRepository,
         GetAffiliationBillingInfoUseCase,
+        // File 12 Part 49.7: cancel/reschedule now resolve ownership through
+        // this instead of hard-coding `patient_id === actor.sub`.
+        ResolveDoctorScopeUseCase,
+        ResolveAppointmentScopeUseCase,
         PaymentIntentRepository,
         PaymentSplitRepository,
         RefundRepository,
@@ -248,6 +256,11 @@ describe('Appointment booking loop (integration)', () => {
 
     const rescheduled = await rescheduleAppointment.execute(confirmed.appointmentId, { newSlotId: newSlot.id }, actor);
     expect(rescheduled).toMatchObject({ slotId: newSlot.id, status: 'HELD', previousAppointmentId: confirmed.appointmentId });
+    // Narrows the union added in File 12 Part 49.9: a PATIENT actor always
+    // gets the unconfirmed-hold arm; the CONFIRMED arm is provider-only.
+    if (rescheduled.status !== 'HELD') {
+      throw new Error('a patient-initiated reschedule must return an unconfirmed hold');
+    }
 
     const oldAppointment = await prisma.appointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId } });
     expect(oldAppointment.status).toBe('RESCHEDULED');

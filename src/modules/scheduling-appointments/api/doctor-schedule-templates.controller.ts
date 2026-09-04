@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { MyScheduleTemplate } from '../application/doctor-schedule-template.mapper';
 import { ListMyScheduleTemplatesResult, ListMyScheduleTemplatesUseCase } from '../application/list-my-schedule-templates.use-case';
@@ -8,6 +8,7 @@ import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { CreateMyScheduleTemplateDto } from './dto/create-my-schedule-template.dto';
+import { DeleteMyScheduleTemplateQueryDto } from './dto/delete-my-schedule-template-query.dto';
 import { ListMyScheduleTemplatesQueryDto } from './dto/list-my-schedule-templates-query.dto';
 import { UpdateMyScheduleTemplateDto } from './dto/update-my-schedule-template.dto';
 
@@ -60,18 +61,12 @@ export class DoctorScheduleTemplatesController {
 
   @Delete(':scheduleTemplateId')
   @HttpCode(204)
-  @ApiQuery({
-    name: 'version',
-    required: false,
-    type: Number,
-    description: 'Optimistic-lock token from the read this delete is based on (File 12 Part 49.6).',
-  })
   @ApiOperation({ summary: 'Stop future generation from this template — already-generated slots and their appointments are untouched' })
   async remove(
     @Param('scheduleTemplateId', ParseUUIDPipe) scheduleTemplateId: string,
+    @Query() query: DeleteMyScheduleTemplateQueryDto,
     @CurrentUser() user: AccessTokenPayload,
-    @Query('version', new ParseIntPipe({ optional: true })) version?: number,
   ): Promise<void> {
-    await this.manageMyTemplates.remove(scheduleTemplateId, version, user);
+    await this.manageMyTemplates.remove(scheduleTemplateId, query.version, user);
   }
 }

@@ -146,7 +146,13 @@ describe('Provider Directory (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(res.body.data.doctor.status).toBe('PENDING');
+      // `DoctorDetail` is a flat camelCase shape exposing `isVerified`, not a
+      // nested `{ doctor, affiliations }` with a raw `status` — the raw
+      // lifecycle status stays server-side, so the PENDING-vs-SUSPENDED
+      // distinction is asserted against the row itself.
+      expect(res.body.data.id).toBe(doctorId);
+      expect(res.body.data.isVerified).toBe(false);
+      expect((await prisma.doctor.findUniqueOrThrow({ where: { id: doctorId } })).status).toBe('PENDING');
     });
 
     it('403s a non-Admin (patient) verify attempt', async () => {
@@ -174,7 +180,8 @@ describe('Provider Directory (e2e)', () => {
 
     it('anonymous GET now returns the doctor', async () => {
       const res = await request(app.getHttpServer()).get(`/v1/doctors/${doctorId}`).expect(200);
-      expect(res.body.data.doctor.status).toBe('VERIFIED');
+      expect(res.body.data.id).toBe(doctorId);
+      expect(res.body.data.isVerified).toBe(true);
       expect(res.body.data.affiliations).toHaveLength(1);
     });
 
@@ -221,7 +228,9 @@ describe('Provider Directory (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      expect(res.body.data.doctor.status).toBe('SUSPENDED');
+      expect(res.body.data.id).toBe(doctorId);
+      expect(res.body.data.isVerified).toBe(false);
+      expect((await prisma.doctor.findUniqueOrThrow({ where: { id: doctorId } })).status).toBe('SUSPENDED');
     });
   });
 });
