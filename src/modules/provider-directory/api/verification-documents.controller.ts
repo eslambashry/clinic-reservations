@@ -50,7 +50,11 @@ export class VerificationDocumentsController {
       },
     },
   })
-  @ApiOperation({ summary: 'Admin: attach a verification document — multipart upload, jpeg/png/pdf, stored private (Part 32.7 superseded by ImageKit)' })
+  @Roles(RoleContextType.ADMIN, RoleContextType.DOCTOR)
+  @ApiOperation({
+    summary:
+      'Admin: attach a verification document for any provider. Doctor: attach a verification document for their own doctor record only — multipart upload, jpeg/png/pdf, stored private (Part 32.7 superseded by ImageKit)',
+  })
   upload(
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body() dto: CreateVerificationDocumentDto,

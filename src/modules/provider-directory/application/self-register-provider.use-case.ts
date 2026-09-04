@@ -3,11 +3,13 @@ import { AuditService } from '../../audit/application/audit.service';
 import { UpdateUserProfileUseCase } from '../../identity-auth/application/update-user-profile.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS, PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
-import { DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
 import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
 import { parseDataUri } from '../../../shared/kernel/storage/data-uri.util';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { isValidScheduleWindow } from '../../scheduling-appointments/domain/slot-generation.rules';
+import { ScheduleTemplateRepository } from '../../scheduling-appointments/infrastructure/schedule-template.repository';
 import { AddressRepository } from '../infrastructure/address.repository';
 import { AffiliationRepository } from '../infrastructure/affiliation.repository';
 import { ClinicRepository } from '../infrastructure/clinic.repository';
@@ -51,15 +53,14 @@ export interface SelfRegisterProviderResult {
  * `documents` stays here — verification-document upload stays Admin-only
  * (Part 32.7). `specialty_label`/`city_label` are display-only duplicates of
  * `specialty`/`city` and were never meant to be persisted. `working_days`
- * stays here deliberately — Part 33.1 keeps real `ScheduleTemplate` creation
- * Admin-only, not part of self-registration. `photo_data_uri` moved off this
- * list once `DEC-009` resolved (ImageKit) — see `execute()`.
+ * moved off this list — it's now persisted as real `ScheduleTemplate` rows
+ * tied to the affiliation this registration creates (see `execute()`).
+ * `photo_data_uri` moved off this list once `DEC-009` resolved (ImageKit).
  */
 export const SELF_REGISTRATION_NOT_PERSISTED_FIELDS = [
   'specialty_label',
   'documents',
   'city_label',
-  'working_days',
 ] as const;
 
 @Injectable()
@@ -75,6 +76,7 @@ export class SelfRegisterProviderUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(UpdateUserProfileUseCase) private readonly updateUserProfile: UpdateUserProfileUseCase,
     @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
+    @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
   ) {}
 
   async execute(dto: SubmitProviderRegistrationDto, actor: AccessTokenPayload): Promise<SelfRegisterProviderResult> {
@@ -140,6 +142,28 @@ export class SelfRegisterProviderUseCase {
         currency: PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_CURRENCY,
       });
 
+      const createdScheduleTemplateIds: string[] = [];
+      if (dto.working_days && dto.working_days.length > 0) {
+        for (const workingDay of dto.working_days) {
+          if (!isValidScheduleWindow(workingDay.startTime, workingDay.endTime)) {
+            throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'endTime must be after startTime.', {
+              startTime: workingDay.startTime,
+              endTime: workingDay.endTime,
+            });
+          }
+
+          const template = await this.scheduleTemplates.create(tx, {
+            doctorClinicAffiliationId: affiliation.id,
+            weekday: workingDay.weekday,
+            startTime: workingDay.startTime,
+            endTime: workingDay.endTime,
+            slotDurationMinutes: workingDay.slotDurationMinutes,
+            bufferMinutes: workingDay.bufferMinutes,
+          });
+          createdScheduleTemplateIds.push(template.id);
+        }
+      }
+
       await this.audit.record(tx, {
         actorUserId: actor.sub,
         actorRoleMembershipId: actor.roleMembershipId,
@@ -147,6 +171,16 @@ export class SelfRegisterProviderUseCase {
         resourceType: 'doctor',
         resourceId: doctor.id,
       });
+
+      for (const scheduleTemplateId of createdScheduleTemplateIds) {
+        await this.audit.record(tx, {
+          actorUserId: actor.sub,
+          actorRoleMembershipId: actor.roleMembershipId,
+          action: 'provider_directory.self_registration.schedule_template.create',
+          resourceType: 'schedule_template',
+          resourceId: scheduleTemplateId,
+        });
+      }
 
       return {
         doctorId: doctor.id,

@@ -3,7 +3,7 @@ import { Prisma, ProviderType, ProviderVerificationDocument } from '@prisma/clie
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
-import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { ClinicRepository } from '../infrastructure/clinic.repository';
@@ -23,9 +23,9 @@ export interface UploadVerificationDocumentInput {
  * private (`isPrivate: true`), since a medical license/syndicate ID/
  * commercial registration is exactly the kind of sensitive document File
  * 11's PHI table demands "restricted IAM" for, not a publicly guessable
- * link. Admin-only end to end (`VerificationDocumentsController`'s
- * class-level `@Roles(ADMIN)`) — no ownership check needed here, same as
- * before this change.
+ * link. Admin may upload for any provider. A DOCTOR-context actor may only
+ * upload for `providerType: 'DOCTOR'` and their own doctor id (resolved via
+ * `DoctorRepository.findByUserId`) — enforced in `assertOwnershipForDoctor`.
  */
 @Injectable()
 export class UploadVerificationDocumentUseCase {
@@ -45,6 +45,11 @@ export class UploadVerificationDocumentUseCase {
   ): Promise<ProviderVerificationDocument> {
     // Checked before uploading — an invalid providerId should fail fast, not consume an ImageKit upload for a file that will never be persisted.
     await this.assertProviderExists(this.prisma, input.providerType, input.providerId);
+
+    // Self-service: a DOCTOR-context actor may only attach documents to their own doctor record.
+    if (actor.contextType === 'DOCTOR') {
+      await this.assertOwnershipForDoctor(this.prisma, input.providerType, input.providerId, actor.sub);
+    }
 
     // Uploaded ahead of the transaction — same reasoning as `UploadPrescriptionUseCase`: an external round trip has no business holding a DB transaction open.
     const stored = await this.mediaStorage.upload(input.file, {
@@ -71,6 +76,22 @@ export class UploadVerificationDocumentUseCase {
       // Response carries a signed, immediately-usable URL — the persisted `file_url` stays the unsigned canonical form.
       return { ...document, file_url: this.mediaStorage.getSignedUrl(document.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS) };
     });
+  }
+
+  private async assertOwnershipForDoctor(
+    tx: Prisma.TransactionClient,
+    providerType: ProviderType,
+    providerId: string,
+    actorUserId: string,
+  ): Promise<void> {
+    if (providerType !== 'DOCTOR') {
+      throw new ForbiddenError('FORBIDDEN', 'A doctor may only upload verification documents for their own doctor record.');
+    }
+
+    const ownDoctor = await this.doctors.findByUserId(tx, actorUserId);
+    if (!ownDoctor || ownDoctor.id !== providerId) {
+      throw new ForbiddenError('FORBIDDEN', 'A doctor may only upload verification documents for their own doctor record.');
+    }
   }
 
   private async assertProviderExists(

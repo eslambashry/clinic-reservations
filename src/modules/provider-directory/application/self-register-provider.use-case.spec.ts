@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { ConflictError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { SELF_REGISTRATION_NOT_PERSISTED_FIELDS, SelfRegisterProviderUseCase } from './self-register-provider.use-case';
 
 function buildTx() {
@@ -35,6 +35,7 @@ describe('SelfRegisterProviderUseCase', () => {
     const audit = { record: jest.fn() };
     const updateUserProfile = { execute: jest.fn() };
     const mediaStorage = { upload: jest.fn().mockResolvedValue({ url: 'https://ik.imagekit.io/x/doctor-profiles/user-1/photo.jpg', fileId: 'file-1', filePath: '/doctor-profiles/user-1/photo.jpg' }), getSignedUrl: jest.fn() };
+    const scheduleTemplates = { create: jest.fn().mockResolvedValue({ id: 'template-1' }) };
     const useCase = new SelfRegisterProviderUseCase(
       prisma as any,
       specialties as any,
@@ -46,8 +47,9 @@ describe('SelfRegisterProviderUseCase', () => {
       audit as any,
       updateUserProfile as any,
       mediaStorage as any,
+      scheduleTemplates as any,
     );
-    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, useCase };
+    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, scheduleTemplates, useCase };
   }
 
   it('rejects an unknown specialty before creating anything', async () => {
@@ -180,5 +182,59 @@ describe('SelfRegisterProviderUseCase', () => {
     await expect(useCase.execute(badDto, actor)).rejects.toBeInstanceOf(DomainError);
     expect(mediaStorage.upload).not.toHaveBeenCalled();
     expect(clinics.create).not.toHaveBeenCalled();
+  });
+
+  it('creates one ScheduleTemplate per working_days entry, tied to the new affiliation, and no longer reports working_days as not-persisted', async () => {
+    const { tx, scheduleTemplates, useCase } = setup();
+    const workingDaysDto = {
+      ...dto,
+      working_days: [
+        { weekday: 1, startTime: '09:00', endTime: '17:00', slotDurationMinutes: 30, bufferMinutes: 0 },
+        { weekday: 3, startTime: '10:00', endTime: '14:00', slotDurationMinutes: 15, bufferMinutes: 5 },
+      ],
+    };
+
+    const result = await useCase.execute(workingDaysDto, actor);
+
+    expect(scheduleTemplates.create).toHaveBeenCalledTimes(2);
+    expect(scheduleTemplates.create).toHaveBeenNthCalledWith(1, tx, {
+      doctorClinicAffiliationId: 'affiliation-1',
+      weekday: 1,
+      startTime: '09:00',
+      endTime: '17:00',
+      slotDurationMinutes: 30,
+      bufferMinutes: 0,
+    });
+    expect(scheduleTemplates.create).toHaveBeenNthCalledWith(2, tx, {
+      doctorClinicAffiliationId: 'affiliation-1',
+      weekday: 3,
+      startTime: '10:00',
+      endTime: '14:00',
+      slotDurationMinutes: 15,
+      bufferMinutes: 5,
+    });
+    expect(result.notPersisted).not.toContain('working_days');
+  });
+
+  it('fails the whole registration transaction when a working_days entry has an invalid time window', async () => {
+    const { clinics, scheduleTemplates, useCase } = setup();
+    const badWorkingDaysDto = {
+      ...dto,
+      working_days: [{ weekday: 1, startTime: '17:00', endTime: '09:00', slotDurationMinutes: 30, bufferMinutes: 0 }],
+    };
+
+    await expect(useCase.execute(badWorkingDaysDto, actor)).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(scheduleTemplates.create).not.toHaveBeenCalled();
+    // Confirms the guard runs inside the same $transaction as everything else (clinic creation already happened by the time working_days is processed).
+    expect(clinics.create).toHaveBeenCalled();
+  });
+
+  it('registration with no working_days still succeeds exactly as before, creating no ScheduleTemplate rows', async () => {
+    const { scheduleTemplates, useCase } = setup();
+
+    const result = await useCase.execute(dto, actor);
+
+    expect(scheduleTemplates.create).not.toHaveBeenCalled();
+    expect(result.notPersisted).toEqual([...SELF_REGISTRATION_NOT_PERSISTED_FIELDS]);
   });
 });
