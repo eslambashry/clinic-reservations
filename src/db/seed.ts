@@ -131,13 +131,29 @@ async function main() {
   // Phase 2 (Provider Directory, File 12 Part 32): a Platform Admin test
   // user, so there's someone who can actually call the verify/suspend
   // endpoints — Admin accounts are provisioned manually, no self-service
-  // signup exists (File 11 07.1/07.3).
+  // signup exists (File 11 07.1/07.3). Password-login-ready from the start
+  // (Sprint 2 admin panel, 2026-09-05) — same `argon2.hash` call
+  // `SetPasswordUseCase`/`LoginWithPasswordUseCase` use, same pattern as
+  // the lab-staff seed below: an Admin has no legitimate reason to depend
+  // on OTP-over-SMS (still undeliverable, P0-1) just to review a doctor.
+  const adminPassword = 'DevPass123!';
   let adminUser = await prisma.user.findUnique({ where: { phone: '+201000000001' } });
   if (!adminUser) {
     adminUser = await prisma.user.create({
-      data: { phone: '+201000000001', first_name: 'Platform', last_name: 'Admin' },
+      data: {
+        phone: '+201000000001',
+        first_name: 'Platform',
+        last_name: 'Admin',
+        password_hash: await argon2.hash(adminPassword),
+      },
     });
-    console.log(`✅ Seeded admin user: ${adminUser.phone}`);
+    console.log(`✅ Seeded admin user: ${adminUser.phone} (password: ${adminPassword})`);
+  } else if (!adminUser.password_hash) {
+    adminUser = await prisma.user.update({
+      where: { id: adminUser.id },
+      data: { password_hash: await argon2.hash(adminPassword) },
+    });
+    console.log(`✅ Backfilled password for existing admin user: ${adminUser.phone} (password: ${adminPassword})`);
   }
   const adminMembership = await prisma.roleMembership.findFirst({
     where: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
@@ -382,6 +398,8 @@ async function main() {
       city: 'Cairo',
       region_code: DEFAULT_REGION,
       country_code: 'EG',
+      geo_lat: 30.044420,
+      geo_lng: 31.235712,
     },
   });
 
@@ -747,6 +765,8 @@ async function main() {
           addressId: '00000000-0000-0000-0000-000000000241',
           addressLine1: 'Corniche El Nil, Maadi',
           city: 'Cairo',
+          geoLat: 29.9602,
+          geoLng: 31.2569,
           phone: '+20221230020',
           homeCollectionCapable: true,
           staffPhone: '+201000000020',
@@ -758,6 +778,8 @@ async function main() {
           addressId: '00000000-0000-0000-0000-000000000242',
           addressLine1: 'Makram Ebeid St, Nasr City',
           city: 'Cairo',
+          geoLat: 30.0620,
+          geoLng: 31.3350,
           phone: '+20221230021',
           homeCollectionCapable: true,
           staffPhone: '+201000000021',
@@ -776,6 +798,8 @@ async function main() {
           addressId: '00000000-0000-0000-0000-000000000261',
           addressLine1: 'El Merghany St, Heliopolis',
           city: 'Cairo',
+          geoLat: 30.0808,
+          geoLng: 31.3231,
           phone: '+20221230022',
           homeCollectionCapable: false,
           staffPhone: '+201000000022',
@@ -787,6 +811,8 @@ async function main() {
           addressId: '00000000-0000-0000-0000-000000000262',
           addressLine1: 'Sudan St, Mohandessin',
           city: 'Giza',
+          geoLat: 30.0575,
+          geoLng: 31.2000,
           phone: '+20221230023',
           homeCollectionCapable: true,
           staffPhone: '+201000000023',
@@ -805,6 +831,8 @@ async function main() {
           addressId: '00000000-0000-0000-0000-000000000281',
           addressLine1: 'Hassan Sabry St, Zamalek',
           city: 'Cairo',
+          geoLat: 30.0626,
+          geoLng: 31.2197,
           phone: '+20221230024',
           homeCollectionCapable: true,
           staffPhone: '+201000000024',
@@ -816,6 +844,8 @@ async function main() {
           addressId: '00000000-0000-0000-0000-000000000282',
           addressLine1: 'Central Axis, 6th of October City',
           city: 'Giza',
+          geoLat: 29.9285,
+          geoLng: 30.9188,
           phone: '+20221230025',
           homeCollectionCapable: false,
           staffPhone: '+201000000025',
@@ -850,6 +880,8 @@ async function main() {
           city: branch.city,
           region_code: DEFAULT_REGION,
           country_code: 'EG',
+          geo_lat: branch.geoLat,
+          geo_lng: branch.geoLng,
         },
       });
 

@@ -19,10 +19,12 @@ import { RejectLabOrderUseCase } from './application/reject-lab-order.use-case';
 import { RejectSampleUseCase } from './application/reject-sample.use-case';
 import { RequestRecollectionUseCase } from './application/request-recollection.use-case';
 import { RescheduleVisitUseCase } from './application/reschedule-visit.use-case';
+import { SearchLabBranchesUseCase } from './application/search-lab-branches.use-case';
 import { SetCriticalFlagUseCase } from './application/set-critical-flag.use-case';
 import { StartAnalysisUseCase } from './application/start-analysis.use-case';
 import { SubmitLabQuoteUseCase } from './application/submit-lab-quote.use-case';
 import { LabBranchRepository } from './infrastructure/lab-branch.repository';
+import { LabBranchSearchRepository } from './infrastructure/lab-branch-search.repository';
 import { LabOrderItemRepository } from './infrastructure/lab-order-item.repository';
 import { LabOrderNoteRepository } from './infrastructure/lab-order-note.repository';
 import { LabOrderRepository } from './infrastructure/lab-order.repository';
@@ -68,10 +70,12 @@ import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
     LabResultRepository,
     LabOrderNoteRepository,
     LabBranchRepository,
+    LabBranchSearchRepository,
     TestCatalogRepository,
     // application
     GetCustodyEventsUseCase,
     GetLabBranchUseCase,
+    SearchLabBranchesUseCase,
     CreateLabOrderUseCase,
     ListLabOrdersUseCase,
     GetLabOrderUseCase,

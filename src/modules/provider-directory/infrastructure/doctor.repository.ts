@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { Doctor, Prisma } from '@prisma/client';
+import { Doctor, DoctorStatus, Prisma } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
+
+export interface ListDoctorsParams {
+  status?: DoctorStatus;
+  cursor?: { createdAt: string; id: string };
+  limit: number;
+}
 
 export interface CreateDoctorInput {
   userId: string;
@@ -85,6 +91,25 @@ export class DoctorRepository {
     await updateWithOptimisticLock(db.doctor, id, currentVersion, {
       status,
       ...(status === 'VERIFIED' && { license_verified_at: new Date() }),
+    });
+  }
+
+  /** Admin review queue — cursor pagination on `(created_at, id)`, oldest-first, same shape as `VerificationDocumentRepository.list`. */
+  list(db: Prisma.TransactionClient, params: ListDoctorsParams): Promise<DoctorWithUser[]> {
+    return db.doctor.findMany({
+      where: {
+        deleted_at: null,
+        ...(params.status && { status: params.status }),
+        ...(params.cursor && {
+          OR: [
+            { created_at: { gt: new Date(params.cursor.createdAt) } },
+            { created_at: new Date(params.cursor.createdAt), id: { gt: params.cursor.id } },
+          ],
+        }),
+      },
+      include: DOCTOR_WITH_USER,
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: params.limit,
     });
   }
 }

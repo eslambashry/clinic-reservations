@@ -40,6 +40,24 @@ branch display, `LabBranchesController`/`GetLabBranchUseCase`) — no other back
 itself. `src/db/seed.ts` seeds a real, password-set, branch-assigned `LAB_STAFF` test account
 (`+201000000004`/`DevPass123!`) so this is curl/browser-testable against a real Postgres with no manual DB edit.
 
+**Frontend connection (med-super Flutter, patient app — 2026-09-05):** the patient-facing `lab_booking` feature
+was `BLOCKED` (built earlier against two invented mock endpoints with no real counterpart) until this pass
+un-blocked it at the user's explicit direction. One real gap had to be closed first: nothing let a patient
+*discover* a branch — `GET /lab-branches/{id}` is `LAB_STAFF`-self-only, and there was no public directory read at
+all (unlike pharmacy, which already had `SearchPharmacyBranchesUseCase`/`pharmacy-branches.controller.ts`). This
+pass adds the missing counterpart, mirroring that pattern exactly: `LabBranchSearchRepository` (PostGIS
+`ST_Distance`/`ST_DWithin` over `lab_branches → laboratories → addresses`, `VERIFIED`-only, no rating/price
+columns exist so none are selected), `SearchLabBranchesUseCase`, `LabBranchSearchQueryDto`, and a new
+`@OptionalAuth() GET /lab-branches/search` route on the existing `LabBranchesController` (declared *before*
+`:branchId` — Nest route order matters). The existing `:branchId` route is untouched. `POST /lab-orders`,
+`GET /lab-orders`, `GET /lab-orders/{id}`, and `POST /prescriptions/upload` needed no backend changes — the
+Flutter app's image-upload step calls the already-real `prescriptions` upload endpoint to get a `prescriptionId`,
+then passes it into `POST /lab-orders` alongside `collectionType`; direct `testCodes` selection is left as a
+documented follow-up on the Flutter side, since `test_catalog` is unseeded and has no read endpoint. Payment,
+pricing, and appointment scheduling were deliberately dropped from the Flutter creation flow rather than faked —
+none of that exists until `SubmitLabQuoteUseCase` runs, so the app now has a status-tracking screen instead of a
+fabricated instant confirmation.
+
 **Verification:** backend `tsc --noEmit`/`eslint` clean, `jest src/modules/laboratory` 88/88 (20 suites) passing.
 Not run: `db:migrate:deploy` against a real Postgres, any live browser click-through — no local DB is provisioned
 in this environment, flagged rather than assumed, same as pharmacy's own later Part 42 real-infrastructure pass.

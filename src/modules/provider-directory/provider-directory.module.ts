@@ -28,6 +28,7 @@ import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.u
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
 import { ListAssistantsUseCase } from './application/list-assistants.use-case';
+import { ListDoctorsUseCase } from './application/list-doctors.use-case';
 import { ListMyDoctorClinicsUseCase } from './application/list-my-doctor-clinics.use-case';
 import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
 import { ListSpecialtiesUseCase } from './application/list-specialties.use-case';
@@ -131,6 +132,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     GetMyDoctorProfileUseCase,
     UpdateMyDoctorProfileUseCase,
     SearchDoctorsUseCase,
+    ListDoctorsUseCase,
     CreateClinicUseCase,
     UpdateClinicUseCase,
     VerifyClinicUseCase,

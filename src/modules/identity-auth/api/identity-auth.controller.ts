@@ -11,6 +11,7 @@ import { RefreshTokenResult, RefreshTokenUseCase } from '../application/refresh-
 import { RequestOtpResult, RequestOtpUseCase } from '../application/request-otp.use-case';
 import { ResetPasswordUseCase } from '../application/reset-password.use-case';
 import { SetPasswordUseCase } from '../application/set-password.use-case';
+import { SwitchContextResult, SwitchContextUseCase } from '../application/switch-context.use-case';
 import { UpdateCurrentUserUseCase } from '../application/update-current-user.use-case';
 import { VerifyOtpResult, VerifyOtpUseCase } from '../application/verify-otp.use-case';
 import { VerifyResetCodeResult, VerifyResetCodeUseCase } from '../application/verify-reset-code.use-case';
@@ -22,6 +23,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
+import { SwitchContextDto } from './dto/switch-context.dto';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
@@ -49,6 +51,7 @@ export class IdentityAuthController {
     @Inject(ResetPasswordUseCase) private readonly resetPassword: ResetPasswordUseCase,
     @Inject(VerifyResetCodeUseCase) private readonly verifyResetCode: VerifyResetCodeUseCase,
     @Inject(UpdateCurrentUserUseCase) private readonly updateCurrentUser: UpdateCurrentUserUseCase,
+    @Inject(SwitchContextUseCase) private readonly switchContextUseCase: SwitchContextUseCase,
   ) {}
 
   @Public()
@@ -79,6 +82,13 @@ export class IdentityAuthController {
   @Get('me')
   me(@CurrentUser() payload: AccessTokenPayload): Promise<GetCurrentUserResult> {
     return this.getCurrentUser.execute({ userId: payload.sub, activeRoleCode: payload.roleCode });
+  }
+
+  /** S-2 fix — see `SwitchContextUseCase`'s doc comment. Bearer-authenticated like `/me`, not `@Public()`. */
+  @Post('context/switch')
+  @HttpCode(200)
+  switchContext(@CurrentUser() payload: AccessTokenPayload, @Body() dto: SwitchContextDto): Promise<SwitchContextResult> {
+    return this.switchContextUseCase.execute(payload.sub, { contextType: dto.contextType });
   }
 
   @Patch('me')

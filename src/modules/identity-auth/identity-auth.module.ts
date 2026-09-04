@@ -16,6 +16,7 @@ import { RequestOtpUseCase } from './application/request-otp.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { RevokeStaffMembershipUseCase } from './application/revoke-staff-membership.use-case';
 import { SetPasswordUseCase } from './application/set-password.use-case';
+import { SwitchContextUseCase } from './application/switch-context.use-case';
 import { UpdateCurrentUserUseCase } from './application/update-current-user.use-case';
 import { UpdateStaffMembershipUseCase } from './application/update-staff-membership.use-case';
 import { UpdateUserProfileUseCase } from './application/update-user-profile.use-case';
@@ -73,6 +74,7 @@ import { UserRepository } from './infrastructure/user.repository';
     VerifyResetCodeUseCase,
     UpdateUserProfileUseCase,
     UpdateCurrentUserUseCase,
+    SwitchContextUseCase,
     GetActiveRoleMembershipUseCase,
     GetUserSummaryUseCase,
     GrantRoleMembershipUseCase,

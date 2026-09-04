@@ -5,6 +5,7 @@ import { CreateAffiliationUseCase } from '../application/create-affiliation.use-
 import { CreateDoctorUseCase } from '../application/create-doctor.use-case';
 import { DoctorDetail, GetDoctorUseCase } from '../application/get-doctor.use-case';
 import { GetMyDoctorProfileUseCase, MyDoctorProfile } from '../application/get-my-doctor-profile.use-case';
+import { ListDoctorsResult, ListDoctorsUseCase } from '../application/list-doctors.use-case';
 import { SearchDoctorsResult, SearchDoctorsUseCase } from '../application/search-doctors.use-case';
 import { SuspendDoctorUseCase } from '../application/suspend-doctor.use-case';
 import { UpdateDoctorUseCase } from '../application/update-doctor.use-case';
@@ -17,6 +18,7 @@ import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { CreateAffiliationDto } from './dto/create-affiliation.dto';
 import { CreateDoctorDto } from './dto/create-doctor.dto';
 import { DoctorSearchQueryDto } from './dto/doctor-search-query.dto';
+import { ListDoctorsQueryDto } from './dto/list-doctors-query.dto';
 import { UpdateDoctorDto } from './dto/update-doctor.dto';
 import { UpdateMyDoctorProfileDto } from './dto/update-my-doctor-profile.dto';
 
@@ -39,6 +41,7 @@ export class DoctorsController {
     @Inject(UpdateMyDoctorProfileUseCase) private readonly updateMyDoctorProfile: UpdateMyDoctorProfileUseCase,
     @Inject(SearchDoctorsUseCase) private readonly searchDoctors: SearchDoctorsUseCase,
     @Inject(CreateAffiliationUseCase) private readonly createAffiliation: CreateAffiliationUseCase,
+    @Inject(ListDoctorsUseCase) private readonly listDoctors: ListDoctorsUseCase,
   ) {}
 
   @OptionalAuth()
@@ -46,6 +49,14 @@ export class DoctorsController {
   @ApiOperation({ summary: 'Public doctor search (File 10 §2.3) — specialty/location/sort, cursor-paginated' })
   search(@Query() query: DoctorSearchQueryDto): Promise<SearchDoctorsResult> {
     return this.searchDoctors.execute(query);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleContextType.ADMIN)
+  @Get()
+  @ApiOperation({ summary: 'Admin: review queue — every doctor regardless of status, optionally filtered, oldest-first' })
+  list(@Query() query: ListDoctorsQueryDto): Promise<ListDoctorsResult> {
+    return this.listDoctors.execute(query);
   }
 
   // Registered before `:doctorId` below — a literal 'me' segment would
