@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
+import { CreateMyClinicBranchUseCase } from '../application/create-my-clinic-branch.use-case';
+import { DeleteMyClinicBranchUseCase } from '../application/delete-my-clinic-branch.use-case';
 import { ListMyDoctorClinicsResult, ListMyDoctorClinicsUseCase, MyDoctorClinic } from '../application/list-my-doctor-clinics.use-case';
 import { UpdateMyAffiliationUseCase } from '../application/update-my-affiliation.use-case';
 import { UpdateMyClinicBranchUseCase } from '../application/update-my-clinic-branch.use-case';
@@ -9,6 +11,7 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { UpdateMyAffiliationDto } from './dto/update-my-affiliation.dto';
 import { UpdateMyClinicBranchDto } from './dto/update-my-clinic-branch.dto';
+import { CreateMyClinicBranchDto } from './dto/create-my-clinic-branch.dto';
 
 /**
  * Doctor Dashboard — clinics and branches (File 12 Part 49.2-49.4).
@@ -21,24 +24,36 @@ import { UpdateMyClinicBranchDto } from './dto/update-my-clinic-branch.dto';
  * path params here name a resource whose ownership is then re-checked
  * against the JWT-derived scope inside the use-case, never trusted.
  *
- * `@Roles(DOCTOR)` at class level also blocks CLINIC_STAFF from reaching a
- * doctor's own management surface, not just other doctors.
+ * `@Roles(DOCTOR)` at class level blocks CLINIC_STAFF and Admin from reaching
+ * this doctor-owned management surface; Admin retains the separate legal and
+ * verification endpoints under `/clinic-branches`.
  */
 @ApiTags('doctor-clinics')
 @ApiBearerAuth()
-@Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+@Roles(RoleContextType.DOCTOR)
 @Controller('doctors/me/clinics')
 export class DoctorClinicsController {
   constructor(
     @Inject(ListMyDoctorClinicsUseCase) private readonly listMyClinics: ListMyDoctorClinicsUseCase,
     @Inject(UpdateMyClinicBranchUseCase) private readonly updateMyBranch: UpdateMyClinicBranchUseCase,
     @Inject(UpdateMyAffiliationUseCase) private readonly updateMyAffiliation: UpdateMyAffiliationUseCase,
+    @Inject(CreateMyClinicBranchUseCase) private readonly createMyBranch: CreateMyClinicBranchUseCase,
+    @Inject(DeleteMyClinicBranchUseCase) private readonly deleteMyBranch: DeleteMyClinicBranchUseCase,
   ) {}
 
   @Get()
   @ApiOperation({ summary: "The calling doctor's clinics and branches — legal clinic data (legal name, tax id) deliberately omitted" })
   list(@CurrentUser() user: AccessTokenPayload): Promise<ListMyDoctorClinicsResult> {
     return this.listMyClinics.execute(user);
+  }
+
+  @Post(':clinicId/branches')
+  createBranch(
+    @Param('clinicId', ParseUUIDPipe) clinicId: string,
+    @Body() dto: CreateMyClinicBranchDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<MyDoctorClinic> {
+    return this.createMyBranch.execute({ ...dto, clinicId, currency: dto.currency ?? 'EGP' }, user);
   }
 
   @Patch('branches/:branchId')
@@ -61,5 +76,11 @@ export class DoctorClinicsController {
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<MyDoctorClinic> {
     return this.updateMyAffiliation.execute(affiliationId, dto, user);
+  }
+
+  @Delete('branches/:branchId')
+  @HttpCode(204)
+  async deleteBranch(@Param('branchId', ParseUUIDPipe) branchId: string, @CurrentUser() user: AccessTokenPayload): Promise<void> {
+    await this.deleteMyBranch.execute(branchId, user);
   }
 }

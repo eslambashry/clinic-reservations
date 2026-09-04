@@ -4,7 +4,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { isValidScheduleWindow } from '../domain/slot-generation.rules';
+import { isValidScheduleWindow, windowsOverlap } from '../domain/slot-generation.rules';
 import { ScheduleTemplateRepository, UpdateScheduleTemplateInput } from '../infrastructure/schedule-template.repository';
 
 export interface UpdateScheduleTemplateOptions {
@@ -54,8 +54,30 @@ export class UpdateScheduleTemplateUseCase {
 
       const startTime = input.startTime ?? template.start_time;
       const endTime = input.endTime ?? template.end_time;
+      const weekday = input.weekday ?? template.weekday;
       if (!isValidScheduleWindow(startTime, endTime)) {
         throw new BusinessRuleError('INVALID_SCHEDULE_WINDOW', 'وقت النهاية يجب أن يكون بعد وقت البداية.', { startTime, endTime });
+      }
+
+      const sameDay = await this.scheduleTemplates.findByAffiliationIdAndWeekday(
+        tx,
+        template.doctor_clinic_affiliation_id,
+        weekday,
+      );
+      const overlapping = sameDay.find(
+        (existing) =>
+          existing.id !== scheduleTemplateId &&
+          windowsOverlap(
+            { startTime: existing.start_time, endTime: existing.end_time, slotDurationMinutes: 0, bufferMinutes: 0 },
+            { startTime, endTime, slotDurationMinutes: 0, bufferMinutes: 0 },
+          ),
+      );
+      if (overlapping) {
+        throw new ConflictError(
+          'SCHEDULE_WINDOW_OVERLAP',
+          'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
+          { scheduleTemplateId, conflictingTemplateId: overlapping.id },
+        );
       }
 
       await this.scheduleTemplates.update(tx, scheduleTemplateId, template.version, input);
