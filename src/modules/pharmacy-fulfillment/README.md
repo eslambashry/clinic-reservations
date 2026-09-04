@@ -82,3 +82,13 @@ on every transition; only a read path was missing. Raw actions map onto the dash
 each of those transitions is terminal. `search`/`action`/pagination run in memory over the branch's full history,
 same MVP tradeoff as `ListPharmacyOrdersUseCase`'s enrichment N+1. 112/112 unit+integration tests passing; not
 re-verified against real Postgres/browser this pass (see Part 43 for what was and wasn't checked).
+
+**2026-09-04 — patient-triggered `confirm-receipt`.** `CompletePharmacyOrderUseCase` (Part 40 item 5) is
+`PHARMACY_STAFF`-only, but no courier/tracking module exists yet (Phase 9, Delivery), so staff have no real way to
+know when a home delivery actually arrives — that `complete` call on an `OUT_FOR_DELIVERY` order was always a guess.
+New `POST /pharmacy-orders/{orderId}/confirm-receipt` (`ConfirmPharmacyOrderReceiptUseCase`, `PATIENT`-only,
+`OUT_FOR_DELIVERY --> FULFILLED`) lets the owning patient close their own delivery order instead. Ownership checked
+the same way `approve`/`reject`-substitution already do (404, not 403, for a non-owner). `READY_FOR_PICKUP` is
+untouched — still staff-only via `complete`, since pickup is handed over in person. `med-super`'s pharmacy order
+detail screen wires a "تأكيد الاستلام" (confirm receipt) button to this endpoint, shown only when
+`status === 'OUT_FOR_DELIVERY'`.

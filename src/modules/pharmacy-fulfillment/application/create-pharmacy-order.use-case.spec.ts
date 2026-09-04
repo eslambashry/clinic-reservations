@@ -67,6 +67,18 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(searchPharmacyBranches.execute).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: true }));
   });
 
+  it('treats CLINIC_HANDOVER as a PICKUP alias — no delivery-capable requirement', async () => {
+    const { pharmacyOrders, getAcceptedPrescription, searchPharmacyBranches, useCase } = setup();
+    searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
+    pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
+    getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
+    pharmacyOrders.create.mockResolvedValue({ id: 'order-1', status: 'RECEIVED' });
+
+    await useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER' }, actor);
+
+    expect(searchPharmacyBranches.execute).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: undefined }));
+  });
+
   it('broadcasts to exactly the chosen branch when pharmacyBranchId is given, skipping the nearest-branch search', async () => {
     const { pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
     getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: true });

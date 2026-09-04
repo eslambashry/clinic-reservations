@@ -4,6 +4,7 @@ import { RoleContextType } from '@prisma/client';
 import { AcceptPharmacyOrderBroadcastResult, AcceptPharmacyOrderBroadcastUseCase } from '../application/accept-pharmacy-order-broadcast.use-case';
 import { ApprovePharmacyOrderResult, ApprovePharmacyOrderUseCase } from '../application/approve-pharmacy-order.use-case';
 import { CompletePharmacyOrderResult, CompletePharmacyOrderUseCase } from '../application/complete-pharmacy-order.use-case';
+import { ConfirmPharmacyOrderReceiptResult, ConfirmPharmacyOrderReceiptUseCase } from '../application/confirm-pharmacy-order-receipt.use-case';
 import { CreatePharmacyOrderResult, CreatePharmacyOrderUseCase } from '../application/create-pharmacy-order.use-case';
 import { DeclinePharmacyOrderBroadcastResult, DeclinePharmacyOrderBroadcastUseCase } from '../application/decline-pharmacy-order-broadcast.use-case';
 import { FulfillPharmacyOrderResult, FulfillPharmacyOrderUseCase } from '../application/fulfill-pharmacy-order.use-case';
@@ -59,6 +60,7 @@ export class PharmacyOrdersController {
     @Inject(ApprovePharmacyOrderUseCase) private readonly approvePharmacyOrder: ApprovePharmacyOrderUseCase,
     @Inject(FulfillPharmacyOrderUseCase) private readonly fulfillPharmacyOrder: FulfillPharmacyOrderUseCase,
     @Inject(CompletePharmacyOrderUseCase) private readonly completePharmacyOrder: CompletePharmacyOrderUseCase,
+    @Inject(ConfirmPharmacyOrderReceiptUseCase) private readonly confirmPharmacyOrderReceipt: ConfirmPharmacyOrderReceiptUseCase,
     @Inject(ListPharmacyOrdersUseCase) private readonly listPharmacyOrders: ListPharmacyOrdersUseCase,
     @Inject(GetPharmacyOrderUseCase) private readonly getPharmacyOrder: GetPharmacyOrderUseCase,
   ) {}
@@ -166,6 +168,17 @@ export class PharmacyOrdersController {
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<CompletePharmacyOrderResult> {
     return this.completePharmacyOrder.execute(pharmacyOrderId, user);
+  }
+
+  @Roles(RoleContextType.PATIENT)
+  @Post(':pharmacyOrderId/confirm-receipt')
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({ summary: "Patient confirms a home-delivery order was received — OUT_FOR_DELIVERY --> FULFILLED (2026-09-04 addition)" })
+  confirmReceipt(
+    @Param('pharmacyOrderId', ParseUUIDPipe) pharmacyOrderId: string,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<ConfirmPharmacyOrderReceiptResult> {
+    return this.confirmPharmacyOrderReceipt.execute(pharmacyOrderId, user);
   }
 
   @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF)
