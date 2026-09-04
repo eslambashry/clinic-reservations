@@ -84,6 +84,19 @@ describe('LoginWithPasswordUseCase', () => {
     expect(verifyMock).toHaveBeenCalledWith('hashed', 'WrongPass1!');
   });
 
+  it('401s UNAUTHENTICATED for a SUSPENDED user even with the correct password — never reaches role-membership lookup', async () => {
+    const { users, roleMemberships, useCase } = setup();
+    users.findByPhone.mockResolvedValue({ id: 'user-1', phone: '+201001234567', password_hash: 'hashed', status: 'SUSPENDED' });
+    verifyMock.mockResolvedValue(true);
+
+    await expect(useCase.execute({ phone: '+201001234567', password: 'NewPass1!' })).rejects.toMatchObject({
+      code: 'UNAUTHENTICATED',
+      httpStatus: 401,
+      message: 'Invalid phone number or password.',
+    });
+    expect(roleMemberships.findActiveByUser).not.toHaveBeenCalled();
+  });
+
   it('401s UNAUTHENTICATED when the correct password is given but the user has no active role membership', async () => {
     const { users, roleMemberships, useCase } = setup();
     users.findByPhone.mockResolvedValue({ id: 'user-1', phone: '+201001234567', password_hash: 'hashed' });

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AffiliationsController } from './api/affiliations.controller';
+import { AssistantsController } from './api/assistants.controller';
 import { ClinicBranchesController } from './api/clinic-branches.controller';
 import { ClinicsController } from './api/clinics.controller';
 import { DoctorsController } from './api/doctors.controller';
@@ -10,9 +11,11 @@ import { SpecialtiesController } from './api/specialties.controller';
 import { VerificationDocumentsController } from './api/verification-documents.controller';
 import { ApproveVerificationDocumentUseCase } from './application/approve-verification-document.use-case';
 import { CreateAffiliationUseCase } from './application/create-affiliation.use-case';
+import { CreateAssistantUseCase } from './application/create-assistant.use-case';
 import { CreateClinicBranchUseCase } from './application/create-clinic-branch.use-case';
 import { CreateClinicUseCase } from './application/create-clinic.use-case';
 import { CreateDoctorUseCase } from './application/create-doctor.use-case';
+import { DeleteAssistantUseCase } from './application/delete-assistant.use-case';
 import { CreatePharmacyBranchUseCase } from './application/create-pharmacy-branch.use-case';
 import { CreatePharmacyUseCase } from './application/create-pharmacy.use-case';
 import { GetAffiliationBillingInfoUseCase } from './application/get-affiliation-billing-info.use-case';
@@ -23,6 +26,7 @@ import { GetMyDoctorRegistrationStatusUseCase } from './application/get-my-docto
 import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.use-case';
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
+import { ListAssistantsUseCase } from './application/list-assistants.use-case';
 import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
 import { ListSpecialtiesUseCase } from './application/list-specialties.use-case';
 import { ListVerificationDocumentsUseCase } from './application/list-verification-documents.use-case';
@@ -37,6 +41,7 @@ import { SuspendDoctorUseCase } from './application/suspend-doctor.use-case';
 import { SuspendPharmacyBranchUseCase } from './application/suspend-pharmacy-branch.use-case';
 import { SuspendPharmacyUseCase } from './application/suspend-pharmacy.use-case';
 import { UpdateAffiliationUseCase } from './application/update-affiliation.use-case';
+import { UpdateAssistantUseCase } from './application/update-assistant.use-case';
 import { UpdateClinicBranchUseCase } from './application/update-clinic-branch.use-case';
 import { UpdateClinicUseCase } from './application/update-clinic.use-case';
 import { UpdateDoctorUseCase } from './application/update-doctor.use-case';
@@ -95,6 +100,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     VerificationDocumentsController,
     SpecialtiesController,
     ProviderRegistrationController,
+    AssistantsController,
   ],
   providers: [
     // infrastructure
@@ -152,6 +158,10 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     SelfRegisterProviderUseCase,
     GetMyDoctorRegistrationStatusUseCase,
     GetAffiliationBillingInfoUseCase,
+    ListAssistantsUseCase,
+    CreateAssistantUseCase,
+    UpdateAssistantUseCase,
+    DeleteAssistantUseCase,
   ],
   exports: [
     ResolveAffiliationForSchedulingUseCase,

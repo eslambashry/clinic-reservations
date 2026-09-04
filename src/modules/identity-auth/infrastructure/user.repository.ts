@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, User } from '@prisma/client';
+import { Prisma, User, UserStatus } from '@prisma/client';
 
 @Injectable()
 export class UserRepository {
@@ -11,8 +11,9 @@ export class UserRepository {
     return db.user.findUnique({ where: { phone } });
   }
 
-  create(db: Prisma.TransactionClient, phone: string): Promise<User> {
-    return db.user.create({ data: { phone } });
+  /** `firstName` is optional so the existing OTP-signup call site (no name collected) is unaffected. */
+  create(db: Prisma.TransactionClient, phone: string, firstName?: string): Promise<User> {
+    return db.user.create({ data: { phone, first_name: firstName } });
   }
 
   setPassword(db: Prisma.TransactionClient, id: string, passwordHash: string): Promise<User> {
@@ -20,6 +21,10 @@ export class UserRepository {
       where: { id },
       data: { password_hash: passwordHash, password_updated_at: new Date() },
     });
+  }
+
+  setStatus(db: Prisma.TransactionClient, id: string, status: UserStatus): Promise<User> {
+    return db.user.update({ where: { id }, data: { status } });
   }
 
   updateProfile(

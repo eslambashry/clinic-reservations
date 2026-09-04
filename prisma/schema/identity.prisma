@@ -97,6 +97,17 @@ model RoleMembership {
   role         Role                 @relation(fields: [role_code], references: [code])
   user         User                 @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  /// DB-enforced guard against duplicate/racy staff provisioning (File 12
+  /// Part 05's concurrency-critical-path convention, same rationale as the
+  /// appointment-hold partial unique index) — e.g. two concurrent
+  /// `POST /v1/provider/assistants` calls for the same phone under the same
+  /// doctor must not both succeed. Nullable `context_id` values are still
+  /// each treated as distinct by Postgres, so this never blocks the
+  /// existing PATIENT/DOCTOR/ADMIN memberships (`context_id` always null).
+  @@unique([user_id, role_code, context_type, context_id])
+  /// Backs the "list this owner's staff" query pattern (context_type +
+  /// context_id), e.g. `GET /v1/provider/assistants` scoped to a doctor.
+  @@index([context_type, context_id])
   @@map("role_memberships")
 }
 

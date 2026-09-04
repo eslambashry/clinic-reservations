@@ -58,6 +58,14 @@ export class LoginWithPasswordUseCase {
       throw new UnauthenticatedError('UNAUTHENTICATED', 'Invalid phone number or password.');
     }
 
+    // A SUSPENDED account (e.g. a doctor suspending a clinic assistant via
+    // `PATCH /v1/provider/assistants/:id`) must never authenticate, even
+    // with a correct password — checked after credential verification so a
+    // guess against a suspended phone still reveals nothing extra.
+    if (user.status === 'SUSPENDED') {
+      throw new UnauthenticatedError('UNAUTHENTICATED', 'Invalid phone number or password.');
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // Phase 1 scope: exactly one (PATIENT) membership per user — see the
       // same note in `verify-otp.use-case.ts`.
