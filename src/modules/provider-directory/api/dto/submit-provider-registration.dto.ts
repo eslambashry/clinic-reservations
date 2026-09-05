@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import { IsArray, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min, ValidateNested } from 'class-validator';
 
 const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;
 
 /**
  * One `working_days` entry — mirrors `CreateScheduleTemplateDto`'s
@@ -80,8 +81,8 @@ export class SubmitProviderRegistrationDto {
   @IsString()
   city: string;
 
-  @ApiProperty({ description: 'ClinicBranch.phone — interpreted as the branch contact phone, see ADR-005' })
-  @IsString()
+  @ApiProperty({ description: 'ClinicBranch.phone — interpreted as the branch contact phone, see ADR-005', example: '+201001234567' })
+  @Matches(EGYPT_E164_PATTERN, { message: 'phone must be a valid Egyptian mobile number, e.g. +201001234567' })
   phone: string;
 
   @ApiProperty({ description: 'DoctorClinicAffiliation.consult_fee' })

@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+
+const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;
 
 /**
  * File 12 Part 49.3 — the operational half of a clinic branch. Only `line1`
@@ -23,10 +25,9 @@ export class UpdateMyClinicBranchAddressDto {
 }
 
 export class UpdateMyClinicBranchDto {
-  @ApiPropertyOptional({ example: '+201000000000' })
+  @ApiPropertyOptional({ example: '+201001234567' })
   @IsOptional()
-  @IsString()
-  @MaxLength(32)
+  @Matches(EGYPT_E164_PATTERN, { message: 'phone must be a valid Egyptian mobile number, e.g. +201001234567' })
   phone?: string;
 
   @ApiPropertyOptional({ example: 'Africa/Cairo', description: 'IANA timezone the branch’s schedule templates are interpreted in' })
