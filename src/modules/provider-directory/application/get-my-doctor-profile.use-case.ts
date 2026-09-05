@@ -3,6 +3,7 @@ import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
+import { ResolveDoctorScopeUseCase } from './resolve-doctor-scope.use-case';
 
 export interface MyDoctorProfile {
   id: string;
@@ -31,16 +32,25 @@ export interface MyDoctorProfile {
  * path param, same "server-resolves-the-caller's-own-scope" convention as
  * `PHARMACY_STAFF`'s branch-scoped endpoints. Includes `licenseNumber`,
  * which the public `GET /v1/doctors/{id}` deliberately omits.
+ *
+ * A `CLINIC_STAFF` caller (the assistant, provisioned under one specific
+ * doctor) reads the same shape here too — the shared provider-dashboard
+ * home screen shows this profile regardless of which role opened it — so
+ * ownership is resolved via `ResolveDoctorScopeUseCase` (which already
+ * handles both roles) rather than assuming `actor.sub` is always the
+ * doctor's own `user_id`.
  */
 @Injectable()
 export class GetMyDoctorProfileUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
+    @Inject(ResolveDoctorScopeUseCase) private readonly doctorScope: ResolveDoctorScopeUseCase,
   ) {}
 
   async execute(actor: AccessTokenPayload): Promise<MyDoctorProfile> {
-    const doctor = await this.doctors.findByUserIdWithUser(this.prisma, actor.sub);
+    const scope = await this.doctorScope.execute(actor);
+    const doctor = await this.doctors.findByIdWithUser(this.prisma, scope.doctorId);
     if (!doctor) {
       throw new NotFoundError('Doctor', actor.sub);
     }

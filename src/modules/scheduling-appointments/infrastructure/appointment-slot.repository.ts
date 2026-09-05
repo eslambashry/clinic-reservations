@@ -50,6 +50,28 @@ export class AppointmentSlotRepository {
   }
 
   /**
+   * Every existing slot's own `start_at` for this affiliation within
+   * `[from, to)` — regardless of status (OPEN, HELD, or BOOKED). Used by
+   * `GenerateSlotsUseCase` to never generate a second, differently-timed
+   * cadence of slots on top of a day that's already been materialized
+   * once: if a doctor edits their schedule template's slot
+   * duration/buffer after a day's slots already exist, the old and new
+   * cadences would otherwise both get inserted side by side (different
+   * `start_at` values, so the unique index doesn't catch it), producing
+   * genuinely overlapping bookable slots on that day. The caller buckets
+   * these into local calendar dates itself (same timezone-conversion path
+   * `generateSlotBoundaries` already uses), rather than this repository
+   * assuming a timezone.
+   */
+  async findExistingStartTimes(db: Prisma.TransactionClient, affiliationId: string, from: Date, to: Date): Promise<Date[]> {
+    const rows = await db.appointmentSlot.findMany({
+      where: { doctor_clinic_affiliation_id: affiliationId, start_at: { gte: from, lt: to } },
+      select: { start_at: true },
+    });
+    return rows.map((row) => row.start_at);
+  }
+
+  /**
    * File 12 Part 35.2: the slot side of the hold race. A conditional
    * `UPDATE ... WHERE status='OPEN'` serializes concurrent holders under
    * `READ COMMITTED` row locking on its own — the partial unique index on
@@ -64,6 +86,20 @@ export class AppointmentSlotRepository {
   /** File 12 Part 35.4: confirm's slot-side transition, guarded the same way. */
   async markBooked(db: Prisma.TransactionClient, id: string): Promise<boolean> {
     const result = await db.appointmentSlot.updateMany({ where: { id, status: 'HELD' }, data: { status: 'BOOKED', version: { increment: 1 } } });
+    return result.count === 1;
+  }
+
+  /**
+   * `OPEN` -> `BOOKED` directly, no `HELD` step — for a clinic-staff walk-in
+   * booking made at the counter, where there's no patient-facing hold
+   * countdown to protect (the whole request completes in one go, unlike the
+   * patient app's confirm-after-hold flow). Same conditional-`UPDATE`
+   * locking guarantee as `markHeld`/`markBooked`: `false` means the slot was
+   * no longer `OPEN` by the time this ran (claimed by someone else, or
+   * already booked).
+   */
+  async markBookedDirect(db: Prisma.TransactionClient, id: string): Promise<boolean> {
+    const result = await db.appointmentSlot.updateMany({ where: { id, status: 'OPEN' }, data: { status: 'BOOKED', version: { increment: 1 } } });
     return result.count === 1;
   }
 

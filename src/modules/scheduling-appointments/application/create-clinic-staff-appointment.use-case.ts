@@ -90,7 +90,7 @@ export class CreateClinicStaffAppointmentUseCase {
         throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: slot.id });
       }
 
-      const claimed = await this.slots.markBooked(tx, slot.id);
+      const claimed = await this.slots.markBookedDirect(tx, slot.id);
       if (!claimed) {
         throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: slot.id });
       }

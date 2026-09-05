@@ -26,7 +26,12 @@ import { CreateMyClinicBranchDto } from './dto/create-my-clinic-branch.dto';
  *
  * `@Roles(DOCTOR)` at class level blocks CLINIC_STAFF and Admin from reaching
  * this doctor-owned management surface; Admin retains the separate legal and
- * verification endpoints under `/clinic-branches`.
+ * verification endpoints under `/clinic-branches`. `list` is the one
+ * exception (method-level override below): CLINIC_STAFF (the assistant) can
+ * read the branch list too, since it's the shared branch-picker data behind
+ * both the walk-in booking sheet and the appointments screen's branch
+ * filter — same read-only precedent as `GET /v1/doctors/me` and
+ * `GET /v1/doctors/me/schedule-templates`.
  */
 @ApiTags('doctor-clinics')
 @ApiBearerAuth()
@@ -41,8 +46,9 @@ export class DoctorClinicsController {
     @Inject(DeleteMyClinicBranchUseCase) private readonly deleteMyBranch: DeleteMyClinicBranchUseCase,
   ) {}
 
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get()
-  @ApiOperation({ summary: "The calling doctor's clinics and branches — legal clinic data (legal name, tax id) deliberately omitted" })
+  @ApiOperation({ summary: "The calling doctor's clinics and branches (or, for CLINIC_STAFF, the doctor they're provisioned under) — legal clinic data (legal name, tax id) deliberately omitted" })
   list(@CurrentUser() user: AccessTokenPayload): Promise<ListMyDoctorClinicsResult> {
     return this.listMyClinics.execute(user);
   }

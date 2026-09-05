@@ -19,7 +19,7 @@ describe('CreateClinicStaffAppointmentUseCase', () => {
     const users = { execute: jest.fn() };
     const userRepository = { findByPhone: jest.fn(), create: jest.fn() };
     const roleMemberships = { findActiveByUser: jest.fn(), create: jest.fn() };
-    const slots = { findById: jest.fn().mockResolvedValue(slot), markBooked: jest.fn().mockResolvedValue(true) };
+    const slots = { findById: jest.fn().mockResolvedValue(slot), markBookedDirect: jest.fn().mockResolvedValue(true) };
     const appointments = { create: jest.fn().mockResolvedValue({ id: 'appointment-1' }) };
     const paymentsCapture = { execute: jest.fn().mockResolvedValue({ paymentIntentId: 'pi-1' }) };
     const audit = { record: jest.fn() };
@@ -92,7 +92,7 @@ describe('CreateClinicStaffAppointmentUseCase', () => {
   it('409s (SLOT_ALREADY_BOOKED) when the slot claim race is lost — unchanged coverage', async () => {
     const { users, slots, useCase } = setup();
     users.execute.mockResolvedValue({ id: 'patient-1' });
-    slots.markBooked.mockResolvedValue(false);
+    slots.markBookedDirect.mockResolvedValue(false);
 
     await expect(useCase.execute({ ...baseInput, patientId: 'patient-1' }, actor)).rejects.toMatchObject({ code: 'SLOT_ALREADY_BOOKED', httpStatus: 409 });
   });
