@@ -12,6 +12,7 @@ import { PolicyConfigModule } from './shared/kernel/policy-config/policy-config.
 import { PrismaModule } from './shared/kernel/prisma/prisma.module';
 import { RedisModule } from './shared/kernel/redis/redis.module';
 import { MediaStorageModule } from './shared/kernel/storage/media-storage.module';
+import { WebhookEventModule } from './shared/core/webhooks/webhook-event.module';
 
 /**
  * Root module shared by both process entrypoints (`main.ts` — API,
@@ -27,6 +28,7 @@ import { MediaStorageModule } from './shared/kernel/storage/media-storage.module
     RedisModule,
     MediaStorageModule,
     PolicyConfigModule,
+    WebhookEventModule,
     CoreModule,
     HealthModule,
     IdentityAuthModule,

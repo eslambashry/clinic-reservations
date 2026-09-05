@@ -49,9 +49,17 @@ model AppointmentHold {
   /// link onto the new `Appointment.rescheduled_from_appointment_id` at
   /// confirm time (Part 35.10 — the new appointment doesn't exist until then).
   rescheduled_from_appointment_id String?         @db.Uuid
+  /// File 12 Part 50.2: set only for an in-flight `CARD`/`FAWRY`/
+  /// `MOBILE_WALLET` payment — links the hold to the `PaymentIntent` its
+  /// payment webhook must find and (atomically, if still `ACTIVE` and
+  /// unexpired) convert. `@unique` because a hold has at most one in-flight
+  /// online payment at a time (a retried initiate reuses the same intent,
+  /// see `InitiateOnlineAppointmentPaymentUseCase`).
+  payment_intent_id               String?         @unique @db.Uuid
   patient                         User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
   rescheduled_from_appointment    Appointment?    @relation("HoldReschedulesAppointment", fields: [rescheduled_from_appointment_id], references: [id])
   slot                            AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)
+  payment_intent                  PaymentIntent?  @relation(fields: [payment_intent_id], references: [id])
 
   @@index([slot_id, status])
   @@map("appointment_holds")

@@ -5,6 +5,10 @@ import { CancelAppointmentResult, CancelAppointmentUseCase } from '../applicatio
 import { ConfirmAppointmentResult, ConfirmAppointmentUseCase } from '../application/confirm-appointment.use-case';
 import { CreateHoldResult, CreateHoldUseCase } from '../application/create-hold.use-case';
 import { AppointmentSummary, GetAppointmentUseCase } from '../application/get-appointment.use-case';
+import {
+  InitiateOnlineAppointmentPaymentResult,
+  InitiateOnlineAppointmentPaymentUseCase,
+} from '../application/initiate-online-appointment-payment.use-case';
 import { ListAppointmentsResult, ListAppointmentsUseCase } from '../application/list-appointments.use-case';
 import { RescheduleAppointmentResult, RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
@@ -14,6 +18,7 @@ import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto';
 import { ConfirmAppointmentDto } from './dto/confirm-appointment.dto';
 import { CreateHoldDto } from './dto/create-hold.dto';
+import { InitiateOnlineAppointmentPaymentDto } from './dto/initiate-online-appointment-payment.dto';
 import { ListAppointmentsQueryDto } from './dto/list-appointments-query.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 
@@ -37,6 +42,7 @@ export class AppointmentsController {
     @Inject(RescheduleAppointmentUseCase) private readonly rescheduleAppointment: RescheduleAppointmentUseCase,
     @Inject(ListAppointmentsUseCase) private readonly listAppointments: ListAppointmentsUseCase,
     @Inject(GetAppointmentUseCase) private readonly getAppointment: GetAppointmentUseCase,
+    @Inject(InitiateOnlineAppointmentPaymentUseCase) private readonly initiateOnlinePayment: InitiateOnlineAppointmentPaymentUseCase,
   ) {}
 
   @Post('hold')
@@ -56,6 +62,21 @@ export class AppointmentsController {
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<ConfirmAppointmentResult> {
     return this.confirmAppointment.execute(holdId, dto, user);
+  }
+
+  @Post(':holdId/payments')
+  @HttpCode(200)
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiOperation({
+    summary:
+      'Initiate a CARD/FAWRY/MOBILE_WALLET payment against a hold (File 12 Part 50.1) — extends the hold to that method\'s window (15 min Fawry / 10 min mobile wallet / 5 min card) and returns whatever the client needs to complete payment. The appointment is confirmed later, by the payment webhook, never here.',
+  })
+  payForHold(
+    @Param('holdId', ParseUUIDPipe) holdId: string,
+    @Body() dto: InitiateOnlineAppointmentPaymentDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<InitiateOnlineAppointmentPaymentResult> {
+    return this.initiateOnlinePayment.execute(holdId, dto, user);
   }
 
   @Post(':appointmentId/cancel')

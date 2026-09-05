@@ -54,4 +54,31 @@ export class AppointmentHoldRepository {
     const result = await db.appointmentHold.updateMany({ where: { id, status: 'ACTIVE', expires_at: { lte: now } }, data: { status: 'EXPIRED' } });
     return result.count === 1;
   }
+
+  findByPaymentIntentId(db: Prisma.TransactionClient, paymentIntentId: string): Promise<AppointmentHold | null> {
+    return db.appointmentHold.findUnique({ where: { payment_intent_id: paymentIntentId } });
+  }
+
+  /**
+   * File 12 Part 50.1: called once, right after `InitiateOnlinePaymentUseCase`
+   * creates the intent, to (a) link the hold to it and (b) extend the hold's
+   * expiry to the payment method's own window (15 min Fawry / 10 min mobile
+   * wallet — `CARD` passes its unchanged 5-minute `expiresAt` through this
+   * same call for a uniform code path). Version-guarded like every other
+   * hold transition; `false` means the hold was no longer `ACTIVE` by the
+   * time this ran (already expired/converted).
+   */
+  async linkOnlinePayment(
+    db: Prisma.TransactionClient,
+    id: string,
+    currentVersion: number,
+    paymentIntentId: string,
+    expiresAt: Date,
+  ): Promise<boolean> {
+    const result = await db.appointmentHold.updateMany({
+      where: { id, version: currentVersion, status: 'ACTIVE' },
+      data: { payment_intent_id: paymentIntentId, expires_at: expiresAt, version: { increment: 1 } },
+    });
+    return result.count === 1;
+  }
 }

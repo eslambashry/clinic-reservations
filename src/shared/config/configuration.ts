@@ -25,6 +25,21 @@ export interface AppConfig {
     urlEndpoint: string;
     publicKey: string | null;
   };
+  /**
+   * File 12 Part 50 / DEC-001: Paymob is the recommended gateway (File 10
+   * Part 10) — credentials are not provisioned yet, so every field is
+   * `null` until the real env vars are set. `PaymobPaymentGatewayAdapter`
+   * throws a clear `PAYMENT_GATEWAY_NOT_CONFIGURED` error at call time (not
+   * at boot — these are genuinely optional until Paymob is contracted).
+   */
+  paymob: {
+    apiKey: string | null;
+    integrationIdCard: string | null;
+    integrationIdFawry: string | null;
+    integrationIdWallet: string | null;
+    iframeId: string | null;
+    hmacSecret: string | null;
+  };
 }
 
 export default (): AppConfig => ({
@@ -52,5 +67,13 @@ export default (): AppConfig => ({
     privateKey: process.env.IMAGEKIT_PRIVATE_KEY as string,
     urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT as string,
     publicKey: process.env.IMAGEKIT_PUBLIC_KEY ?? null,
+  },
+  paymob: {
+    apiKey: process.env.PAYMOB_API_KEY ?? null,
+    integrationIdCard: process.env.PAYMOB_INTEGRATION_ID_CARD ?? null,
+    integrationIdFawry: process.env.PAYMOB_INTEGRATION_ID_FAWRY ?? null,
+    integrationIdWallet: process.env.PAYMOB_INTEGRATION_ID_WALLET ?? null,
+    iframeId: process.env.PAYMOB_IFRAME_ID ?? null,
+    hmacSecret: process.env.PAYMOB_HMAC_SECRET ?? null,
   },
 });
