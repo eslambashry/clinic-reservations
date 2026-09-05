@@ -13,12 +13,15 @@ import { RescheduleAppointmentUseCase } from '../application/reschedule-appointm
 import { ResolveAppointmentScopeUseCase } from '../application/resolve-appointment-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AuditLogRepository } from '../../audit/infrastructure/audit-log.repository';
+import { CaptureInternalWalletPaymentUseCase } from '../../payments/application/capture-internal-wallet-payment.use-case';
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { ProcessCancellationRefundUseCase } from '../../payments/application/process-cancellation-refund.use-case';
 import { PaymentIntentRepository } from '../../payments/infrastructure/payment-intent.repository';
 import { PaymentSplitRepository } from '../../payments/infrastructure/payment-split.repository';
 import { ProviderLedgerRepository } from '../../payments/infrastructure/provider-ledger.repository';
 import { RefundRepository } from '../../payments/infrastructure/refund.repository';
+import { WalletRepository } from '../../payments/infrastructure/wallet.repository';
+import { WalletTransactionRepository } from '../../payments/infrastructure/wallet-transaction.repository';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AffiliationRepository } from '../../provider-directory/infrastructure/affiliation.repository';
@@ -85,7 +88,10 @@ describe('Appointment booking loop (integration)', () => {
         PaymentSplitRepository,
         RefundRepository,
         ProviderLedgerRepository,
+        WalletRepository,
+        WalletTransactionRepository,
         CapturePayAtClinicPaymentUseCase,
+        CaptureInternalWalletPaymentUseCase,
         ProcessCancellationRefundUseCase,
         CreateHoldUseCase,
         ConfirmAppointmentUseCase,

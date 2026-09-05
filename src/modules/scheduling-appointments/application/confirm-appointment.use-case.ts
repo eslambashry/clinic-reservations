@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
+import { CaptureInternalWalletPaymentUseCase } from '../../payments/application/capture-internal-wallet-payment.use-case';
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -13,7 +14,7 @@ import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.re
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
 
 export interface ConfirmAppointmentInput {
-  paymentMethod: 'PAY_AT_CLINIC' | 'ONLINE';
+  paymentMethod: 'PAY_AT_CLINIC' | 'INTERNAL_WALLET' | 'ONLINE';
   paymentIntentId?: string;
 }
 
@@ -43,13 +44,22 @@ export class ConfirmAppointmentUseCase {
     @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
     @Inject(GetAffiliationBillingInfoUseCase) private readonly affiliationBilling: GetAffiliationBillingInfoUseCase,
     @Inject(CapturePayAtClinicPaymentUseCase) private readonly paymentsCapture: CapturePayAtClinicPaymentUseCase,
+    @Inject(CaptureInternalWalletPaymentUseCase) private readonly walletCapture: CaptureInternalWalletPaymentUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(holdId: string, input: ConfirmAppointmentInput, actor: AccessTokenPayload): Promise<ConfirmAppointmentResult> {
     if (input.paymentMethod === 'ONLINE') {
-      throw new DomainError(422, 'PAYMENT_METHOD_NOT_SUPPORTED', 'الدفع الإلكتروني غير متاح حاليًا. الدفع في العيادة هو الخيار المتاح.');
+      // File 12 Part 50.1: CARD/FAWRY/MOBILE_WALLET are asynchronous and
+      // never go through this endpoint — use
+      // `POST /v1/appointments/{holdId}/payments` instead, which confirms
+      // only once a gateway webhook reports success.
+      throw new DomainError(
+        422,
+        'PAYMENT_METHOD_NOT_SUPPORTED',
+        'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
+      );
     }
 
     // Explicit timeout (Prisma's default is 5000ms): this transaction now
@@ -95,17 +105,31 @@ export class ConfirmAppointmentUseCase {
       // Idempotency-Key header — safe/unique because holds.markConverted's
       // optimistic lock above already guarantees this code path runs at
       // most once per hold; a retried client call fails earlier, at
-      // HOLD_EXPIRED (File 12 Part 36.5).
-      const capture = await this.paymentsCapture.execute(tx, {
-        payerUserId: actor.sub,
-        payableType: 'APPOINTMENT',
-        payableId: appointmentId,
-        amount: billing.consultFee,
-        currency: billing.currency,
-        providerType: 'DOCTOR',
-        providerId: billing.doctorId,
-        idempotencyKey: `hold:${hold.id}`,
-      });
+      // HOLD_EXPIRED (File 12 Part 36.5). File 12 Part 50.4: the same
+      // guarantee is why `CaptureInternalWalletPaymentUseCase` needs no
+      // separate double-debit protection of its own.
+      const capture =
+        input.paymentMethod === 'INTERNAL_WALLET'
+          ? await this.walletCapture.execute(tx, {
+              payerUserId: actor.sub,
+              payableType: 'APPOINTMENT',
+              payableId: appointmentId,
+              amount: billing.consultFee,
+              currency: billing.currency,
+              providerType: 'DOCTOR',
+              providerId: billing.doctorId,
+              idempotencyKey: `hold:${hold.id}`,
+            })
+          : await this.paymentsCapture.execute(tx, {
+              payerUserId: actor.sub,
+              payableType: 'APPOINTMENT',
+              payableId: appointmentId,
+              amount: billing.consultFee,
+              currency: billing.currency,
+              providerType: 'DOCTOR',
+              providerId: billing.doctorId,
+              idempotencyKey: `hold:${hold.id}`,
+            });
 
       const appointment = await this.appointments.create(tx, {
         id: appointmentId,

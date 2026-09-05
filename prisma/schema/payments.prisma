@@ -7,6 +7,10 @@ model PaymentIntent {
   currency                String                @db.Char(3)
   tax_amount              Decimal?              @db.Decimal(10, 2)
   status                  PaymentIntentStatus   @default(CREATED)
+  /// File 12 Part 50: defaults to the pre-existing pay-at-clinic behavior for
+  /// every call site that predates this column; every new call site sets it
+  /// explicitly.
+  method                  PaymentMethod         @default(PAY_AT_CLINIC)
   idempotency_key         String                @unique
   created_at              DateTime              @default(now()) @db.Timestamptz(6)
   updated_at              DateTime              @updatedAt @db.Timestamptz(6)
@@ -18,6 +22,12 @@ model PaymentIntent {
   pharmacy_orders         PharmacyOrder[]
   provider_ledger_entries ProviderLedgerEntry[]
   refunds                 Refund[]
+  wallet_transactions     WalletTransaction[]
+  /// File 12 Part 50.2: nullable back-reference — set only while an online
+  /// (`CARD`/`FAWRY`/`MOBILE_WALLET`) payment against a hold is in flight;
+  /// this is how a payment webhook finds its way back to the hold it must
+  /// atomically convert (or must NOT convert, if the hold already expired).
+  appointment_hold        AppointmentHold?
 
   @@map("payment_intents")
 }
@@ -28,6 +38,13 @@ model PaymentAttempt {
   gateway_reference String?
   status            PaymentAttemptStatus @default(INITIATED)
   failure_code      String?
+  /// File 12 Part 50: gateway-specific, non-sensitive data the client needs
+  /// to complete an async payment (Paymob iframe/redirect URL, Fawry
+  /// reference code) or that Support needs for troubleshooting (raw gateway
+  /// response minus secrets). A `Json?` column rather than one column per
+  /// gateway/method — File 12 Part 05 precedent (`PolicyConfig.value`) for
+  /// "shape varies by a discriminator column, don't pre-guess every shape."
+  metadata          Json?
   attempted_at      DateTime             @default(now()) @db.Timestamptz(6)
   created_at        DateTime             @default(now()) @db.Timestamptz(6)
   updated_at        DateTime             @updatedAt @db.Timestamptz(6)
@@ -35,6 +52,64 @@ model PaymentAttempt {
   payment_intent    PaymentIntent        @relation(fields: [payment_intent_id], references: [id], onDelete: Cascade)
 
   @@map("payment_attempts")
+}
+
+/// File 12 Part 50.3: one row per user, created lazily on first use (top-up
+/// or first appointment-payment attempt) rather than at signup — most users
+/// will never fund one. `balance` is debited/credited only through
+/// conditional `UPDATE ... WHERE balance >= amount` (never "read balance,
+/// check in app code, write balance" — that pattern can't prevent a
+/// concurrent overdraft, business requirement). Prepaid only, by design:
+/// no negative balance is ever written, and no "settle balance"/credit
+/// concept exists anywhere in this schema.
+model Wallet {
+  id           String              @id @default(uuid()) @db.Uuid
+  user_id      String              @unique @db.Uuid
+  balance      Decimal             @default(0) @db.Decimal(10, 2)
+  currency     String              @db.Char(3)
+  created_at   DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime            @updatedAt @db.Timestamptz(6)
+  version      Int                 @default(1)
+  user         User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+/// File 12 Part 50.3: the ledger the business requirements explicitly ask
+/// for ("not just wallet.balance = X") — every balance change is one row
+/// here, auditable independent of the current `Wallet.balance`.
+/// `resulting_balance` is snapshotted at write time (never recomputed) so a
+/// historical row stays meaningful even as later transactions change the
+/// live balance. `payment_intent_id` links a `TOP_UP` row to the card
+/// payment that funded it, and an `APPOINTMENT_PAYMENT`/`REFUND` row to the
+/// `INTERNAL_WALLET`-method `PaymentIntent` it paid/reversed — always the
+/// same table, never a second FK per payable type.
+model WalletTransaction {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  wallet_id          String                  @db.Uuid
+  type               WalletTransactionType
+  status             WalletTransactionStatus @default(PENDING)
+  amount             Decimal                 @db.Decimal(10, 2)
+  resulting_balance  Decimal?                @db.Decimal(10, 2)
+  payment_intent_id  String?                 @db.Uuid
+  /// Loosely-typed, non-FK reference to the `Appointment` this transaction
+  /// paid for/refunded (same polymorphic-reference convention as
+  /// `PaymentIntent.payable_id` — File 12 Part 05: no cross-module FK).
+  appointment_id     String?                 @db.Uuid
+  /// Idempotency for top-up funding callbacks (File 11 Part 11: "client
+  /// retries a wallet top-up request" must be a safe no-op) — set to the
+  /// funding `PaymentIntent.idempotency_key` for `TOP_UP` rows.
+  idempotency_key     String?                @unique
+  failure_reason     String?
+  created_at         DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime                @updatedAt @db.Timestamptz(6)
+  version            Int                     @default(1)
+  wallet             Wallet                  @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+  payment_intent     PaymentIntent?          @relation(fields: [payment_intent_id], references: [id])
+
+  @@index([wallet_id, created_at])
+  @@map("wallet_transactions")
 }
 
 model PaymentSplit {

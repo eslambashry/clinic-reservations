@@ -21,6 +21,7 @@ describe('ConfirmAppointmentUseCase', () => {
     const appointments = { create: jest.fn() };
     const affiliationBilling = { execute: jest.fn() };
     const paymentsCapture = { execute: jest.fn() };
+    const walletCapture = { execute: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
     const useCase = new ConfirmAppointmentUseCase(
@@ -30,10 +31,11 @@ describe('ConfirmAppointmentUseCase', () => {
       appointments as any,
       affiliationBilling as any,
       paymentsCapture as any,
+      walletCapture as any,
       audit as any,
       outbox as any,
     );
-    return { tx, prisma, holds, slots, appointments, affiliationBilling, paymentsCapture, audit, outbox, useCase };
+    return { tx, prisma, holds, slots, appointments, affiliationBilling, paymentsCapture, walletCapture, audit, outbox, useCase };
   }
 
   it('rejects ONLINE payment as not yet supported, before touching the database', async () => {
@@ -101,5 +103,37 @@ describe('ConfirmAppointmentUseCase', () => {
       expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment.confirm', resourceId: 'appointment-1' }),
     );
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentConfirmed', expect.objectContaining({ appointmentId: 'appointment-1' }));
+  });
+
+  it('confirms via CaptureInternalWalletPaymentUseCase (not the pay-at-clinic path) for paymentMethod=INTERNAL_WALLET', async () => {
+    const { holds, slots, appointments, affiliationBilling, paymentsCapture, walletCapture, useCase } = setup();
+    holds.findById.mockResolvedValue(hold);
+    holds.markConverted.mockResolvedValue(undefined);
+    slots.findById.mockResolvedValue(slot);
+    slots.markBooked.mockResolvedValue(true);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    walletCapture.execute.mockResolvedValue({ paymentIntentId: 'intent-2', commissionAmount: '30.00', providerAmount: '170.00', newWalletBalance: '300.00' });
+    appointments.create.mockResolvedValue({ id: 'appointment-2' });
+
+    const result = await useCase.execute('hold-1', { paymentMethod: 'INTERNAL_WALLET' }, actor);
+
+    expect(result).toEqual({ appointmentId: 'appointment-2', status: 'CONFIRMED' });
+    expect(walletCapture.execute).toHaveBeenCalled();
+    expect(paymentsCapture.execute).not.toHaveBeenCalled();
+  });
+
+  it('surfaces INSUFFICIENT_WALLET_BALANCE from CaptureInternalWalletPaymentUseCase without creating the appointment', async () => {
+    const { holds, slots, appointments, affiliationBilling, walletCapture, useCase } = setup();
+    holds.findById.mockResolvedValue(hold);
+    holds.markConverted.mockResolvedValue(undefined);
+    slots.findById.mockResolvedValue(slot);
+    slots.markBooked.mockResolvedValue(true);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    walletCapture.execute.mockRejectedValue(Object.assign(new Error('insufficient'), { code: 'INSUFFICIENT_WALLET_BALANCE', httpStatus: 422 }));
+
+    await expect(useCase.execute('hold-1', { paymentMethod: 'INTERNAL_WALLET' }, actor)).rejects.toMatchObject({
+      code: 'INSUFFICIENT_WALLET_BALANCE',
+    });
+    expect(appointments.create).not.toHaveBeenCalled();
   });
 });

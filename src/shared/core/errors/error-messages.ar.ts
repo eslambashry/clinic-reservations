@@ -95,10 +95,18 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PROVIDER_TYPE_NOT_SUPPORTED: 'هذا النوع من مقدّمي الخدمة غير مدعوم في هذا الإجراء.',
 
   // ── Payments ────────────────────────────────────────────────────────────
-  PAYMENT_METHOD_NOT_SUPPORTED: 'وسيلة الدفع هذه غير متاحة حاليًا. الدفع في العيادة هو الخيار المتاح.',
+  PAYMENT_METHOD_NOT_SUPPORTED: 'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
   PAYMENT_INTENT_NOT_REFUNDABLE: 'لا يمكن استرداد مبلغ لم يتم تحصيله.',
   PAYMENT_INTENT_STATE_CHANGED: 'تم تعديل عملية الدفع من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   PAYMENT_CAPTURE_FAILED: 'تعذّر تحصيل الدفعة. أعد المحاولة.',
+  PAYMENT_INTENT_NOT_RETRYABLE: 'لا يمكن إعادة محاولة هذه الدفعة.',
+  PAYMENT_GATEWAY_NOT_CONFIGURED: 'بوابة الدفع الإلكتروني غير مُهيّأة حاليًا. تواصل مع الدعم.',
+  WALLET_INFO_REQUIRED: 'اختر مزوّد المحفظة وأدخل رقم الهاتف المرتبط بها.',
+  WEBHOOK_PAYLOAD_INVALID: 'تعذّر معالجة إشعار الدفع الوارد من بوابة الدفع.',
+
+  // ── Internal MedSuper Wallet ────────────────────────────────────────────
+  INSUFFICIENT_WALLET_BALANCE: 'رصيد المحفظة غير كافٍ لإتمام هذه العملية.',
+  INVALID_AMOUNT: 'قيمة الشحن يجب أن تكون أكبر من صفر.',
 
   // ── Prescriptions ───────────────────────────────────────────────────────
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',
@@ -180,6 +188,7 @@ export const AR_RESOURCE_NAMES: Readonly<Record<string, string>> = {
   ScheduleTemplate: 'قالب المواعيد',
   Specialty: 'التخصص',
   User: 'المستخدم',
+  WalletTransaction: 'عملية المحفظة',
 };
 
 /** "الموعد غير موجود." — the one sentence every 404 uses. */

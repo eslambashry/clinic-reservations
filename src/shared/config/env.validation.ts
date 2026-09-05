@@ -76,6 +76,42 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   IMAGEKIT_PUBLIC_KEY?: string;
+
+  /**
+   * Paymob (`DEC-001`, File 12 Part 50) — all optional, unlike the
+   * `IMAGEKIT_*` vars above: DEC-001 is still `Open` (File 10 Part 10,
+   * "recommended: Paymob," not yet contracted), so the process must still
+   * boot without these. `PaymobPaymentGatewayAdapter` fails fast with a
+   * clear `PAYMENT_GATEWAY_NOT_CONFIGURED` error the first time an online
+   * payment is actually attempted without them, rather than pretending to
+   * succeed.
+   */
+  @IsString()
+  @IsOptional()
+  PAYMOB_API_KEY?: string;
+
+  /** Per-payment-method integration IDs, configured in the Paymob dashboard against one merchant account. */
+  @IsString()
+  @IsOptional()
+  PAYMOB_INTEGRATION_ID_CARD?: string;
+
+  @IsString()
+  @IsOptional()
+  PAYMOB_INTEGRATION_ID_FAWRY?: string;
+
+  @IsString()
+  @IsOptional()
+  PAYMOB_INTEGRATION_ID_WALLET?: string;
+
+  /** Hosted card iframe id (Paymob dashboard) — builds the `redirectUrl` returned for `CARD` payments. */
+  @IsString()
+  @IsOptional()
+  PAYMOB_IFRAME_ID?: string;
+
+  /** HMAC secret used to verify `POST /v1/webhooks/payments/paymob` authenticity — never trust an unverified webhook body. */
+  @IsString()
+  @IsOptional()
+  PAYMOB_HMAC_SECRET?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
