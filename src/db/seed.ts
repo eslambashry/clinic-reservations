@@ -199,11 +199,11 @@ async function main() {
     });
     console.log(`✅ Backfilled password for existing pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
   }
-  const pharmacyStaffMembership = await prisma.roleMembership.findFirst({
+  let pharmacyStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
   });
   if (!pharmacyStaffMembership) {
-    await prisma.roleMembership.create({
+    pharmacyStaffMembership = await prisma.roleMembership.create({
       data: {
         user_id: pharmacyStaffUser.id,
         role_code: 'PHARMACY_STAFF',
@@ -214,12 +214,24 @@ async function main() {
     });
     console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone} (branch ${demoPharmacyBranchId})`);
   } else if (!pharmacyStaffMembership.context_id) {
-    await prisma.roleMembership.update({
+    pharmacyStaffMembership = await prisma.roleMembership.update({
       where: { id: pharmacyStaffMembership.id },
       data: { context_id: demoPharmacyBranchId },
     });
     console.log(`✅ Assigned branch ${demoPharmacyBranchId} to existing PHARMACY_STAFF membership for ${pharmacyStaffUser.phone}`);
   }
+  // FK-verified mirror of the membership above (`PharmacyStaffAssignment`) —
+  // real referential integrity to `pharmacy_branches`/`users`, kept 1:1 with
+  // the role_membership via its id so there's no duplicated status.
+  await prisma.pharmacyStaffAssignment.upsert({
+    where: { role_membership_id: pharmacyStaffMembership.id },
+    update: {},
+    create: {
+      user_id: pharmacyStaffUser.id,
+      pharmacy_branch_id: demoPharmacyBranchId,
+      role_membership_id: pharmacyStaffMembership.id,
+    },
+  });
 
   // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
   // this is what makes the Phase 2 Definition of Done runnable end-to-end
@@ -471,15 +483,25 @@ async function main() {
     });
     console.log(`✅ Seeded lab staff user: ${labStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
   }
-  const labStaffMembership = await prisma.roleMembership.findFirst({
+  let labStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF' },
   });
   if (!labStaffMembership) {
-    await prisma.roleMembership.create({
+    labStaffMembership = await prisma.roleMembership.create({
       data: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: demoLabBranchId },
     });
     console.log(`✅ Granted LAB_STAFF role_membership to ${labStaffUser.phone} (branch ${demoLabBranchId})`);
   }
+  // FK-verified mirror, same rationale as the pharmacy staff block above.
+  await prisma.labStaffAssignment.upsert({
+    where: { role_membership_id: labStaffMembership.id },
+    update: {},
+    create: {
+      user_id: labStaffUser.id,
+      lab_branch_id: demoLabBranchId,
+      role_membership_id: labStaffMembership.id,
+    },
+  });
 
   // ---------------------------------------------------------------------
   // Drug catalog — reference data for Prescriptions/Pharmacy Fulfillment
@@ -770,14 +792,20 @@ async function main() {
           },
         });
       }
-      const staffMembership = await prisma.roleMembership.findFirst({
+      let staffMembership = await prisma.roleMembership.findFirst({
         where: { user_id: staffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF', context_id: branch.id },
       });
       if (!staffMembership) {
-        await prisma.roleMembership.create({
+        staffMembership = await prisma.roleMembership.create({
           data: { user_id: staffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF', context_id: branch.id },
         });
       }
+      // FK-verified mirror, same rationale as the single-account block above.
+      await prisma.pharmacyStaffAssignment.upsert({
+        where: { role_membership_id: staffMembership.id },
+        update: {},
+        create: { user_id: staffUser.id, pharmacy_branch_id: branch.id, role_membership_id: staffMembership.id },
+      });
       console.log(
         `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
       );
@@ -943,14 +971,20 @@ async function main() {
           },
         });
       }
-      const staffMembership = await prisma.roleMembership.findFirst({
+      let staffMembership = await prisma.roleMembership.findFirst({
         where: { user_id: staffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: branch.id },
       });
       if (!staffMembership) {
-        await prisma.roleMembership.create({
+        staffMembership = await prisma.roleMembership.create({
           data: { user_id: staffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: branch.id },
         });
       }
+      // FK-verified mirror, same rationale as the single-account block above.
+      await prisma.labStaffAssignment.upsert({
+        where: { role_membership_id: staffMembership.id },
+        update: {},
+        create: { user_id: staffUser.id, lab_branch_id: branch.id, role_membership_id: staffMembership.id },
+      });
       console.log(
         `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
       );

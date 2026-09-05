@@ -44,8 +44,32 @@ model LabBranch {
   address                 Address        @relation(fields: [address_id], references: [id])
   laboratory              Laboratory     @relation(fields: [laboratory_id], references: [id], onDelete: Cascade)
   orders                  LabOrder[]
+  staff_assignments       LabStaffAssignment[]
 
   @@map("lab_branches")
+}
+
+/// Real FK-backed "who works where" record for `LAB_STAFF` — same rationale
+/// and shape as `PharmacyStaffAssignment` (`provider-directory.prisma`),
+/// which mirrors `DoctorClinicAffiliation`. `role_memberships.context_id`
+/// stays the untyped/polymorphic column every existing laboratory use-case
+/// reads the branch id from (unchanged); this table only adds a real,
+/// FK-verified mirror of that same fact, keyed 1:1 back to the owning
+/// `RoleMembership` so status is never duplicated.
+model LabStaffAssignment {
+  id             String         @id @default(uuid()) @db.Uuid
+  user_id        String         @db.Uuid
+  lab_branch_id  String         @db.Uuid
+  role_membership_id String    @unique @db.Uuid
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime       @updatedAt @db.Timestamptz(6)
+  version        Int            @default(1)
+  user           User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lab_branch     LabBranch      @relation(fields: [lab_branch_id], references: [id], onDelete: Cascade)
+  role_membership RoleMembership @relation(fields: [role_membership_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lab_branch_id])
+  @@map("lab_staff_assignments")
 }
 
 /// Mirrors `DrugCatalog`'s minimal lookup-table shape — referenced by code,

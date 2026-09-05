@@ -33,6 +33,8 @@ model User {
   notifications                   Notification[]
   payment_intents                 PaymentIntent[]
   pharmacy_orders                 PharmacyOrder[]
+  pharmacy_staff_assignments      PharmacyStaffAssignment[]
+  lab_staff_assignments           LabStaffAssignment[]
   policy_configs_created          PolicyConfig[]                 @relation("CreatedByPolicyConfig")
   prescription_reviews            PrescriptionReview[]
   prescriptions_authored          Prescription[]                 @relation("DoctorPrescriptions")
@@ -96,6 +98,8 @@ model RoleMembership {
   version      Int                  @default(1)
   role         Role                 @relation(fields: [role_code], references: [code])
   user         User                 @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  pharmacy_staff_assignment PharmacyStaffAssignment?
+  lab_staff_assignment      LabStaffAssignment?
 
   /// DB-enforced guard against duplicate/racy staff provisioning (File 12
   /// Part 05's concurrency-critical-path convention, same rationale as the
