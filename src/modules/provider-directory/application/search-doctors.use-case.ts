@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
-import { DoctorSearchRepository, DoctorSearchRow, DoctorSearchSort } from '../infrastructure/doctor-search.repository';
+import { DoctorSearchFilterParams, DoctorSearchRepository, DoctorSearchRow, DoctorSearchSort } from '../infrastructure/doctor-search.repository';
 
 export interface SearchDoctorsInput {
   specialty?: string;
@@ -33,6 +33,7 @@ export interface SearchDoctorItem {
 export interface SearchDoctorsResult {
   items: SearchDoctorItem[];
   nextCursor: string | null;
+  totalCount: number;
 }
 
 const DEFAULT_RADIUS_KM = 15;
@@ -62,17 +63,24 @@ export class SearchDoctorsUseCase {
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const cursor = decodeCursor<DoctorSearchCursor>(input.cursor);
 
-    const rows = await this.repository.search({
+    const searchParams: DoctorSearchFilterParams = {
       specialtyCode: input.specialty,
       q: input.q,
       lat: input.lat,
       lng: input.lng,
       radiusKm: input.radiusKm ?? DEFAULT_RADIUS_KM,
-      sort,
-      sortDir,
-      cursor: cursor ? { value: cursor.v, affiliationId: cursor.a } : undefined,
-      limit: limit + 1,
-    });
+    };
+
+    const [rows, totalCount] = await Promise.all([
+      this.repository.search({
+        ...searchParams,
+        sort,
+        sortDir,
+        cursor: cursor ? { value: cursor.v, affiliationId: cursor.a } : undefined,
+        limit: limit + 1,
+      }),
+      this.repository.count(searchParams),
+    ]);
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
@@ -81,6 +89,7 @@ export class SearchDoctorsUseCase {
     return {
       items: page.map(toSearchItem),
       nextCursor: hasMore && last ? encodeCursor<DoctorSearchCursor>({ v: last.sort_value, a: last.affiliation_id }) : null,
+      totalCount,
     };
   }
 }

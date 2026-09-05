@@ -4,12 +4,15 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 
 export type DoctorSearchSort = 'distance' | 'rating' | 'price';
 
-export interface DoctorSearchParams {
+export interface DoctorSearchFilterParams {
   specialtyCode?: string;
   q?: string;
   lat?: number;
   lng?: number;
   radiusKm: number;
+}
+
+export interface DoctorSearchParams extends DoctorSearchFilterParams {
   sort: DoctorSearchSort;
   sortDir: 'asc' | 'desc';
   cursor?: { value: string; affiliationId: string };
@@ -51,20 +54,8 @@ export interface DoctorSearchRow {
 export class DoctorSearchRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async search(params: DoctorSearchParams): Promise<DoctorSearchRow[]> {
+  private buildWhereParts(params: DoctorSearchFilterParams): Prisma.Sql[] {
     const hasLocation = params.lat !== undefined && params.lng !== undefined;
-
-    const sortExpr =
-      params.sort === 'distance' ? Prisma.sql`distance_km` : params.sort === 'price' ? Prisma.sql`consult_fee` : Prisma.sql`rating_avg`;
-    const sortDirSql = params.sortDir === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
-    const cursorCompare = params.sortDir === 'asc' ? Prisma.sql`>` : Prisma.sql`<`;
-
-    const distanceSelect = hasLocation
-      ? Prisma.sql`ST_Distance(
-          geography(ST_MakePoint(addr.geo_lng::float8, addr.geo_lat::float8)),
-          geography(ST_MakePoint(${params.lng}::float8, ${params.lat}::float8))
-        ) / 1000.0`
-      : Prisma.sql`NULL`;
 
     const whereParts: Prisma.Sql[] = [
       Prisma.sql`d.status = 'VERIFIED'`,
@@ -82,6 +73,7 @@ export class DoctorSearchRepository {
       whereParts.push(Prisma.sql`(
         similarity(coalesce(u.first_name, '') || ' ' || coalesce(u.last_name, ''), ${params.q}) > 0.2
         OR similarity(s.name_en, ${params.q}) > 0.2
+        OR similarity(s.name_ar, ${params.q}) > 0.2
       )`);
     }
     if (hasLocation) {
@@ -92,8 +84,50 @@ export class DoctorSearchRepository {
       )`);
     }
 
+    return whereParts;
+  }
+
+  async count(params: DoctorSearchFilterParams): Promise<number> {
+    const whereParts = this.buildWhereParts(params);
+
+    const query = Prisma.sql`
+      SELECT COUNT(DISTINCT d.id)::int AS count
+      FROM doctor_clinic_affiliations a
+      JOIN doctors d ON d.id = a.doctor_id
+      JOIN users u ON u.id = d.user_id
+      JOIN specialties s ON s.code = d.specialty_code
+      JOIN clinic_branches cb ON cb.id = a.clinic_branch_id
+      JOIN clinics c ON c.id = cb.clinic_id
+      JOIN addresses addr ON addr.id = cb.address_id
+      WHERE ${Prisma.join(whereParts, ' AND ')}
+    `;
+    const rows = await this.prisma.$queryRaw<{ count: number }[]>(query);
+    return rows[0]?.count ?? 0;
+  }
+
+  async search(params: DoctorSearchParams): Promise<DoctorSearchRow[]> {
+    const hasLocation = params.lat !== undefined && params.lng !== undefined;
+
+    const sortExpr =
+      params.sort === 'distance' ? Prisma.sql`distance_km` : params.sort === 'price' ? Prisma.sql`consult_fee` : Prisma.sql`rating_avg`;
+    const sortDirSql = params.sortDir === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+    const cursorCompare = params.sortDir === 'asc' ? Prisma.sql`>` : Prisma.sql`<`;
+
+    const distanceSelect = hasLocation
+      ? Prisma.sql`ST_Distance(
+          geography(ST_MakePoint(addr.geo_lng::float8, addr.geo_lat::float8)),
+          geography(ST_MakePoint(${params.lng}::float8, ${params.lat}::float8))
+        ) / 1000.0`
+      : Prisma.sql`NULL`;
+
+    const whereParts = this.buildWhereParts(params);
+
+    // A doctor can be affiliated with several clinic branches; DISTINCT ON
+    // collapses those to one row per doctor (the best-ranked branch by the
+    // requested sort — nearest/top-rated/cheapest), so search results show
+    // each doctor once instead of once per branch.
     const cteQuery = Prisma.sql`
-      SELECT
+      SELECT DISTINCT ON (d.id)
         a.id AS affiliation_id,
         d.id AS doctor_id,
         u.first_name,
@@ -116,6 +150,7 @@ export class DoctorSearchRepository {
       JOIN clinics c ON c.id = cb.clinic_id
       JOIN addresses addr ON addr.id = cb.address_id
       WHERE ${Prisma.join(whereParts, ' AND ')}
+      ORDER BY d.id, ${sortExpr} ${sortDirSql} NULLS LAST
     `;
 
     const cursorParts: Prisma.Sql[] = [];
