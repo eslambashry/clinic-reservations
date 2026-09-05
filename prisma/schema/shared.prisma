@@ -273,8 +273,51 @@ enum PayableType {
   APPOINTMENT
   PHARMACY_ORDER
   LAB_ORDER
+  /// File 12 Part 50 (Payments Phase 9 — online gateway + internal wallet):
+  /// the payable for a wallet top-up's own `PaymentIntent` is the pending
+  /// `WalletTransaction` row, not an appointment/order — pre-generated the
+  /// same way `Appointment.id` is (Part 36.4), for the same circular-FK reason.
+  WALLET_TOPUP
 
   @@map("payment_intents_payable_type_enum")
+}
+
+/// File 12 Part 50: distinguishes how a `PaymentIntent` was/will be settled.
+/// `PAY_AT_CLINIC` keeps its existing Phase 5 meaning unchanged; the other
+/// four back the four online/wallet scenarios added in this phase.
+enum PaymentMethod {
+  PAY_AT_CLINIC
+  CARD
+  FAWRY
+  MOBILE_WALLET
+  INTERNAL_WALLET
+
+  @@map("payment_intents_method_enum")
+}
+
+/// File 12 Part 50: `Wallet.balance` is a running total maintained by
+/// conditional `UPDATE ... WHERE balance >= amount` (debit) / plain increment
+/// (credit) — never recomputed from transaction history — but every change
+/// is also ledgered here for audit (business requirement: "not just
+/// wallet.balance = X").
+enum WalletTransactionType {
+  TOP_UP
+  APPOINTMENT_PAYMENT
+  REFUND
+
+  @@map("wallet_transactions_type_enum")
+}
+
+/// `TOP_UP` starts `PENDING` until the funding `PaymentIntent` captures
+/// (webhook-driven, File 12 Part 50.3) or fails; `APPOINTMENT_PAYMENT`/
+/// `REFUND` are written `COMPLETED` immediately — same "no external gateway
+/// to wait on" reasoning as pay-at-clinic refunds (Part 36.9).
+enum WalletTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+
+  @@map("wallet_transactions_status_enum")
 }
 
 enum PaymentIntentStatus {
