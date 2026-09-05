@@ -1,4 +1,4 @@
-import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 
 export class RecordResultDto {
@@ -14,14 +14,18 @@ export class RecordResultDto {
   @IsUUID()
   itemId?: string;
 
-  @ApiProperty({ description: 'Registration-only file reference — real storage vendor undecided (File 10 uploads rule).' })
+  /** Optional display label — defaults to a generated name (`RecordResultUseCase.defaultFileLabel`) when omitted. */
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MaxLength(255)
-  fileLabel: string;
+  fileLabel?: string;
 
-  @ApiProperty({ minimum: 1 })
+  /** Optional — defaults to the actual uploaded file size when omitted. */
+  @ApiPropertyOptional({ minimum: 1 })
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(1_000_000)
-  sizeKb: number;
+  sizeKb?: number;
 }

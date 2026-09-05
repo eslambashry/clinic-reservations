@@ -172,9 +172,13 @@ model LabResultDocument {
   /// distinct under a unique constraint, so several freeform results per
   /// order remain possible.
   item_id           String?           @unique @db.Uuid
-  /// Registration-only reference — real file storage vendor undecided
-  /// (File 10 uploads rule), same as pharmacy's prescription-image URLs.
   file_label        String
+  /// The actual stored file (ImageKit URL) — same storage vendor and
+  /// pattern as `PrescriptionImage.file_url`. Nullable only for rows
+  /// created before this column existed; every row from `recordResult`
+  /// onward always has one, since the upload is now a required part of
+  /// recording a result.
+  file_url          String?
   size_kb           Int
   uploaded_at       DateTime          @default(now()) @db.Timestamptz(6)
   uploaded_by       String            @db.Uuid

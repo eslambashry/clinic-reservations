@@ -7,6 +7,7 @@ export interface NewLabResultDocument {
   /** Omitted for a freeform (no registered `LabOrderItem`) order — File 12 Part 50. */
   itemId?: string;
   fileLabel: string;
+  fileUrl?: string;
   sizeKb: number;
   uploadedBy: string;
 }
@@ -19,6 +20,7 @@ export class LabResultRepository {
         lab_order_id: input.labOrderId,
         item_id: input.itemId ?? null,
         file_label: input.fileLabel,
+        file_url: input.fileUrl ?? null,
         size_kb: input.sizeKb,
         uploaded_by: input.uploadedBy,
       },
