@@ -4,7 +4,7 @@ import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { assertHasItems, assertStatus } from '../domain/lab-order.rules';
+import { assertStatus } from '../domain/lab-order.rules';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
 import { LabOrderRepository } from '../infrastructure/lab-order.repository';
@@ -30,6 +30,14 @@ const CURRENCY = 'EGP';
  * `SubmitPharmacyOrderQuoteUseCase`'s flat-quote shape exactly (no per-test
  * pricing; `unit_price` split across items is presentational only, same
  * "not specified anywhere" reasoning the mock's own comment gives).
+ *
+ * No item-count gate (File 12 Part 50): a freeform order (patient uploaded
+ * an image instead of picking catalog tests) has zero `LabOrderItem` rows by
+ * design — the image is what told the lab which analysis to run, staff
+ * price the whole request after reading it, the same way this method
+ * already prices a catalog-based order as one flat total rather than
+ * per-line. The per-item price split below is simply skipped when there are
+ * no items to split across.
  */
 @Injectable()
 export class SubmitLabQuoteUseCase {
@@ -70,13 +78,15 @@ export class SubmitLabQuoteUseCase {
       assertStatus(order.status, 'REQUESTED', 'LAB_ORDER_NOT_REQUESTED', 'الموافقة متاحة فقط لطلب في انتظار عرض سعر.');
 
       const items = await this.labOrderItems.findByOrderId(tx, labOrderId);
-      assertHasItems(items.length);
 
       // Price is quoted for the order as a whole; per-test pricing is not
       // specified anywhere, so the split is presentational only (same
-      // reasoning the mock's own `submitQuote` comment gives).
-      const perItem = (Number(input.totalPrice) / items.length).toFixed(2);
-      await this.labOrderItems.setUnitPrice(tx, labOrderId, perItem);
+      // reasoning the mock's own `submitQuote` comment gives). A freeform
+      // order (File 12 Part 50) has no items to split across at all.
+      if (items.length > 0) {
+        const perItem = (Number(input.totalPrice) / items.length).toFixed(2);
+        await this.labOrderItems.setUnitPrice(tx, labOrderId, perItem);
+      }
 
       await this.labOrders.submitQuote(tx, labOrderId, order.version, {
         totalPrice: input.totalPrice,

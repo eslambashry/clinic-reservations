@@ -1551,3 +1551,76 @@ enabled despite running the `postgis/postgis` image, so
 `doctor-search.repository.integration.spec.ts` had always failed here.
 `CREATE EXTENSION postgis` fixes it; no migration creates it, which is worth
 knowing before trusting a "the suite was already red" claim in this repo.
+
+---
+
+## PART 50 — Laboratory: Freeform (Image-Based) Quoting, Not Pharmacy-Style Transcription (2026-09-05)
+
+The user flagged a real production bug via a `medsuper-laboratory-dashboard`
+screenshot: every order arriving through the patient-facing flow (Part 47's
+2026-09-05 Flutter integration, which only ever sends `prescriptionId` — no
+`test_catalog` read endpoint exists for patients to pick `testCodes`) showed
+"طلب غير مكتمل — بروشتة بدون تحاليل مسجلة" and could never be quoted. Root
+cause: `SubmitLabQuoteUseCase` called `assertHasItems`, requiring at least
+one `LabOrderItem`, and Part 47 itself had already flagged — but left
+unresolved — that no endpoint existed anywhere to add items to an
+already-created order ("transcription... has no method anywhere in the
+dashboard's own service interface"). So the only real order-creation path
+led to a state that could never progress.
+
+**The deeper problem wasn't the missing endpoint — it was the model.** This
+whole design mirrored `pharmacy-fulfillment`'s prescription flow: a
+pharmacist must transcribe a doctor's prescription into exact, safety-checked
+drug-catalog items before pricing, because getting a drug/dosage wrong is a
+safety issue. A lab referral image carries no equivalent risk — it is
+informational input for a human price+ETA judgment call, not a document
+requiring item-by-item catalog transcription. Confirmed with the user
+(explicit choice over the alternative of building the missing
+"transcribe-to-catalog-items" endpoint instead): a freeform order prices as
+one flat quote with **no registered items at all**, exactly how it already
+prices a catalog-based (`testCodes`) order — one total, one appointment
+instant, prep instructions — just without the per-item breakdown underneath.
+
+1. **`SubmitLabQuoteUseCase`**: the `assertHasItems` gate is gone (deleted
+   from `lab-order.rules.ts` — its only call site). The presentational
+   per-item price split (`unit_price = totalPrice / items.length`) is now
+   skipped entirely when `items.length === 0`, instead of dividing by zero.
+   Catalog-based orders are byte-identical to before.
+2. **`LabResultDocument.item_id` is now nullable** (`prisma/migrations/
+   20260905180000_make_lab_result_item_optional`, applied via `prisma
+   migrate deploy` against a real local Postgres this pass — `prisma migrate
+   dev` still refuses non-interactively per the documented workaround, but a
+   real DB was available this time so the migration was generated with
+   `prisma migrate diff` and hand-filed rather than guessed). Postgres
+   treats multiple `NULL`s as distinct under the existing `@unique`
+   constraint, so a freeform order can carry more than one order-level
+   result (e.g. several report pages).
+3. **`RecordResultUseCase`** branches on whether `itemId` is present.
+   Present: unchanged per-item path. Absent: verifies the order genuinely
+   has zero registered items (422 `LAB_ORDER_ITEM_ID_REQUIRED` otherwise —
+   omitting `itemId` on a catalog-based order is a caller bug, not a
+   freeform order), then creates an order-level `LabResultDocument`
+   (`item_id: null`) and flips `IN_ANALYSIS --> RESULTS_READY` on the first
+   such result — there is no per-item completeness to wait for. Additional
+   freeform results can still be recorded once `RESULTS_READY` (same
+   `assertStatusIn` gate as the per-item path), without re-flipping status.
+4. **Nothing else needed to change.** `start-analysis.use-case.ts` never
+   touched items (only order status + custody events). `set-critical-flag`
+   and `record-result-delivery` already operate on `LabResultDocument` rows
+   directly (`findById`/`findByOrderId`), never through `LabOrderItem` — so
+   both already worked correctly for an itemless order with zero changes.
+   `CreateLabOrderUseCase` needed no change either: it already allowed
+   creating a `prescriptionId`-only order with zero items, the bug was
+   entirely downstream at quote/result time.
+
+**Verification**: `npx tsc --noEmit` ✅, `npm run build` ✅,
+`eslint src/modules/laboratory src/shared/core/errors/error-messages.ar.ts`
+✅ (0 errors), `jest src/modules/laboratory` 21/21 suites, 100/100 tests ✅
+(new freeform-path cases added to `submit-lab-quote.use-case.spec.ts` and
+`record-result.use-case.spec.ts`). Full `jest` run: 3 pre-existing failures
+unrelated to this change (`error-messages.ar.spec.ts`'s two pre-existing
+unmapped codes `CONTEXT_NOT_AVAILABLE`/`PHARMACY_ORDER_NOT_OUT_FOR_DELIVERY`,
+and the two pre-existing `prescriptions`/`pharmacy-fulfillment` failures
+Part 49 already flagged — confirmed pre-existing here via `git stash`, not
+introduced by this pass). Migration applied and verified against the real
+local Docker Postgres (`docker-compose.yml`), not hand-waved.

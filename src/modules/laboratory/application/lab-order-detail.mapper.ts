@@ -50,7 +50,8 @@ export interface LabOrderDetail {
   results: {
     id: string;
     orderId: string;
-    itemId: string;
+    /** `null` for a freeform order's result (no `LabOrderItem` to attach to) — File 12 Part 50. */
+    itemId: string | null;
     fileLabel: string;
     sizeKb: number;
     uploadedAt: string;

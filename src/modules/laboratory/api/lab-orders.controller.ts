@@ -150,7 +150,7 @@ export class LabOrdersController {
   @Roles(RoleContextType.LAB_STAFF)
   @Post(':labOrderId/results')
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Record one item result document — flips to RESULTS_READY once every item is recorded' })
+  @ApiOperation({ summary: 'Record one result document — per-item (flips to RESULTS_READY once every item is recorded) or, for a freeform order with no registered items, order-level (flips immediately)' })
   results(@Param('labOrderId', ParseUUIDPipe) labOrderId: string, @Body() dto: RecordResultDto, @CurrentUser() user: AccessTokenPayload) {
     return this.recordResult.execute(labOrderId, dto, user);
   }

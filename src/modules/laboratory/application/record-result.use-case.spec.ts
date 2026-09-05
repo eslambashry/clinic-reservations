@@ -73,4 +73,43 @@ describe('RecordResultUseCase', () => {
 
     await expect(useCase.execute('order-1', { itemId: 'item-1', fileLabel: 'x.pdf', sizeKb: 50 }, actor)).rejects.toMatchObject({ httpStatus: 422 });
   });
+
+  describe('freeform order (no registered LabOrderItem, File 12 Part 50)', () => {
+    it('records an order-level result with no itemId and flips IN_ANALYSIS straight to RESULTS_READY', async () => {
+      const { tx, getActiveRoleMembership, labOrders, labOrderItems, labResults, audit, useCase } = setup();
+      getActiveRoleMembership.execute.mockResolvedValue(membership);
+      labOrders.findById.mockResolvedValue(order);
+      labOrderItems.findByOrderId.mockResolvedValue([]);
+
+      const result = await useCase.execute('order-1', { fileLabel: 'referral-result.pdf', sizeKb: 200 }, actor);
+
+      expect(labResults.create).toHaveBeenCalledWith(tx, expect.objectContaining({ labOrderId: 'order-1', fileLabel: 'referral-result.pdf', uploadedBy: 'staff-1' }));
+      expect(labResults.create.mock.calls[0][1]).not.toHaveProperty('itemId');
+      expect(labOrderItems.markRecorded).not.toHaveBeenCalled();
+      expect(labOrders.setStatus).toHaveBeenCalledWith(tx, 'order-1', 1, 'RESULTS_READY');
+      expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'laboratory.lab-order.result-recorded' }));
+      expect(result).toEqual({ labOrderId: 'order-1', status: 'RESULTS_READY' });
+    });
+
+    it('allows recording additional freeform results once already RESULTS_READY, without re-flipping status', async () => {
+      const { getActiveRoleMembership, labOrders, labOrderItems, useCase } = setup();
+      getActiveRoleMembership.execute.mockResolvedValue(membership);
+      labOrders.findById.mockResolvedValue({ ...order, status: 'RESULTS_READY' });
+      labOrderItems.findByOrderId.mockResolvedValue([]);
+
+      const result = await useCase.execute('order-1', { fileLabel: 'extra-page.pdf', sizeKb: 80 }, actor);
+
+      expect(labOrders.setStatus).not.toHaveBeenCalled();
+      expect(result).toEqual({ labOrderId: 'order-1', status: 'RESULTS_READY' });
+    });
+
+    it('422s when itemId is omitted but the order actually has registered items', async () => {
+      const { getActiveRoleMembership, labOrders, labOrderItems, useCase } = setup();
+      getActiveRoleMembership.execute.mockResolvedValue(membership);
+      labOrders.findById.mockResolvedValue(order);
+      labOrderItems.findByOrderId.mockResolvedValue([item]);
+
+      await expect(useCase.execute('order-1', { fileLabel: 'x.pdf', sizeKb: 50 }, actor)).rejects.toMatchObject({ httpStatus: 422 });
+    });
+  });
 });

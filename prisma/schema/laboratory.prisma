@@ -162,9 +162,16 @@ model LabOrderItem {
 model LabResultDocument {
   id                String            @id @default(uuid()) @db.Uuid
   lab_order_id      String            @db.Uuid
-  /// `@unique` enforces "at most one result per item" at the DB level —
-  /// the reverse side of `LabOrderItem.result` above.
-  item_id           String            @unique @db.Uuid
+  /// Nullable (File 12 Part 50): a catalog-based order still enforces "at
+  /// most one result per item" via this `@unique` FK, but a freeform order
+  /// (patient uploaded an image instead of picking catalog tests — the
+  /// image itself tells the lab what to run, it is not a drug-style
+  /// prescription needing item-by-item transcription) has no `LabOrderItem`
+  /// row to attach to at all, so its result documents attach to the order
+  /// directly with `item_id: null`. Postgres treats multiple `NULL`s as
+  /// distinct under a unique constraint, so several freeform results per
+  /// order remain possible.
+  item_id           String?           @unique @db.Uuid
   /// Registration-only reference — real file storage vendor undecided
   /// (File 10 uploads rule), same as pharmacy's prescription-image URLs.
   file_label        String
@@ -179,7 +186,7 @@ model LabResultDocument {
   updated_at        DateTime          @updatedAt @db.Timestamptz(6)
   version           Int               @default(1)
   lab_order         LabOrder          @relation(fields: [lab_order_id], references: [id], onDelete: Cascade)
-  item              LabOrderItem      @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  item              LabOrderItem?     @relation(fields: [item_id], references: [id], onDelete: Cascade)
   uploaded_by_user  User              @relation(fields: [uploaded_by], references: [id])
 
   @@map("lab_result_documents")
