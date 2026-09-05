@@ -1,8 +1,8 @@
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { IsOptional, IsString, IsUUID, Matches, MaxLength, Validate, ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
 
-/** Same pattern as `RequestOtpDto`/`LoginWithPasswordDto`/`CreateAssistantDto` — redeclared locally, not shared, per this codebase's convention. */
-const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
+/** Same pattern as `RequestOtpDto`/`LoginWithPasswordDto`/`CreateAssistantDto` — redeclared locally, not shared, per this codebase's convention. Restricted to Egyptian mobile numbers. */
+const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;
 
 /**
  * Walk-in booking (Part 49.7 extension): exactly one of `patientId` (an
@@ -29,7 +29,7 @@ export class CreateClinicStaffAppointmentDto {
 
   @ApiPropertyOptional({ example: '+201001234567' })
   @IsOptional()
-  @Matches(E164_PATTERN, { message: 'phone must be a valid E.164 phone number, e.g. +201001234567' })
+  @Matches(EGYPT_E164_PATTERN, { message: 'phone must be a valid Egyptian mobile number, e.g. +201001234567' })
   patientPhone?: string;
 
   @ApiPropertyOptional({ example: 'Sara' })

@@ -1,14 +1,16 @@
 import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsBoolean, IsOptional, Matches, ValidateNested } from 'class-validator';
 import { AddressDto } from './address.dto';
+
+const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;
 
 class PartialAddressDto extends PartialType(AddressDto) {}
 
 export class UpdatePharmacyBranchDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '+201001234567' })
   @IsOptional()
-  @IsString()
+  @Matches(EGYPT_E164_PATTERN, { message: 'phone must be a valid Egyptian mobile number, e.g. +201001234567' })
   phone?: string;
 
   @ApiPropertyOptional()
