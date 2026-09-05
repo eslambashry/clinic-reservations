@@ -29,7 +29,6 @@ import { UpdateMyScheduleTemplateDto } from './dto/update-my-schedule-template.d
  */
 @ApiTags('doctor-schedule-templates')
 @ApiBearerAuth()
-@Roles(RoleContextType.DOCTOR)
 @Controller('doctors/me/schedule-templates')
 export class DoctorScheduleTemplatesController {
   constructor(
@@ -37,18 +36,26 @@ export class DoctorScheduleTemplatesController {
     @Inject(ManageMyScheduleTemplatesUseCase) private readonly manageMyTemplates: ManageMyScheduleTemplatesUseCase,
   ) {}
 
+  // CLINIC_STAFF (the clinic assistant) can view the templates the doctor's
+  // own home/schedule screen is built from — same read-only precedent
+  // `doctor-appointments.controller.ts` already sets for that role — but
+  // create/update/delete stay DOCTOR-only below; an assistant has no
+  // business editing the doctor's own availability.
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get()
-  @ApiOperation({ summary: "The calling doctor's own weekly availability templates across every affiliation they own" })
+  @ApiOperation({ summary: "The calling doctor's own weekly availability templates across every affiliation they own (or, for CLINIC_STAFF, the doctor they're provisioned under)" })
   list(@Query() query: ListMyScheduleTemplatesQueryDto, @CurrentUser() user: AccessTokenPayload): Promise<ListMyScheduleTemplatesResult> {
     return this.listMyTemplates.execute(query, user);
   }
 
+  @Roles(RoleContextType.DOCTOR)
   @Post()
   @ApiOperation({ summary: 'Create a weekday availability window on one of the caller’s own affiliations' })
   create(@Body() dto: CreateMyScheduleTemplateDto, @CurrentUser() user: AccessTokenPayload): Promise<MyScheduleTemplate> {
     return this.manageMyTemplates.create(dto, user);
   }
 
+  @Roles(RoleContextType.DOCTOR)
   @Patch(':scheduleTemplateId')
   @ApiOperation({ summary: 'Update one of the caller’s own templates — affects future slot generation only, never existing slots' })
   update(
@@ -59,6 +66,7 @@ export class DoctorScheduleTemplatesController {
     return this.manageMyTemplates.update(scheduleTemplateId, dto, user);
   }
 
+  @Roles(RoleContextType.DOCTOR)
   @Delete(':scheduleTemplateId')
   @HttpCode(204)
   @ApiOperation({ summary: 'Stop future generation from this template — already-generated slots and their appointments are untouched' })
