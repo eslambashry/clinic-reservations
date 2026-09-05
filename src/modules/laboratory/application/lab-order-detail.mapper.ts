@@ -50,8 +50,11 @@ export interface LabOrderDetail {
   results: {
     id: string;
     orderId: string;
-    itemId: string;
+    /** `null` for a freeform order's result (no `LabOrderItem` to attach to) — File 12 Part 50. */
+    itemId: string | null;
     fileLabel: string;
+    /** `null` only for a row created before this column existed. */
+    fileUrl: string | null;
     sizeKb: number;
     uploadedAt: string;
     uploadedBy: string;
@@ -124,6 +127,7 @@ export function buildLabOrderDetail(
       orderId: r.lab_order_id,
       itemId: r.item_id,
       fileLabel: r.file_label,
+      fileUrl: r.file_url,
       sizeKb: r.size_kb,
       uploadedAt: r.uploaded_at.toISOString(),
       uploadedBy: r.uploaded_by,

@@ -50,13 +50,6 @@ export function assertStatusIn(status: LabOrderStatus, expected: LabOrderStatus[
   }
 }
 
-/** Mirrors `submitQuote`'s guard: a prescription-only request needs at least one transcribed item before it can be quoted. */
-export function assertHasItems(itemCount: number): void {
-  if (itemCount === 0) {
-    throw new BusinessRuleError('NO_ITEMS_TO_QUOTE', 'لا توجد تحاليل في هذا الطلب لتسعيرها بعد.');
-  }
-}
-
 const REJECTABLE_STATUSES: LabOrderStatus[] = ['REQUESTED', 'QUOTED', 'AWAITING_SAMPLE'];
 
 /** Mirrors the mock's `rejectOrder` guard: blocked once analysis has started, terminal, or a live sample exists. */

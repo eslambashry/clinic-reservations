@@ -62,6 +62,24 @@ fabricated instant confirmation.
 Not run: `db:migrate:deploy` against a real Postgres, any live browser click-through — no local DB is provisioned
 in this environment, flagged rather than assumed, same as pharmacy's own later Part 42 real-infrastructure pass.
 
+**Freeform (image-based) quoting — 2026-09-05, File 12 Part 50.** The
+patient-facing flow (2026-09-05 pass above) only ever produces `prescriptionId`
+orders (0 items) — but `SubmitLabQuoteUseCase` used to hard-require at least
+one `LabOrderItem` before it would quote, and no endpoint existed anywhere to
+add items to an already-created order. Every real order was therefore
+permanently stuck at "incomplete request," mirroring pharmacy's "transcribe
+the prescription into drug-catalog items first" model — wrong for lab, where
+the uploaded image is purely informational (it tells staff what to run) and
+was never a drug-safety document needing item-by-item transcription. Fixed
+at the user's explicit direction: `SubmitLabQuoteUseCase` no longer requires
+any registered items (the per-item price split is simply skipped when there
+are none), and `RecordResultUseCase`/`LabResultDocument.item_id` now support
+an order-level result (nullable FK) for a freeform order, flipping
+`IN_ANALYSIS --> RESULTS_READY` on the first result recorded rather than
+"every item recorded." `start-analysis`, `set-critical-flag`, and
+`record-result-delivery` needed no changes — none of them were ever keyed
+off item count. Catalog-based (`testCodes`) orders are untouched.
+
 Not built (explicitly out of scope, tracked as open decisions in the dashboard's own `types.ts`):
 - `DEC-002` — payment timing.
 - `DEC-003` — automated critical-result escalation (the human critical/non-critical call exists; automated

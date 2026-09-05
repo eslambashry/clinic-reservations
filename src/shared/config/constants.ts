@@ -91,6 +91,7 @@ export const MEDIA_CONSTANTS = {
   MAX_IMAGE_SIZE_BYTES: 8 * 1024 * 1024,
   MAX_DOCUMENT_SIZE_BYTES: 15 * 1024 * 1024,
   PRESCRIPTION_MAX_FILES: 5,
+  LAB_RESULT_MAX_FILES: 5,
   /** How long a freshly generated signed URL for a private file stays valid (read-time only — never persisted). */
   SIGNED_URL_TTL_SECONDS: 5 * 60,
 } as const;

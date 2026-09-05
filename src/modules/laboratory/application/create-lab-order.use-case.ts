@@ -12,9 +12,18 @@ import { TestCatalogRepository } from '../infrastructure/test-catalog.repository
 export interface CreateLabOrderInput {
   labBranchId: string;
   collectionType: 'VISIT' | 'HOME_COLLECTION';
-  /** Direct catalog-test selection — the primary path. */
+  /** Direct catalog-test selection — creates a `LabOrderItem` per code. */
   testCodes?: string[];
-  /** Uploaded prescription instead of (or alongside) direct selection — "incomplete request awaiting transcription" when `testCodes` is empty (Readiness Plan §E). Transcription itself (adding items to an already-created prescription-only order) has no method anywhere in the dashboard's own service interface and is out of scope this pass. */
+  /**
+   * Uploaded referral image/file instead of (or alongside) direct selection.
+   * Unlike pharmacy's prescription (a drug-safety document that must be
+   * transcribed into exact catalog items before it can be priced), this
+   * image is purely informational — it tells lab staff which analysis to
+   * run, and staff price the order after reading it, with no requirement to
+   * register catalog items first (File 12 Part 50; supersedes the earlier
+   * "incomplete request awaiting transcription" design in Readiness Plan
+   * §E, which wrongly mirrored the pharmacy flow).
+   */
   prescriptionId?: string;
 }
 

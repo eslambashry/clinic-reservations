@@ -90,7 +90,7 @@ src/
       <module-name>.module.ts
 
 prisma/
-  schema/*.prisma            # One file per bounded context (identity, provider-directory, scheduling, prescriptions, pharmacy, payments, notifications, audit, shared, postponed)
+  schema/*.prisma            # One file per bounded context (identity, provider-directory, scheduling, prescriptions, pharmacy, laboratory, payments, notifications, audit, shared, postponed)
 
 docs/
   FILE_10_..., FILE_11_..., FILE_12_...   # Spec / decisions / conventions (see §1)
@@ -262,7 +262,7 @@ Requires `.env` (copy `.env.example`): `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`
 - Don't wrap `VerifyOtpUseCase`-style flows in a single `$transaction` without checking whether a partial-commit (e.g. failed-attempt counter) is actually required outside it.
 - Don't swap OTP (argon2) vs. refresh-token (SHA-256) hashing strategies — they solve different problems (slow verification vs. deterministic lookup).
 - Don't enable `LoggingOtpSender` in production — it logs OTP codes instead of sending them.
-- Don't build POSTPONE-module logic (encounter-emr, reviews, fraud, analytics, family-accounts, laboratory) — schema exists in `prisma/schema/postponed.prisma` for forward-compatibility only.
+- Don't build POSTPONE-module logic (encounter-emr, reviews, fraud, analytics, family-accounts) — schema exists in `prisma/schema/postponed.prisma` for forward-compatibility only. `laboratory` is no longer POSTPONE — un-postponed 2026-09-02 (File 12 Part 47), has its own `prisma/schema/laboratory.prisma`, a full order lifecycle, and a connected dashboard (`medsuper-laboratory-dashboard`).
 - Don't invent a business constant, folder layout, or library choice inline — check File 10/11 for the rule, File 12 for the pattern; if neither answers it, add the decision to File 12 first.
 - Don't pre-integrate deferred vendors (payment gateway, secrets manager, WAF, virus scanning, cross-region backup, OpenTelemetry) before the phase that needs them.
 - Don't namespace admin routes under `/admin` — use `@Roles(ADMIN)` instead.
@@ -286,5 +286,5 @@ Requires `.env` (copy `.env.example`): `DATABASE_URL`, `DIRECT_URL`, `REDIS_URL`
 | **Optimistic lock** | The `version` column + `updateWithOptimisticLock` pattern used instead of DB-level row locking for most updates; throws `OptimisticLockError` → `409 OPTIMISTIC_LOCK_CONFLICT` on a stale write. |
 | **Envelope (success/error)** | The standard wrapper shape every `/v1` API response is normalized into — see §11. |
 | **Correlation ID** | A per-request ID propagated via `AsyncLocalStorage`, present in every log line and error envelope, used to trace a request across the API and worker processes. |
-| **POSTPONE module** | A domain module with a schema (`prisma/schema/postponed.prisma`) but explicitly no logic to be built without a new product decision: encounter-emr, reviews, fraud, analytics, family-accounts, laboratory. |
+| **POSTPONE module** | A domain module with a schema (`prisma/schema/postponed.prisma`) but explicitly no logic to be built without a new product decision: encounter-emr, reviews, fraud, analytics, family-accounts. (`laboratory` was in this list until it was un-postponed 2026-09-02, File 12 Part 47 — it is now a full MVP module with its own `prisma/schema/laboratory.prisma`.) |
 | **Modular monolith** | This repo's architecture: one deployable API process + one worker process + one Postgres DB, with strict module boundaries designed to allow future extraction into real services. |

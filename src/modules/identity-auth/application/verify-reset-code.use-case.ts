@@ -18,7 +18,7 @@ const PASSWORD_RESET_PURPOSE = 'PASSWORD_RESET';
  * Lets a client check a PASSWORD_RESET OTP code before showing the
  * "set a new password" step — same validation rule set as
  * `ResetPasswordUseCase` (via the shared `validateOtpCode` helper), but
- * deliberately read-only: it never marks the OTP consumed and never touches
+ * deliberately non-consuming: it marks the request verified, but never touches
  * `password_hash`. A wrong-code attempt here still increments
  * `otp_requests.attempts` (shared with `ResetPasswordUseCase`'s counter, by
  * design — it's the same code, so failed guesses here still count toward
@@ -37,6 +37,7 @@ export class VerifyResetCodeUseCase {
     await validateOtpCode(otpRequest, { code: input.code, purpose: PASSWORD_RESET_PURPOSE }, (id) =>
       this.otpRequests.incrementAttempts(this.prisma, id),
     );
+    await this.otpRequests.markVerified(this.prisma, input.requestId);
 
     return { valid: true };
   }

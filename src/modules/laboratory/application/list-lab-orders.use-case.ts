@@ -4,9 +4,11 @@ import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/g
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
 import { GetCustodyEventsUseCase } from './get-custody-events.use-case';
 import { buildLabOrderDetail, LabOrderDetail } from './lab-order-detail.mapper';
 import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
@@ -50,6 +52,7 @@ export class ListLabOrdersUseCase {
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(GetCustodyEventsUseCase) private readonly getCustodyEvents: GetCustodyEventsUseCase,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(input: ListLabOrdersInput, actor: AccessTokenPayload): Promise<ListLabOrdersResult> {
@@ -116,7 +119,11 @@ export class ListLabOrdersUseCase {
         );
         const noteDetails = notes.map((n) => ({ id: n.id, at: n.created_at.toISOString(), author: authorNameById.get(n.author_id) ?? 'موظف', body: n.body }));
 
-        return buildLabOrderDetail(order, patient, prescription, items, catalogNameByCode, results, custodyByOrder.get(order.id) ?? [], noteDetails);
+        const signedResults = results.map((r) =>
+          r.file_url ? { ...r, file_url: this.mediaStorage.getSignedUrl(r.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS) } : r,
+        );
+
+        return buildLabOrderDetail(order, patient, prescription, items, catalogNameByCode, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
       }),
     );
   }

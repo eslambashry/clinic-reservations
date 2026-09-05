@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+import { IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+
+const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;
 
 export class CreateMyClinicBranchAddressDto {
   @IsString()
@@ -34,9 +36,7 @@ export class CreateMyClinicBranchAddressDto {
 }
 
 export class CreateMyClinicBranchDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(32)
+  @Matches(EGYPT_E164_PATTERN, { message: 'phone must be a valid Egyptian mobile number, e.g. +201001234567' })
   phone: string;
 
   @IsString()

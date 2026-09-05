@@ -38,6 +38,7 @@ function setup() {
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
   const getPrescriptionSummary = { execute: jest.fn() };
   const getCustodyEvents = { executeForOrders: jest.fn().mockResolvedValue(new Map()) };
+  const mediaStorage = { upload: jest.fn(), getSignedUrl: jest.fn((url: string) => `${url}?signed=1`) };
   const useCase = new GetLabOrderUseCase(
     prisma,
     labOrders as any,
@@ -49,8 +50,9 @@ function setup() {
     getUserSummary as any,
     getPrescriptionSummary as any,
     getCustodyEvents as any,
+    mediaStorage as any,
   );
-  return { labOrders, labOrderItems, labResults, labOrderNotes, testCatalog, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, getCustodyEvents, useCase };
+  return { labOrders, labOrderItems, labResults, labOrderNotes, testCatalog, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, getCustodyEvents, mediaStorage, useCase };
 }
 
 describe('GetLabOrderUseCase', () => {

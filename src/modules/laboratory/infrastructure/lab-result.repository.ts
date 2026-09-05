@@ -4,8 +4,10 @@ import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimist
 
 export interface NewLabResultDocument {
   labOrderId: string;
-  itemId: string;
+  /** Omitted for a freeform (no registered `LabOrderItem`) order — File 12 Part 50. */
+  itemId?: string;
   fileLabel: string;
+  fileUrl?: string;
   sizeKb: number;
   uploadedBy: string;
 }
@@ -16,8 +18,9 @@ export class LabResultRepository {
     return db.labResultDocument.create({
       data: {
         lab_order_id: input.labOrderId,
-        item_id: input.itemId,
+        item_id: input.itemId ?? null,
         file_label: input.fileLabel,
+        file_url: input.fileUrl ?? null,
         size_kb: input.sizeKb,
         uploaded_by: input.uploadedBy,
       },

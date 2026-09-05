@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { assertStatusIn } from '../domain/lab-order.rules';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
@@ -12,9 +14,14 @@ import { LabResultRepository } from '../infrastructure/lab-result.repository';
 import { TestCatalogRepository } from '../infrastructure/test-catalog.repository';
 
 export interface RecordResultInput {
-  itemId: string;
-  fileLabel: string;
-  sizeKb: number;
+  /** Omitted for a freeform order (no registered `LabOrderItem`) — File 12 Part 50. */
+  itemId?: string;
+  /** Defaults to a generated name (`defaultFileLabel`) when omitted. */
+  fileLabel?: string;
+  /** Defaults to the actual uploaded file size when omitted. */
+  sizeKb?: number;
+  /** The uploaded result file(s) — same ImageKit-backed private storage as prescription uploads. */
+  files: UploadedMediaFile[];
 }
 
 export interface RecordResultResult {
@@ -23,10 +30,15 @@ export interface RecordResultResult {
 }
 
 /**
- * `POST /lab-orders/{orderId}/results`, `LAB_STAFF` only. Per-item (DEC-006
- * resolved per-item, matching the dashboard's own `ItemResultState`): flips
- * the order to `RESULTS_READY` once every item is `RECORDED`, mirroring the
- * mock's `recordResult` exactly.
+ * `POST /lab-orders/{orderId}/results`, `LAB_STAFF` only. Two shapes (File
+ * 12 Part 50): a catalog-based order records one result per `LabOrderItem`
+ * and flips to `RESULTS_READY` once every item is `RECORDED` (DEC-006,
+ * mirrors the mock's `recordResult` exactly); a freeform order (patient
+ * uploaded an image instead of picking catalog tests — that image is what
+ * told the lab which analysis to run, it was never a drug-style
+ * prescription needing item-by-item transcription) has no items at all, so
+ * the first result recorded against it flips the order straight to
+ * `RESULTS_READY` — there is no per-item completeness to track.
  */
 @Injectable()
 export class RecordResultUseCase {
@@ -38,6 +50,7 @@ export class RecordResultUseCase {
     @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(labOrderId: string, input: RecordResultInput, actor: AccessTokenPayload): Promise<RecordResultResult> {
@@ -46,12 +59,24 @@ export class RecordResultUseCase {
       throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
     }
 
+    // Files upload to ImageKit before the transaction opens — same
+    // reasoning as `UploadPrescriptionUseCase`: an external round trip has
+    // no business holding a DB transaction open.
+    const uploaded = await Promise.all(
+      input.files.map((file) => this.mediaStorage.upload(file, { folder: `lab-results/${labOrderId}`, isPrivate: true })),
+    );
+    const fileUrls = uploaded.map((stored) => stored.url);
+
     return this.prisma.$transaction(async (tx) => {
       const order = await this.labOrders.findById(tx, labOrderId);
       if (!order || order.lab_branch_id !== membership.contextId) {
         throw new NotFoundError('LabOrder', labOrderId);
       }
       assertStatusIn(order.status, ['IN_ANALYSIS', 'RESULTS_READY'], 'LAB_ORDER_NOT_IN_ANALYSIS', 'لا يمكن تسجيل النتائج إلا أثناء التحليل أو بعده.');
+
+      if (!input.itemId) {
+        return this.recordFreeformResult(tx, order, input, fileUrls, actor);
+      }
 
       const item = await this.labOrderItems.findById(tx, input.itemId);
       if (!item || item.lab_order_id !== labOrderId) {
@@ -61,14 +86,29 @@ export class RecordResultUseCase {
         throw new ConflictError('LAB_ORDER_ITEM_RESULT_ALREADY_RECORDED', 'تم تسجيل نتيجة لهذا التحليل بالفعل.');
       }
 
-      const fileLabel = input.fileLabel.trim() || this.defaultFileLabel(item.catalog_code, labOrderId);
+      // `item_id` is unique per result document — only the first file
+      // attaches to this item's row; any additional files still belong to
+      // this order and are recorded as extra freeform (`item_id: null`)
+      // documents rather than silently dropped.
+      const [firstFileUrl, ...restFileUrls] = fileUrls;
+      const fileLabel = input.fileLabel?.trim() || this.defaultFileLabel(item.catalog_code, labOrderId);
       await this.labResults.create(tx, {
         labOrderId,
         itemId: item.id,
         fileLabel,
-        sizeKb: Math.max(1, Math.round(input.sizeKb)),
+        fileUrl: firstFileUrl,
+        sizeKb: this.sizeKbFor(input, 0),
         uploadedBy: actor.sub,
       });
+      for (const [offset, fileUrl] of restFileUrls.entries()) {
+        await this.labResults.create(tx, {
+          labOrderId,
+          fileLabel: this.defaultFileLabel(item.catalog_code, labOrderId),
+          fileUrl,
+          sizeKb: this.sizeKbFor(input, offset + 1),
+          uploadedBy: actor.sub,
+        });
+      }
       await this.labOrderItems.markRecorded(tx, item.id, item.version);
 
       const allItems = await this.labOrderItems.findByOrderId(tx, labOrderId);
@@ -93,7 +133,61 @@ export class RecordResultUseCase {
     });
   }
 
-  private defaultFileLabel(catalogCode: string, labOrderId: string): string {
-    return `${catalogCode}_${labOrderId.slice(-6).toUpperCase()}.pdf`;
+  /** `order` here is a freeform order — verified below to genuinely have zero registered items, not just an omitted `itemId` on a catalog-based one. */
+  private async recordFreeformResult(
+    tx: Prisma.TransactionClient,
+    order: { id: string; version: number; status: string },
+    input: RecordResultInput,
+    fileUrls: string[],
+    actor: AccessTokenPayload,
+  ): Promise<RecordResultResult> {
+    const existingItems = await this.labOrderItems.findByOrderId(tx, order.id);
+    if (existingItems.length > 0) {
+      throw new BusinessRuleError('LAB_ORDER_ITEM_ID_REQUIRED', 'هذا الطلب يحتوي على تحاليل مسجّلة — حدّد التحليل المطلوب تسجيل نتيجته.');
+    }
+
+    // No `item_id` to be unique against here (freeform), so every uploaded
+    // file gets its own result document row rather than collapsing to one.
+    const urls: (string | undefined)[] = fileUrls.length > 0 ? fileUrls : [undefined];
+    const fileLabel = input.fileLabel?.trim() || this.defaultFileLabel(null, order.id);
+    for (const [index, fileUrl] of urls.entries()) {
+      await this.labResults.create(tx, {
+        labOrderId: order.id,
+        fileLabel,
+        fileUrl,
+        sizeKb: this.sizeKbFor(input, index),
+        uploadedBy: actor.sub,
+      });
+    }
+
+    let status = order.status;
+    if (order.status === 'IN_ANALYSIS') {
+      await this.labOrders.setStatus(tx, order.id, order.version, 'RESULTS_READY');
+      status = 'RESULTS_READY';
+    }
+
+    await this.audit.record(tx, {
+      actorUserId: actor.sub,
+      actorRoleMembershipId: actor.roleMembershipId,
+      action: encodeCustodyAction('RESULT_RECORDED'),
+      resourceType: 'lab_order',
+      resourceId: order.id,
+      reasonCode: fileLabel,
+    });
+
+    return { labOrderId: order.id, status };
+  }
+
+  private defaultFileLabel(catalogCode: string | null, labOrderId: string): string {
+    return `${catalogCode ?? 'RESULT'}_${labOrderId.slice(-6).toUpperCase()}.pdf`;
+  }
+
+  /** Prefers the actual uploaded file's real size over the caller-supplied `sizeKb` (which only ever applies to a single file, and files may not even have been provided in a legacy/metadata-only call). */
+  private sizeKbFor(input: RecordResultInput, fileIndex: number): number {
+    const file = input.files[fileIndex];
+    if (file) {
+      return Math.max(1, Math.round(file.sizeBytes / 1024));
+    }
+    return Math.max(1, Math.round(input.sizeKb ?? 1));
   }
 }

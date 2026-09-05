@@ -4,10 +4,11 @@ import { ArrayMaxSize, ArrayUnique, IsArray, IsEnum, IsOptional, IsString, IsUUI
 
 /**
  * `POST /lab-orders`, `PATIENT`-role. Either `testCodes` (direct catalog
- * selection) or `prescriptionId` (uploaded prescription, "incomplete
- * request awaiting transcription" per Readiness Plan §E) must be present —
- * enforced in `CreateLabOrderUseCase`, not here (a cross-field rule, not a
- * per-field one).
+ * selection) or `prescriptionId` (an uploaded referral image/file — purely
+ * informational input for lab staff's own price+ETA judgment call, not a
+ * drug-style prescription needing item-by-item transcription; File 12 Part
+ * 50) must be present — enforced in `CreateLabOrderUseCase`, not here (a
+ * cross-field rule, not a per-field one).
  */
 export class CreateLabOrderDto {
   @ApiProperty()

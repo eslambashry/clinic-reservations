@@ -9,6 +9,8 @@ export interface DoctorAffiliationSummary {
   affiliationId: string;
   clinicBranchId: string;
   clinicName: string;
+  addressLine1: string;
+  city: string;
   consultationFee: string;
   currency: string;
   ianaTimezone: string;
@@ -104,6 +106,8 @@ function toAffiliationSummary(a: AffiliationWithBranch): DoctorAffiliationSummar
     affiliationId: a.id,
     clinicBranchId: a.clinic_branch_id,
     clinicName: a.clinic_branch.clinic.brand_name,
+    addressLine1: a.clinic_branch.address.line1,
+    city: a.clinic_branch.address.city,
     consultationFee: a.consult_fee.toString(),
     currency: a.currency,
     ianaTimezone: a.clinic_branch.iana_timezone,

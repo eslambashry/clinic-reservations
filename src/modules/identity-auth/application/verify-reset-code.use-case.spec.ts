@@ -34,6 +34,7 @@ describe('VerifyResetCodeUseCase', () => {
     const otpRequests = {
       findById: jest.fn(),
       incrementAttempts: jest.fn(),
+      markVerified: jest.fn(),
       markConsumed: jest.fn(),
     };
     const useCase = new VerifyResetCodeUseCase(prisma as any, otpRequests as any);
@@ -135,6 +136,7 @@ describe('VerifyResetCodeUseCase', () => {
     // `users`/`setPassword` dependency at all — see the constructor), and
     // never open the success-path transaction that ResetPasswordUseCase uses.
     expect(otpRequests.markConsumed).not.toHaveBeenCalled();
+    expect(otpRequests.markVerified).toHaveBeenCalledWith(expect.anything(), 'request-1');
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

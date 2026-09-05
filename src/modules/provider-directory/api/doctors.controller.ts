@@ -62,10 +62,15 @@ export class DoctorsController {
   // Registered before `:doctorId` below — a literal 'me' segment would
   // otherwise be captured by that dynamic param and rejected by its
   // ParseUUIDPipe (File 12 Part 45).
+  //
+  // CLINIC_STAFF (the assistant) can read this too — the shared
+  // provider-dashboard home screen shows the doctor's own profile
+  // regardless of which role opened it, same read-only precedent as
+  // `doctor-appointments.controller.ts`/`doctor-schedule-templates.controller.ts`.
   @ApiBearerAuth()
-  @Roles(RoleContextType.DOCTOR)
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get('me')
-  @ApiOperation({ summary: "A doctor's own directory record, including licenseNumber (the public detail route omits it)" })
+  @ApiOperation({ summary: "The calling doctor's own directory record (or, for CLINIC_STAFF, the doctor they're provisioned under), including licenseNumber (the public detail route omits it)" })
   getMe(@CurrentUser() user: AccessTokenPayload): Promise<MyDoctorProfile> {
     return this.getMyDoctorProfile.execute(user);
   }

@@ -31,13 +31,17 @@ describe('SubmitLabQuoteUseCase', () => {
     expect(result).toEqual({ labOrderId: 'order-1', status: 'QUOTED' });
   });
 
-  it('422s a request with no items yet (prescription-only, not transcribed)', async () => {
-    const { labOrders, labOrderItems, getActiveRoleMembership, useCase } = setup();
+  it('quotes a freeform request with no registered items (image-based, File 12 Part 50) without touching per-item pricing', async () => {
+    const { tx, labOrders, labOrderItems, getActiveRoleMembership, useCase } = setup();
     getActiveRoleMembership.execute.mockResolvedValue(membership);
     labOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'REQUESTED', lab_branch_id: 'branch-1' });
     labOrderItems.findByOrderId.mockResolvedValue([]);
 
-    await expect(useCase.execute('order-1', validInput, actor)).rejects.toMatchObject({ httpStatus: 422 });
+    const result = await useCase.execute('order-1', validInput, actor);
+
+    expect(labOrderItems.setUnitPrice).not.toHaveBeenCalled();
+    expect(labOrders.submitQuote).toHaveBeenCalledWith(tx, 'order-1', 1, expect.objectContaining({ totalPrice: '450.00' }));
+    expect(result).toEqual({ labOrderId: 'order-1', status: 'QUOTED' });
   });
 
   it('422s when the order is not REQUESTED', async () => {

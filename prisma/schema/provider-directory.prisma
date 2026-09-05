@@ -151,8 +151,38 @@ model PharmacyBranch {
   pharmacy         Pharmacy                 @relation(fields: [pharmacy_id], references: [id], onDelete: Cascade)
   broadcasts       PharmacyOrderBroadcast[]
   orders           PharmacyOrder[]
+  staff_assignments PharmacyStaffAssignment[]
 
   @@map("pharmacy_branches")
+}
+
+/// Real FK-backed "who works where" record for `PHARMACY_STAFF`, mirroring
+/// `DoctorClinicAffiliation`'s shape (User/Doctor has no direct FK to their
+/// workplace either — the join table is the FK). Unlike
+/// `role_memberships.context_id` (deliberately untyped/polymorphic — it also
+/// has to point at `Doctor.id` for CLINIC_STAFF and `LabBranch.id` for
+/// LAB_STAFF, so it can't carry a single DB FK), this table exists purely to
+/// give the (user, branch) fact real referential integrity. It is NOT a
+/// second source of truth for active/revoked — `role_membership_id` is a
+/// unique FK back to the owning `RoleMembership` row, so status is always
+/// read from there; every existing pharmacy-fulfillment use-case keeps
+/// reading the branch id from `role_memberships.context_id` exactly as
+/// before (this table doesn't replace that hot path, it just backs it with
+/// a real constraint).
+model PharmacyStaffAssignment {
+  id                 String         @id @default(uuid()) @db.Uuid
+  user_id            String         @db.Uuid
+  pharmacy_branch_id String         @db.Uuid
+  role_membership_id String         @unique @db.Uuid
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime       @updatedAt @db.Timestamptz(6)
+  version            Int            @default(1)
+  user               User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  pharmacy_branch    PharmacyBranch @relation(fields: [pharmacy_branch_id], references: [id], onDelete: Cascade)
+  role_membership    RoleMembership @relation(fields: [role_membership_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, pharmacy_branch_id])
+  @@map("pharmacy_staff_assignments")
 }
 
 model ProviderVerificationDocument {

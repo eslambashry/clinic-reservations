@@ -60,8 +60,28 @@ export class GenerateSlotsUseCase {
       return 0;
     }
 
+    // A day that already has any slot (OPEN, HELD, or BOOKED) at all is
+    // never touched again, even if the owning template was edited since —
+    // otherwise a duration/buffer change would append a second, differently
+    // -timed cadence of slots alongside the ones already generated for that
+    // day (different `start_at`s, so the unique index doesn't catch it),
+    // producing genuinely overlapping bookable slots. The new
+    // duration/buffer only ever applies to a day this job hasn't reached
+    // yet.
+    const windowStart = DateTime.fromISO(windowDates[0], { zone: timezone }).startOf('day').toUTC().toJSDate();
+    const windowEnd = DateTime.fromISO(windowDates[windowDates.length - 1], { zone: timezone })
+      .plus({ days: 1 })
+      .startOf('day')
+      .toUTC()
+      .toJSDate();
+    const existingStarts = await this.appointmentSlots.findExistingStartTimes(this.prisma, affiliationId, windowStart, windowEnd);
+    const datesAlreadyGenerated = new Set(existingStarts.map((start) => DateTime.fromJSDate(start, { zone: timezone }).toISODate()));
+
     const candidates: SlotBoundary[] = [];
     for (const dateIso of windowDates) {
+      if (datesAlreadyGenerated.has(dateIso)) {
+        continue;
+      }
       const weekday = isoWeekdayOf(dateIso, timezone);
       for (const template of templates.filter((t) => t.weekday === weekday)) {
         candidates.push(

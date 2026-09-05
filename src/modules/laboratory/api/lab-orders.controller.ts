@@ -1,6 +1,11 @@
-import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, UseInterceptors } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { RoleContextType } from '@prisma/client';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
+import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
+import { buildMemoryMulterOptions } from '../../../shared/kernel/storage/multer.config';
+import { toUploadedMediaFiles } from '../../../shared/kernel/storage/multer-file.mapper';
 import { AddOperationalNoteUseCase } from '../application/add-operational-note.use-case';
 import { CollectSampleUseCase } from '../application/collect-sample.use-case';
 import { ConfirmLabBookingUseCase } from '../application/confirm-lab-booking.use-case';
@@ -149,10 +154,39 @@ export class LabOrdersController {
 
   @Roles(RoleContextType.LAB_STAFF)
   @Post(':labOrderId/results')
-  @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Record one item result document — flips to RESULTS_READY once every item is recorded' })
-  results(@Param('labOrderId', ParseUUIDPipe) labOrderId: string, @Body() dto: RecordResultDto, @CurrentUser() user: AccessTokenPayload) {
-    return this.recordResult.execute(labOrderId, dto, user);
+  @UseInterceptors(
+    FilesInterceptor('files', MEDIA_CONSTANTS.LAB_RESULT_MAX_FILES, buildMemoryMulterOptions(MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES)),
+    IdempotencyInterceptor,
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: MEDIA_CONSTANTS.LAB_RESULT_MAX_FILES },
+        itemId: { type: 'string', format: 'uuid' },
+        fileLabel: { type: 'string' },
+        sizeKb: { type: 'number' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Record one result document (with its uploaded file) — per-item (flips to RESULTS_READY once every item is recorded) or, for a freeform order with no registered items, order-level (flips immediately)' })
+  results(
+    @Param('labOrderId', ParseUUIDPipe) labOrderId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() dto: RecordResultDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ) {
+    const uploadedFiles = toUploadedMediaFiles(files ?? []);
+    if (uploadedFiles.length > 0) {
+      assertValidMediaFiles(uploadedFiles, {
+        allowedMimeTypes: MEDIA_CONSTANTS.DOCUMENT_MIME_TYPES,
+        maxFileSizeBytes: MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES,
+        maxFileCount: MEDIA_CONSTANTS.LAB_RESULT_MAX_FILES,
+      });
+    }
+
+    return this.recordResult.execute(labOrderId, { ...dto, files: uploadedFiles }, user);
   }
 
   @Roles(RoleContextType.LAB_STAFF)
