@@ -1,16 +1,8 @@
-import { OTP_CONSTANTS } from '../domain/otp.constants';
-import { verifyOtpCode } from '../domain/otp-code.util';
 import { ResetPasswordUseCase } from './reset-password.use-case';
-
-jest.mock('../domain/otp-code.util', () => ({
-  verifyOtpCode: jest.fn(),
-}));
 
 jest.mock('@node-rs/argon2', () => ({
   hash: jest.fn(async (password: string) => `hashed:${password}`),
 }));
-
-const verifyOtpCodeMock = verifyOtpCode as jest.Mock;
 
 function buildTx() {
   return {} as any;
@@ -25,12 +17,12 @@ describe('ResetPasswordUseCase', () => {
     purpose: 'PASSWORD_RESET',
     attempts: 0,
     consumed_at: null,
+    verified_at: null,
     expires_at: new Date(now.getTime() + 60_000),
   };
 
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(now);
-    verifyOtpCodeMock.mockReset();
   });
 
   afterEach(() => {
@@ -51,18 +43,17 @@ describe('ResetPasswordUseCase', () => {
     const { otpRequests, useCase } = setup();
     otpRequests.findById.mockResolvedValue(null);
 
-    await expect(useCase.execute({ requestId: 'missing', code: '123456', newPassword: 'NewPass1!' })).rejects.toMatchObject({
+    await expect(useCase.execute({ requestId: 'missing', newPassword: 'NewPass1!' })).rejects.toMatchObject({
       code: 'INVALID_CODE',
       httpStatus: 400,
     });
-    expect(verifyOtpCodeMock).not.toHaveBeenCalled();
   });
 
   it('400s INVALID_CODE when the request was already consumed — same as not-found, never reveals which', async () => {
     const { otpRequests, useCase } = setup();
     otpRequests.findById.mockResolvedValue({ ...otpRequest, consumed_at: now });
 
-    await expect(useCase.execute({ requestId: 'request-1', code: '123456', newPassword: 'NewPass1!' })).rejects.toMatchObject({
+    await expect(useCase.execute({ requestId: 'request-1', newPassword: 'NewPass1!' })).rejects.toMatchObject({
       code: 'INVALID_CODE',
       httpStatus: 400,
     });
@@ -72,70 +63,38 @@ describe('ResetPasswordUseCase', () => {
     const { otpRequests, useCase } = setup();
     otpRequests.findById.mockResolvedValue({ ...otpRequest, purpose: 'LOGIN_OR_SIGNUP' });
 
-    await expect(useCase.execute({ requestId: 'request-1', code: '123456', newPassword: 'NewPass1!' })).rejects.toMatchObject({
+    await expect(useCase.execute({ requestId: 'request-1', newPassword: 'NewPass1!' })).rejects.toMatchObject({
       code: 'INVALID_CODE',
       httpStatus: 400,
     });
-    expect(verifyOtpCodeMock).not.toHaveBeenCalled();
   });
 
   it('410s CODE_EXPIRED once past expires_at, before checking the code', async () => {
     const { otpRequests, useCase } = setup();
     otpRequests.findById.mockResolvedValue({ ...otpRequest, expires_at: new Date(now.getTime() - 1) });
 
-    await expect(useCase.execute({ requestId: 'request-1', code: '123456', newPassword: 'NewPass1!' })).rejects.toMatchObject({
+    await expect(useCase.execute({ requestId: 'request-1', newPassword: 'NewPass1!' })).rejects.toMatchObject({
       code: 'CODE_EXPIRED',
       httpStatus: 410,
     });
-    expect(verifyOtpCodeMock).not.toHaveBeenCalled();
   });
 
-  it('423s TOO_MANY_ATTEMPTS once the stored attempts counter is already at the max, before checking the code', async () => {
+  it('rejects a valid request until the OTP verification endpoint marks it verified', async () => {
     const { otpRequests, useCase } = setup();
-    otpRequests.findById.mockResolvedValue({ ...otpRequest, attempts: OTP_CONSTANTS.MAX_VERIFY_ATTEMPTS });
-
-    await expect(useCase.execute({ requestId: 'request-1', code: '123456', newPassword: 'NewPass1!' })).rejects.toMatchObject({
-      code: 'TOO_MANY_ATTEMPTS',
-      httpStatus: 423,
-    });
-    expect(verifyOtpCodeMock).not.toHaveBeenCalled();
-  });
-
-  it('on a wrong code, persists the incremented attempt count and 400s INVALID_CODE — the increment must survive even though this call throws', async () => {
-    const { otpRequests, users, refreshTokens, useCase } = setup();
     otpRequests.findById.mockResolvedValue(otpRequest);
-    otpRequests.incrementAttempts.mockResolvedValue({ ...otpRequest, attempts: 1 });
-    verifyOtpCodeMock.mockResolvedValue(false);
 
-    await expect(useCase.execute({ requestId: 'request-1', code: '000000', newPassword: 'NewPass1!' })).rejects.toMatchObject({
+    await expect(useCase.execute({ requestId: 'request-1', newPassword: 'NewPass1!' })).rejects.toMatchObject({
       code: 'INVALID_CODE',
       httpStatus: 400,
-    });
-
-    expect(otpRequests.incrementAttempts).toHaveBeenCalledWith(expect.anything(), 'request-1');
-    expect(users.setPassword).not.toHaveBeenCalled();
-    expect(refreshTokens.revokeAllActiveForUser).not.toHaveBeenCalled();
-  });
-
-  it('locks out with TOO_MANY_ATTEMPTS on the wrong-code attempt that pushes the counter to the max', async () => {
-    const { otpRequests, useCase } = setup();
-    otpRequests.findById.mockResolvedValue({ ...otpRequest, attempts: OTP_CONSTANTS.MAX_VERIFY_ATTEMPTS - 1 });
-    otpRequests.incrementAttempts.mockResolvedValue({ ...otpRequest, attempts: OTP_CONSTANTS.MAX_VERIFY_ATTEMPTS });
-    verifyOtpCodeMock.mockResolvedValue(false);
-
-    await expect(useCase.execute({ requestId: 'request-1', code: '000000', newPassword: 'NewPass1!' })).rejects.toMatchObject({
-      code: 'TOO_MANY_ATTEMPTS',
-      httpStatus: 423,
     });
   });
 
   it('400s INVALID_CODE if the phone tied to the OTP request has no user (never happens for PASSWORD_RESET, but not a 500)', async () => {
     const { otpRequests, users, useCase } = setup();
     otpRequests.findById.mockResolvedValue(otpRequest);
-    verifyOtpCodeMock.mockResolvedValue(true);
     users.findByPhone.mockResolvedValue(null);
 
-    await expect(useCase.execute({ requestId: 'request-1', code: '123456', newPassword: 'NewPass1!' })).rejects.toMatchObject({
+    await expect(useCase.execute({ requestId: 'request-1', newPassword: 'NewPass1!' })).rejects.toMatchObject({
       code: 'INVALID_CODE',
       httpStatus: 400,
     });
@@ -143,12 +102,11 @@ describe('ResetPasswordUseCase', () => {
 
   it('on a correct code: consumes the OTP, hashes and sets the new password, and revokes every existing refresh token for the user — all in one transaction', async () => {
     const { tx, otpRequests, users, refreshTokens, useCase } = setup();
-    otpRequests.findById.mockResolvedValue(otpRequest);
-    verifyOtpCodeMock.mockResolvedValue(true);
+    otpRequests.findById.mockResolvedValue({ ...otpRequest, verified_at: now });
     const existingUser = { id: 'user-1', phone: otpRequest.phone };
     users.findByPhone.mockResolvedValue(existingUser);
 
-    const result = await useCase.execute({ requestId: 'request-1', code: '123456', newPassword: 'NewPass1!' });
+    const result = await useCase.execute({ requestId: 'request-1', newPassword: 'NewPass1!' });
 
     expect(result).toBeUndefined();
     expect(otpRequests.markConsumed).toHaveBeenCalledWith(tx, 'request-1');

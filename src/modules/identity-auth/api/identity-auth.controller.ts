@@ -123,12 +123,10 @@ export class IdentityAuthController {
   @Post('password/reset')
   @HttpCode(204)
   async resetPasswordEndpoint(@Body() dto: ResetPasswordDto): Promise<void> {
-    await this.resetPassword.execute({ requestId: dto.requestId, code: dto.code, newPassword: dto.newPassword });
+    await this.resetPassword.execute({ requestId: dto.requestId, newPassword: dto.newPassword });
   }
 
-  // Read-only check: never consumes the OTP or touches password_hash — see
-  // `VerifyResetCodeUseCase`. Lets a client confirm a code before showing
-  // the "set a new password" step.
+  // Verifies and records the OTP before the client can submit a new password.
   @Public()
   @Post('password/reset/verify-code')
   verifyResetCodeEndpoint(@Body() dto: VerifyResetCodeDto): Promise<VerifyResetCodeResult> {

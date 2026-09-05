@@ -28,4 +28,11 @@ export class OtpRequestRepository {
   markConsumed(db: Prisma.TransactionClient, id: string): Promise<OtpRequest> {
     return db.otpRequest.update({ where: { id }, data: { consumed_at: new Date() } });
   }
+
+  markVerified(db: Prisma.TransactionClient, id: string): Promise<OtpRequest> {
+    return db.otpRequest.update({
+      where: { id },
+      data: { verified_at: new Date() },
+    });
+  }
 }

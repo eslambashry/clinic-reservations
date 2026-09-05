@@ -2,14 +2,12 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import * as argon2 from '@node-rs/argon2';
 import { DomainError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { validateOtpCode } from '../domain/otp-verification.util';
 import { OtpRequestRepository } from '../infrastructure/otp-request.repository';
 import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository';
 import { UserRepository } from '../infrastructure/user.repository';
 
 export interface ResetPasswordInput {
   requestId: string;
-  code: string;
   newPassword: string;
 }
 
@@ -29,19 +27,17 @@ export class ResetPasswordUseCase {
   ) {}
 
   async execute(input: ResetPasswordInput): Promise<ResetPasswordResult> {
-    // Same "validation + failed-attempt recording are individually committed
-    // writes; only the success path is one atomic transaction" shape as
-    // `VerifyOtpUseCase` — an incorrect-code attempt must persist its
-    // `attempts` increment even though this call then throws. The actual
-    // rule set (not-found/consumed/wrong-purpose/expired/max-attempts/wrong
-    // code) lives in `validateOtpCode`, shared with `VerifyResetCodeUseCase`.
     const otpRequestOrNull = await this.otpRequests.findById(this.prisma, input.requestId);
-    await validateOtpCode(otpRequestOrNull, { code: input.code, purpose: PASSWORD_RESET_PURPOSE }, (id) =>
-      this.otpRequests.incrementAttempts(this.prisma, id),
-    );
-    // `validateOtpCode` throws for a null/invalid record, so it's guaranteed
-    // non-null past this point — narrow once here rather than re-checking.
-    const otpRequest = otpRequestOrNull!;
+    if (!otpRequestOrNull || otpRequestOrNull.consumed_at || otpRequestOrNull.purpose !== PASSWORD_RESET_PURPOSE) {
+      throw new DomainError(400, 'INVALID_CODE', 'رمز التحقق غير صحيح. راجع الرمز وأعد المحاولة.');
+    }
+    if (otpRequestOrNull.expires_at.getTime() < Date.now()) {
+      throw new DomainError(410, 'CODE_EXPIRED', 'انتهت صلاحية رمز التحقق. اطلب رمزًا جديدًا.');
+    }
+    if (!otpRequestOrNull.verified_at) {
+      throw new DomainError(400, 'INVALID_CODE', 'يجب التحقق من رمز OTP قبل تعيين كلمة المرور.');
+    }
+    const otpRequest = otpRequestOrNull;
 
     return this.prisma.$transaction(async (tx) => {
       await this.otpRequests.markConsumed(tx, otpRequest.id);

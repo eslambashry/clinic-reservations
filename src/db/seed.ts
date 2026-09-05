@@ -177,22 +177,48 @@ async function main() {
   // Phase 6 (Prescriptions, File 12 Part 37): a Pharmacy Staff test user, so
   // there's someone who can actually call the review queue/review endpoints
   // — pharmacy-staff role_memberships are Admin-provisioned, no self-service
-  // signup exists (same pattern as the ADMIN seed above).
+  // signup exists (same pattern as the ADMIN seed above). Password-login-ready
+  // + branch-scoped (context_id), mirroring the lab-staff seed below, so the
+  // pharmacy dashboard is testable end-to-end against a real local Postgres.
+  const demoPharmacyBranchId = '00000000-0000-0000-0000-000000000111';
   let pharmacyStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000003' } });
   if (!pharmacyStaffUser) {
     pharmacyStaffUser = await prisma.user.create({
-      data: { phone: '+201000000003', first_name: 'Youssef', last_name: 'Adel' },
+      data: {
+        phone: '+201000000003',
+        first_name: 'Youssef',
+        last_name: 'Adel',
+        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
+      },
     });
-    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone}`);
+    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+  } else if (!pharmacyStaffUser.password_hash) {
+    pharmacyStaffUser = await prisma.user.update({
+      where: { id: pharmacyStaffUser.id },
+      data: { password_hash: await argon2.hash(DEMO_STAFF_PASSWORD) },
+    });
+    console.log(`✅ Backfilled password for existing pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
   }
   const pharmacyStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
   });
   if (!pharmacyStaffMembership) {
     await prisma.roleMembership.create({
-      data: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
+      data: {
+        user_id: pharmacyStaffUser.id,
+        role_code: 'PHARMACY_STAFF',
+        context_type: 'PHARMACY_STAFF',
+        context_id: demoPharmacyBranchId,
+        status: 'ACTIVE',
+      },
     });
-    console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone}`);
+    console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone} (branch ${demoPharmacyBranchId})`);
+  } else if (!pharmacyStaffMembership.context_id) {
+    await prisma.roleMembership.update({
+      where: { id: pharmacyStaffMembership.id },
+      data: { context_id: demoPharmacyBranchId },
+    });
+    console.log(`✅ Assigned branch ${demoPharmacyBranchId} to existing PHARMACY_STAFF membership for ${pharmacyStaffUser.phone}`);
   }
 
   // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
