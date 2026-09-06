@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { DomainError } from '../../../shared/core/errors/domain-errors';
+import { PAYMENT_CONSTANTS } from '../../../shared/config/constants';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { InitiateOnlinePaymentUseCase } from './initiate-online-payment.use-case';
 import { PaymentCustomerInfo } from './ports/payment-gateway.port';
@@ -45,6 +46,10 @@ export class InitiateWalletTopUpUseCase {
     return this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallets.getOrCreate(tx, input.userId, 'EGP');
       const walletTransactionId = randomUUID();
+      // File 12 Part 51: computed once, reused for both the gateway call
+      // below and (if a future use-case ever needs to expire a stale
+      // top-up attempt) would be the same deadline that decision reads.
+      const expiresAt = new Date(Date.now() + PAYMENT_CONSTANTS.WALLET_TOPUP_WINDOW_MINUTES * 60 * 1000);
 
       const initiated = await this.initiateOnlinePayment.execute(tx, {
         payerUserId: input.userId,
@@ -55,6 +60,7 @@ export class InitiateWalletTopUpUseCase {
         method: 'CARD',
         idempotencyKey: `topup:${walletTransactionId}`,
         customer: input.customer,
+        expiresAt,
       });
 
       await this.walletTransactions.create(tx, {

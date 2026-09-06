@@ -93,6 +93,14 @@ export class InitiateOnlineAppointmentPaymentUseCase {
       // time.
       const appointmentId = randomUUID();
 
+      // File 12 Part 51: calculated ONCE and reused for every deadline this
+      // call touches — the hold's own extended expiry AND the gateway's
+      // best-effort `expiresAt` — never two independently-computed times
+      // that could drift apart. On a retry, the hold was already extended
+      // at first-initiate time, so its existing `expires_at` IS that same
+      // original deadline, reused rather than recalculated from "now".
+      const expiresAt = isRetry ? hold.expires_at : onlinePaymentHoldExpiresAt(new Date(), input.method);
+
       const initiated = await this.initiatePayment.execute(tx, {
         payerUserId: actor.sub,
         payableType: 'APPOINTMENT',
@@ -105,10 +113,10 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         walletProvider: input.walletProvider,
         walletMobileNumber: input.walletMobileNumber,
         existingPaymentIntentId: hold.payment_intent_id ?? undefined,
+        expiresAt,
       });
 
       if (!isRetry) {
-        const expiresAt = onlinePaymentHoldExpiresAt(new Date(), input.method);
         const linked = await this.holds.linkOnlinePayment(tx, hold.id, hold.version, initiated.paymentIntentId, expiresAt);
         if (!linked) {
           // Lost a race against the expiry sweep between the check above and
@@ -120,8 +128,6 @@ export class InitiateOnlineAppointmentPaymentUseCase {
           throw holdExpired(holdId);
         }
       }
-
-      const refreshedHold = await this.holds.findById(tx, hold.id);
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,
@@ -143,7 +149,7 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         method: initiated.method,
         redirectUrl: initiated.redirectUrl,
         referenceCode: initiated.referenceCode,
-        expiresAt: (refreshedHold?.expires_at ?? hold.expires_at).toISOString(),
+        expiresAt: expiresAt.toISOString(),
       };
     });
   }

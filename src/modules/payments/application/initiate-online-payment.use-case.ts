@@ -21,6 +21,14 @@ export interface InitiateOnlinePaymentInput {
   walletProvider?: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
   walletMobileNumber?: string;
   /**
+   * File 12 Part 51: the same deadline the caller already computed for its
+   * own bookkeeping (the hold's extended `expires_at`, or the top-up
+   * window) — passed straight through to `PaymentGatewayPort` unchanged.
+   * Never recomputed here; see the port's own doc comment for what this
+   * is/isn't confirmed to do upstream.
+   */
+  expiresAt: Date;
+  /**
    * File 11 Part 13: "a FAILED attempt does not fail the intent — the
    * client may create a new attempt against the same intent, not a new
    * intent, until the hold expires." Pass the still-`CREATED` intent's id
@@ -79,7 +87,13 @@ export class InitiateOnlinePaymentUseCase {
     // assigns its own transaction id.
     await this.paymentAttempts.create(tx, { id: attemptId, paymentIntentId: intent.id, gatewayReference: attemptId });
 
-    const gatewayInput = { merchantReference: attemptId, amount: input.amount, currency: input.currency, customer: input.customer };
+    const gatewayInput = {
+      merchantReference: attemptId,
+      amount: input.amount,
+      currency: input.currency,
+      customer: input.customer,
+      expiresAt: input.expiresAt,
+    };
 
     try {
       if (input.method === 'CARD') {

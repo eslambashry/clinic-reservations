@@ -70,6 +70,36 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     expect(result).toMatchObject({ paymentIntentId: 'intent-1', method: 'FAWRY', referenceCode: '123456' });
   });
 
+  it('computes expiresAt once and reuses the exact same value for both the gateway call and the hold link (File 12 Part 51)', async () => {
+    const { holds, slots, affiliationBilling, initiatePayment, useCase } = setup();
+    holds.findById.mockResolvedValue(activeHold);
+    slots.findById.mockResolvedValue(slot);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    initiatePayment.execute.mockResolvedValue({ paymentIntentId: 'intent-1', method: 'FAWRY', referenceCode: '123456' });
+    holds.linkOnlinePayment.mockResolvedValue(true);
+
+    await useCase.execute('hold-1', { method: 'FAWRY', customer }, actor);
+
+    const gatewayCallExpiresAt = initiatePayment.execute.mock.calls[0][1].expiresAt as Date;
+    const linkCallExpiresAt = holds.linkOnlinePayment.mock.calls[0][4] as Date;
+    expect(gatewayCallExpiresAt.getTime()).toBe(linkCallExpiresAt.getTime());
+  });
+
+  it('on retry, reuses the hold\'s EXISTING expires_at as the gateway expiresAt rather than recalculating a fresh one', async () => {
+    const { holds, slots, affiliationBilling, initiatePayment, useCase } = setup();
+    const originalExpiry = new Date(Date.now() + 12 * 60_000);
+    const holdWithIntent = { ...activeHold, payment_intent_id: 'intent-1', expires_at: originalExpiry };
+    holds.findById.mockResolvedValue(holdWithIntent);
+    slots.findById.mockResolvedValue(slot);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    initiatePayment.execute.mockResolvedValue({ paymentIntentId: 'intent-1', method: 'FAWRY', referenceCode: '123456' });
+
+    await useCase.execute('hold-1', { method: 'FAWRY', customer }, actor);
+
+    const gatewayCallExpiresAt = initiatePayment.execute.mock.calls[0][1].expiresAt as Date;
+    expect(gatewayCallExpiresAt.getTime()).toBe(originalExpiry.getTime());
+  });
+
   it('reuses the existing PaymentIntent on retry (hold.payment_intent_id already set) without re-linking the hold', async () => {
     const { holds, slots, affiliationBilling, initiatePayment, useCase } = setup();
     const holdWithIntent = { ...activeHold, payment_intent_id: 'intent-1' };

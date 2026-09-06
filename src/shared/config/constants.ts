@@ -21,6 +21,16 @@ export const APPOINTMENT_CONSTANTS = {
 } as const;
 
 /**
+ * File 12 Part 51: a wallet top-up has no `AppointmentHold`/slot to borrow a
+ * deadline from, unlike the appointment-payment methods — this is an
+ * engineering default (no slot-contention risk, so less time-critical than
+ * Fawry's 15-minute window), not a File 10/11 citation.
+ */
+export const PAYMENT_CONSTANTS = {
+  WALLET_TOPUP_WINDOW_MINUTES: 15,
+} as const;
+
+/**
  * File 11 Part 20 requires retry-with-backoff before an outbox event is
  * parked FAILED, but doesn't specify the count/interval — these are
  * engineering starting points in the same spirit as `DEC-B09`

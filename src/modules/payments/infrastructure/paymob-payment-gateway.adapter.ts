@@ -17,11 +17,40 @@ const PAYMOB_BASE_URL = 'https://accept.paymob.com';
 
 /**
  * File 12 Part 50 / DEC-001: real implementation of `PaymentGatewayPort`
- * against Paymob's Accept API (the long-stable "auth token → order →
- * payment key → pay/iframe" flow — chosen over Paymob's newer unified
- * Intention API specifically because it's the contract this adapter can be
- * implemented against with confidence without live API access; both are
- * Paymob's own documented integration paths, not an invented one).
+ * against Paymob's legacy "Accept" flow (`auth token → order → payment key
+ * → pay/iframe`) — still a live, documented Paymob surface, but File 12
+ * Part 51 found that Paymob's OWN currently-published integration guide and
+ * Postman collections (github.com/PaymobAccept/API-Postman-Collections)
+ * only cover the newer **Intention API** (`POST /v1/intention/`) now — the
+ * legacy flow this adapter uses doesn't appear anywhere in that repo
+ * anymore. This adapter was written against the legacy flow before that was
+ * verified; it still works (Paymob has not announced its removal) but is no
+ * longer the officially showcased integration path. Migrating to the
+ * Intention API is a deliberately separate decision, NOT folded into this
+ * expiration fix — see Part 51.2: it changes the Fawry/mobile-wallet UX
+ * (Kiosk/Wallet methods are chosen inside Paymob's own hosted Unified
+ * Checkout page under that API, rather than this adapter receiving a bare
+ * `bill_reference`/`redirect_url` back in a JSON response the way it does
+ * today), which is a product-facing change this task's scope doesn't cover.
+ *
+ * **`expiration` field / Part 51 finding:** Paymob's Intention API
+ * documents `expiration` (integer seconds, default **and max 3,110,400s /
+ * 36 days**) as controlling exactly when "the intention expires and the
+ * payment link becomes invalid" — confirmed verbatim in Paymob's own
+ * Postman collection description for `PUT /v1/intention/{client_secret}`.
+ * That is the mechanism this task asked about, and it is real — but it
+ * belongs to the Intention API, not this adapter's legacy `payment_keys`
+ * endpoint. This adapter's `payment_keys.expiration` field (used below) is
+ * NOT documented anywhere current for what it actually bounds once a
+ * `/pay` call turns it into a Fawry bill or a wallet redirect — sending the
+ * caller's real `expiresAt` here instead of an arbitrary constant is a
+ * strictly-safe improvement (it can only tighten an already-undocumented
+ * window, never loosen it) but is NOT a confirmed external-expiration
+ * guarantee. Do not treat it as one — the hold-expiry → cancel-intent →
+ * late-payment-refund chain (`ExpireHoldsUseCase` /
+ * `HandleLatePaymentAfterExpiryUseCase`) is the only guaranteed control and
+ * must never be weakened on the assumption this field is doing more than
+ * it's documented to do.
  *
  * Card details never reach this backend: `initiateCardPayment` returns a
  * hosted iframe URL — the client embeds/redirects to Paymob's own page. The
@@ -168,7 +197,10 @@ export class PaymobPaymentGatewayAdapter implements PaymentGatewayPort {
       currency: input.currency,
       order_id: order.id,
       integration_id: integrationId,
-      expiration: 3600,
+      // File 12 Part 51: the same `expiresAt` the caller already computed
+      // for the appointment hold / top-up window — see this class's doc
+      // comment for exactly what this field is (and isn't) confirmed to do.
+      expiration: secondsUntil(input.expiresAt),
       billing_data: {
         first_name: firstName || 'N/A',
         last_name: input.customer.lastName || rest.join(' ') || 'N/A',
@@ -265,4 +297,9 @@ function stringifyForHmac(value: unknown): string {
 
 function toAmountCents(amount: string): number {
   return Math.round(parseFloat(amount) * 100);
+}
+
+/** File 12 Part 51: clamped so a slow request (network latency between computing `expiresAt` and this call) never sends a zero/negative value Paymob would reject outright. */
+function secondsUntil(expiresAt: Date): number {
+  return Math.max(60, Math.round((expiresAt.getTime() - Date.now()) / 1000));
 }

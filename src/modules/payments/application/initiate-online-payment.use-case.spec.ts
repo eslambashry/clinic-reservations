@@ -6,6 +6,7 @@ function buildTx() {
 
 describe('InitiateOnlinePaymentUseCase', () => {
   const customer = { firstName: 'Sara', lastName: 'Ahmed', email: 'sara@example.com', phone: '+201000000000' };
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
   const baseInput = {
     payerUserId: 'patient-1',
     payableType: 'APPOINTMENT' as const,
@@ -14,6 +15,7 @@ describe('InitiateOnlinePaymentUseCase', () => {
     currency: 'EGP',
     idempotencyKey: 'hold:hold-1',
     customer,
+    expiresAt,
   };
   const intent = { id: 'intent-1', version: 1, status: 'CREATED' };
 
@@ -47,6 +49,16 @@ describe('InitiateOnlinePaymentUseCase', () => {
 
     expect(result).toMatchObject({ method: 'FAWRY', referenceCode: '123456789' });
     expect(result.redirectUrl).toBeUndefined();
+  });
+
+  it('passes the caller-computed expiresAt through to the gateway unchanged — never recalculated here (File 12 Part 51)', async () => {
+    const { tx, paymentIntents, gateway, useCase } = setup();
+    paymentIntents.create.mockResolvedValue(intent);
+    gateway.initiateFawryPayment.mockResolvedValue({ gatewayReference: 'attempt-x', referenceCode: '123456789' });
+
+    await useCase.execute(tx, { ...baseInput, method: 'FAWRY' });
+
+    expect(gateway.initiateFawryPayment).toHaveBeenCalledWith(expect.objectContaining({ expiresAt }));
   });
 
   it('rejects mobile wallet without walletProvider/walletMobileNumber', async () => {

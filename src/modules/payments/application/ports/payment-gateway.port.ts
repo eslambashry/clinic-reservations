@@ -36,6 +36,21 @@ export interface InitiatePaymentInput {
   amount: string;
   currency: string;
   customer: PaymentCustomerInfo;
+  /**
+   * File 12 Part 51: the SAME deadline the caller is using internally
+   * (`AppointmentHold.expires_at` for an appointment payment, or the
+   * top-up's own window) — computed once by the caller and reused here,
+   * never recalculated independently. Passed through to the gateway on a
+   * best-effort basis: Paymob's officially documented `expiration` field
+   * (seconds, confirmed on the modern Intention API) is NOT confirmed by
+   * current official documentation to bound a Fawry/mobile-wallet
+   * reference's validity on the legacy Accept flow this adapter uses (see
+   * `PaymobPaymentGatewayAdapter`'s doc comment) — so this can only ever be
+   * an additional, unverified layer. The internal hold-expiry ->
+   * cancel-intent -> late-payment-refund mechanism remains the sole
+   * guaranteed source of truth regardless of what this achieves upstream.
+   */
+  expiresAt: Date;
 }
 
 export interface InitiateMobileWalletPaymentInput extends InitiatePaymentInput {
