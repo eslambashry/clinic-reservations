@@ -25,13 +25,15 @@ import { CreateMyClinicBranchDto } from './dto/create-my-clinic-branch.dto';
  * against the JWT-derived scope inside the use-case, never trusted.
  *
  * `@Roles(DOCTOR)` at class level blocks CLINIC_STAFF and Admin from reaching
- * this doctor-owned management surface; Admin retains the separate legal and
- * verification endpoints under `/clinic-branches`. `list` is the one
- * exception (method-level override below): CLINIC_STAFF (the assistant) can
- * read the branch list too, since it's the shared branch-picker data behind
- * both the walk-in booking sheet and the appointments screen's branch
- * filter — same read-only precedent as `GET /v1/doctors/me` and
- * `GET /v1/doctors/me/schedule-templates`.
+ * this doctor-owned management surface by default; Admin retains the
+ * separate legal and verification endpoints under `/clinic-branches`.
+ * Two method-level overrides let CLINIC_STAFF (the assistant) through:
+ * `list` (read-only branch-picker data, same precedent as `GET /v1/doctors/me`
+ * and `GET /v1/doctors/me/schedule-templates`) and `updateBranch`
+ * (operational fields only — an assistant can edit a branch's phone/address/
+ * timezone, scoped down to only the branches they're assigned to via
+ * `ResolveDoctorScopeUseCase`, but cannot create, delete, or pause/resume a
+ * branch — those stay doctor-only, ownership-level actions).
  */
 @ApiTags('doctor-clinics')
 @ApiBearerAuth()
@@ -63,8 +65,8 @@ export class DoctorClinicsController {
   }
 
   @Patch('branches/:branchId')
-  @Roles(RoleContextType.DOCTOR)
-  @ApiOperation({ summary: 'Update operational branch data (phone, timezone, street/city) for a branch the caller is affiliated with' })
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @ApiOperation({ summary: "Update operational branch data (phone, timezone, street/city) for a branch the caller is affiliated with (or, for CLINIC_STAFF, assigned to) — ownership/assignment re-checked against DoctorScope inside the use-case" })
   updateBranch(
     @Param('branchId', ParseUUIDPipe) branchId: string,
     @Body() dto: UpdateMyClinicBranchDto,

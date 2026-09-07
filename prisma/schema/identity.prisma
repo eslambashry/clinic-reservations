@@ -93,6 +93,11 @@ model RoleMembership {
   context_type RoleContextType
   context_id   String?              @db.Uuid
   status       RoleMembershipStatus @default(ACTIVE)
+  /// CLINIC_STAFF-only: how this assistant is described to the doctor they
+  /// work for (e.g. "Front desk"). Not shown to patients; distinct from
+  /// `User.first_name`, which is the assistant's own display name.
+  title        String?              @db.VarChar(200)
+  subtitle     String?              @db.VarChar(200)
   created_at   DateTime             @default(now()) @db.Timestamptz(6)
   updated_at   DateTime             @updatedAt @db.Timestamptz(6)
   version      Int                  @default(1)
@@ -100,6 +105,7 @@ model RoleMembership {
   user         User                 @relation(fields: [user_id], references: [id], onDelete: Cascade)
   pharmacy_staff_assignment PharmacyStaffAssignment?
   lab_staff_assignment      LabStaffAssignment?
+  clinic_staff_assignments  ClinicStaffAssignment[]
 
   /// DB-enforced guard against duplicate/racy staff provisioning (File 12
   /// Part 05's concurrency-critical-path convention, same rationale as the

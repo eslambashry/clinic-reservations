@@ -5,6 +5,7 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AffiliationRepository, AffiliationWithBranch } from '../infrastructure/affiliation.repository';
+import { ClinicStaffAssignmentRepository } from '../infrastructure/clinic-staff-assignment.repository';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 
 /**
@@ -84,14 +85,15 @@ export class ResolveDoctorScopeUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
     @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
+    @Inject(ClinicStaffAssignmentRepository) private readonly staffAssignments: ClinicStaffAssignmentRepository,
     @Optional() @Inject(GetActiveRoleMembershipUseCase) private readonly memberships?: GetActiveRoleMembershipUseCase,
   ) {}
 
   async execute(actor: AccessTokenPayload): Promise<DoctorScope> {
-    const ownerDoctorId =
-      actor.contextType === 'CLINIC_STAFF'
-        ? (await this.memberships?.executeByRoleMembershipId(actor.roleMembershipId, 'CLINIC_STAFF'))?.contextId
-        : null;
+    const isClinicStaff = actor.contextType === 'CLINIC_STAFF';
+    const ownerDoctorId = isClinicStaff
+      ? (await this.memberships?.executeByRoleMembershipId(actor.roleMembershipId, 'CLINIC_STAFF'))?.contextId
+      : null;
     const doctor = ownerDoctorId
       ? await this.doctors.findById(this.prisma, ownerDoctorId)
       : await this.doctors.findByUserId(this.prisma, actor.sub);
@@ -103,7 +105,17 @@ export class ResolveDoctorScopeUseCase {
     // doctor and must stay readable/manageable (pausing is how a doctor
     // steps back from a branch; it is not a loss of ownership).
     const rows = await this.affiliations.findByDoctorId(this.prisma, doctor.id, false);
-    const affiliations = rows.map(toAffiliationScope);
+    let affiliations = rows.map(toAffiliationScope);
+
+    // An assistant (CLINIC_STAFF) is scoped down to only the branches they
+    // were assigned via `ClinicStaffAssignment` — not the doctor's full set.
+    // The doctor caller themself is unaffected (isClinicStaff is false).
+    if (isClinicStaff) {
+      const assignedBranchIds = new Set(
+        await this.staffAssignments.findClinicBranchIdsByRoleMembership(this.prisma, actor.roleMembershipId),
+      );
+      affiliations = affiliations.filter((affiliation) => assignedBranchIds.has(affiliation.clinicBranchId));
+    }
 
     return {
       doctorId: doctor.id,

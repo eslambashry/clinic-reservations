@@ -5,6 +5,7 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AssistantResponse, toAssistantResponse } from '../domain/assistant-response.util';
+import { ClinicStaffAssignmentRepository } from '../infrastructure/clinic-staff-assignment.repository';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 
 const ASSISTANT_ROLE_CODE = 'CLINIC_STAFF';
@@ -16,6 +17,7 @@ export class ListAssistantsUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
     @Inject(ListStaffByContextUseCase) private readonly listStaff: ListStaffByContextUseCase,
+    @Inject(ClinicStaffAssignmentRepository) private readonly staffAssignments: ClinicStaffAssignmentRepository,
   ) {}
 
   async execute(actor: AccessTokenPayload): Promise<AssistantResponse[]> {
@@ -30,6 +32,13 @@ export class ListAssistantsUseCase {
       contextId: doctor.id,
     });
 
-    return staff.map(toAssistantResponse);
+    const branchIdsByMembership = await this.staffAssignments.findClinicBranchIdsByRoleMembershipIds(
+      this.prisma,
+      staff.map((s) => s.roleMembershipId),
+    );
+
+    return staff.map((s) =>
+      toAssistantResponse({ ...s, clinicBranchIds: branchIdsByMembership.get(s.roleMembershipId) ?? [] }),
+    );
   }
 }

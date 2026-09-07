@@ -14,6 +14,10 @@ export interface StaffMember {
   userId: string;
   phone: string;
   displayName: string | null;
+  title: string | null;
+  subtitle: string | null;
+  /** Populated by the provider-directory caller (`ListAssistantsUseCase`) via `ClinicStaffAssignmentRepository` — this generic identity-auth use-case has no visibility into that provider-directory-owned table. */
+  clinicBranchIds: string[];
   status: UserStatus;
   createdAt: Date;
 }
@@ -38,6 +42,9 @@ export class ListStaffByContextUseCase {
       userId: m.user_id,
       phone: m.user.phone,
       displayName: m.user.first_name,
+      title: m.title,
+      subtitle: m.subtitle,
+      clinicBranchIds: [],
       status: m.user.status,
       createdAt: m.created_at,
     }));

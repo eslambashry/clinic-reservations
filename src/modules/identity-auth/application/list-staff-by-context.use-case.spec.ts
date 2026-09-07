@@ -16,6 +16,8 @@ describe('ListStaffByContextUseCase', () => {
         id: 'membership-1',
         user_id: 'user-1',
         created_at: createdAt,
+        title: 'Front desk',
+        subtitle: 'Reception & check-in',
         user: { phone: '+201001234567', first_name: 'Sara Ahmed', status: 'ACTIVE' },
       },
     ]);
@@ -33,6 +35,9 @@ describe('ListStaffByContextUseCase', () => {
         userId: 'user-1',
         phone: '+201001234567',
         displayName: 'Sara Ahmed',
+        title: 'Front desk',
+        subtitle: 'Reception & check-in',
+        clinicBranchIds: [],
         status: 'ACTIVE',
         createdAt,
       },

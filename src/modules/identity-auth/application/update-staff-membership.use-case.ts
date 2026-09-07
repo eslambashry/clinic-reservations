@@ -18,6 +18,8 @@ export interface UpdateStaffMembershipInput {
   displayName?: string;
   status?: UserStatus;
   password?: string;
+  title?: string;
+  subtitle?: string;
 }
 
 /**
@@ -59,11 +61,21 @@ export class UpdateStaffMembershipUseCase {
       user = await this.users.setPassword(tx, user.id, passwordHash);
     }
 
+    if (input.title !== undefined || input.subtitle !== undefined) {
+      await this.roleMemberships.setTitleSubtitle(tx, membership.id, {
+        title: input.title ?? membership.title ?? undefined,
+        subtitle: input.subtitle ?? membership.subtitle ?? undefined,
+      });
+    }
+
     return {
       roleMembershipId: membership.id,
       userId: user.id,
       phone: user.phone,
       displayName: user.first_name,
+      title: input.title ?? membership.title,
+      subtitle: input.subtitle ?? membership.subtitle,
+      clinicBranchIds: [],
       status: user.status,
       createdAt: membership.created_at,
       generatedPassword: input.password,

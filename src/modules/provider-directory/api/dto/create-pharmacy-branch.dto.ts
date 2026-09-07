@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsOptional, Matches, ValidateNested } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches, ValidateNested } from 'class-validator';
 import { AddressDto } from './address.dto';
 
 const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;

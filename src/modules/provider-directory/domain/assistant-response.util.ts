@@ -11,6 +11,9 @@ export interface AssistantResponse {
   id: string;
   phone: string;
   display_name: string;
+  title: string | null;
+  subtitle: string | null;
+  clinic_branch_ids: string[];
   status: 'ACTIVE' | 'SUSPENDED';
   created_at: string;
   generated_password?: string;
@@ -25,6 +28,9 @@ export function toAssistantResponse(staff: StaffMember): AssistantResponse {
     id: staff.roleMembershipId,
     phone: staff.phone,
     display_name: staff.displayName ?? '',
+    title: staff.title,
+    subtitle: staff.subtitle,
+    clinic_branch_ids: staff.clinicBranchIds,
     status: staff.status,
     created_at: staff.createdAt.toISOString(),
   };
@@ -39,6 +45,9 @@ export function toProvisionedAssistantResponse(result: ProvisionStaffUserResult)
     id: result.roleMembershipId,
     phone: result.phone,
     display_name: result.displayName,
+    title: result.title ?? null,
+    subtitle: result.subtitle ?? null,
+    clinic_branch_ids: result.clinicBranchIds ?? [],
     status: result.status,
     created_at: result.createdAt.toISOString(),
     generated_password: result.generatedPassword,

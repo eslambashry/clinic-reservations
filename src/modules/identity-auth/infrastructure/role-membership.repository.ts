@@ -30,7 +30,14 @@ export class RoleMembershipRepository {
 
   create(
     db: Prisma.TransactionClient,
-    params: { userId: string; roleCode: string; contextType: RoleContextType; contextId?: string },
+    params: {
+      userId: string;
+      roleCode: string;
+      contextType: RoleContextType;
+      contextId?: string;
+      title?: string;
+      subtitle?: string;
+    },
   ): Promise<RoleMembership> {
     return db.roleMembership.create({
       data: {
@@ -38,7 +45,20 @@ export class RoleMembershipRepository {
         role_code: params.roleCode,
         context_type: params.contextType,
         context_id: params.contextId,
+        title: params.title,
+        subtitle: params.subtitle,
       },
+    });
+  }
+
+  async setTitleSubtitle(
+    db: Prisma.TransactionClient,
+    id: string,
+    params: { title?: string; subtitle?: string },
+  ): Promise<void> {
+    await db.roleMembership.update({
+      where: { id },
+      data: { title: params.title, subtitle: params.subtitle },
     });
   }
 

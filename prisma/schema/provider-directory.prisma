@@ -95,6 +95,7 @@ model ClinicBranch {
   address       Address                   @relation(fields: [address_id], references: [id])
   clinic        Clinic                    @relation(fields: [clinic_id], references: [id], onDelete: Cascade)
   affiliations  DoctorClinicAffiliation[]
+  staff_assignments ClinicStaffAssignment[]
 
   @@map("clinic_branches")
 }
@@ -183,6 +184,27 @@ model PharmacyStaffAssignment {
 
   @@unique([user_id, pharmacy_branch_id])
   @@map("pharmacy_staff_assignments")
+}
+
+/// Real FK-backed "which of the doctor's branches does this assistant work
+/// at" record for `CLINIC_STAFF`. Unlike `PharmacyStaffAssignment` (one
+/// branch per staff member), an assistant can be assigned to several of the
+/// doctor's branches at once, so this is many rows per `RoleMembership`
+/// instead of a 1:1. `role_membership_id` is not unique here for that
+/// reason; status/active-or-revoked is still read solely from the owning
+/// `RoleMembership.status`, this table only records which branches.
+model ClinicStaffAssignment {
+  id                  String         @id @default(uuid()) @db.Uuid
+  role_membership_id  String         @db.Uuid
+  clinic_branch_id    String         @db.Uuid
+  created_at          DateTime       @default(now()) @db.Timestamptz(6)
+  role_membership     RoleMembership @relation(fields: [role_membership_id], references: [id], onDelete: Cascade)
+  clinic_branch       ClinicBranch   @relation(fields: [clinic_branch_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_membership_id, clinic_branch_id])
+  @@index([role_membership_id])
+  @@index([clinic_branch_id])
+  @@map("clinic_staff_assignments")
 }
 
 model ProviderVerificationDocument {

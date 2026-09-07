@@ -22,6 +22,10 @@ export interface ProvisionStaffUserResult {
   status: UserStatus;
   createdAt: Date;
   generatedPassword: string;
+  /** Set by the caller after provisioning (e.g. `CreateAssistantUseCase`) — not written by this generic primitive. */
+  title?: string;
+  subtitle?: string;
+  clinicBranchIds?: string[];
 }
 
 /**

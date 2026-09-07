@@ -36,28 +36,30 @@ export class DoctorScheduleTemplatesController {
     @Inject(ManageMyScheduleTemplatesUseCase) private readonly manageMyTemplates: ManageMyScheduleTemplatesUseCase,
   ) {}
 
-  // CLINIC_STAFF (the clinic assistant) can view the templates the doctor's
-  // own home/schedule screen is built from — same read-only precedent
-  // `doctor-appointments.controller.ts` already sets for that role — but
-  // create/update/delete stay DOCTOR-only below; an assistant has no
-  // business editing the doctor's own availability.
+  // CLINIC_STAFF (the clinic assistant) can view AND manage the templates
+  // for branches they're assigned to — `ManageMyScheduleTemplatesUseCase`
+  // resolves ownership via `ResolveDoctorScopeUseCase`, which already
+  // intersects a CLINIC_STAFF caller's scope down to their
+  // `ClinicStaffAssignment`-assigned branches, so an assistant touching a
+  // template on a branch they aren't assigned to still 404s exactly as a
+  // doctor touching another doctor's affiliation would.
   @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get()
-  @ApiOperation({ summary: "The calling doctor's own weekly availability templates across every affiliation they own (or, for CLINIC_STAFF, the doctor they're provisioned under)" })
+  @ApiOperation({ summary: "The calling doctor's own weekly availability templates across every affiliation they own (or, for CLINIC_STAFF, only the branches they're assigned to)" })
   list(@Query() query: ListMyScheduleTemplatesQueryDto, @CurrentUser() user: AccessTokenPayload): Promise<ListMyScheduleTemplatesResult> {
     return this.listMyTemplates.execute(query, user);
   }
 
-  @Roles(RoleContextType.DOCTOR)
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Post()
-  @ApiOperation({ summary: 'Create a weekday availability window on one of the caller’s own affiliations' })
+  @ApiOperation({ summary: "Create a weekday availability window on one of the caller's own affiliations (or, for CLINIC_STAFF, an assigned branch)" })
   create(@Body() dto: CreateMyScheduleTemplateDto, @CurrentUser() user: AccessTokenPayload): Promise<MyScheduleTemplate> {
     return this.manageMyTemplates.create(dto, user);
   }
 
-  @Roles(RoleContextType.DOCTOR)
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Patch(':scheduleTemplateId')
-  @ApiOperation({ summary: 'Update one of the caller’s own templates — affects future slot generation only, never existing slots' })
+  @ApiOperation({ summary: "Update one of the caller's own templates (or, for CLINIC_STAFF, an assigned branch's) — affects future slot generation only, never existing slots" })
   update(
     @Param('scheduleTemplateId', ParseUUIDPipe) scheduleTemplateId: string,
     @Body() dto: UpdateMyScheduleTemplateDto,
@@ -66,7 +68,7 @@ export class DoctorScheduleTemplatesController {
     return this.manageMyTemplates.update(scheduleTemplateId, dto, user);
   }
 
-  @Roles(RoleContextType.DOCTOR)
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Delete(':scheduleTemplateId')
   @HttpCode(204)
   @ApiOperation({ summary: 'Stop future generation from this template — already-generated slots and their appointments are untouched' })

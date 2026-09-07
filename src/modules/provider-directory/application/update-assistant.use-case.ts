@@ -7,6 +7,8 @@ import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { UpdateAssistantDto } from '../api/dto/update-assistant.dto';
 import { AssistantResponse, toAssistantResponse, withGeneratedPassword } from '../domain/assistant-response.util';
+import { AffiliationRepository } from '../infrastructure/affiliation.repository';
+import { ClinicStaffAssignmentRepository } from '../infrastructure/clinic-staff-assignment.repository';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 
 const ASSISTANT_ROLE_CODE = 'CLINIC_STAFF';
@@ -22,6 +24,8 @@ export class UpdateAssistantUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
+    @Inject(AffiliationRepository) private readonly affiliations: AffiliationRepository,
+    @Inject(ClinicStaffAssignmentRepository) private readonly staffAssignments: ClinicStaffAssignmentRepository,
     @Inject(UpdateStaffMembershipUseCase) private readonly updateStaffMembership: UpdateStaffMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
@@ -33,6 +37,17 @@ export class UpdateAssistantUseCase {
         throw new NotFoundError('Doctor', actor.sub);
       }
 
+      if (dto.clinic_branch_ids !== undefined) {
+        const ownedBranchIds = new Set(
+          (await this.affiliations.findByDoctorId(tx, doctor.id, false)).map((a) => a.clinic_branch_id),
+        );
+        for (const branchId of dto.clinic_branch_ids) {
+          if (!ownedBranchIds.has(branchId)) {
+            throw new NotFoundError('ClinicBranch', branchId);
+          }
+        }
+      }
+
       const staff = await this.updateStaffMembership.execute(tx, {
         roleMembershipId: assistantId,
         roleCode: ASSISTANT_ROLE_CODE,
@@ -41,7 +56,19 @@ export class UpdateAssistantUseCase {
         displayName: dto.display_name,
         status: dto.status,
         password: dto.password,
+        title: dto.title,
+        subtitle: dto.subtitle,
       });
+
+      if (dto.clinic_branch_ids !== undefined) {
+        await this.staffAssignments.replaceForRoleMembership(tx, staff.roleMembershipId, dto.clinic_branch_ids);
+        staff.clinicBranchIds = dto.clinic_branch_ids;
+      } else {
+        staff.clinicBranchIds = await this.staffAssignments.findClinicBranchIdsByRoleMembership(
+          tx,
+          staff.roleMembershipId,
+        );
+      }
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,

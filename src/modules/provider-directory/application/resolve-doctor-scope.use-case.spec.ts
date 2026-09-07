@@ -26,9 +26,10 @@ describe('ResolveDoctorScopeUseCase', () => {
     const prisma = {} as any;
     const doctors = { findByUserId: jest.fn(), findById: jest.fn() };
     const affiliations = { findByDoctorId: jest.fn() };
+    const staffAssignments = { findClinicBranchIdsByRoleMembership: jest.fn().mockResolvedValue(['branch-1']) };
     const memberships = { executeByRoleMembershipId: jest.fn() };
-    const useCase = new ResolveDoctorScopeUseCase(prisma, doctors as any, affiliations as any, memberships as any);
-    return { doctors, affiliations, memberships, useCase };
+    const useCase = new ResolveDoctorScopeUseCase(prisma, doctors as any, affiliations as any, staffAssignments as any, memberships as any);
+    return { doctors, affiliations, staffAssignments, memberships, useCase };
   }
 
   it('404s when the caller has no doctor row', async () => {
@@ -88,12 +89,13 @@ describe('ResolveDoctorScopeUseCase', () => {
     expect(scope).toMatchObject({ doctorId: 'doctor-1', affiliationIds: [], clinicBranchIds: [] });
   });
 
-  it('resolves a clinic assistant through the provisioning doctor membership', async () => {
-    const { doctors, affiliations, memberships, useCase } = setup();
+  it('resolves a clinic assistant through the provisioning doctor membership, scoped to their assigned branch', async () => {
+    const { doctors, affiliations, staffAssignments, memberships, useCase } = setup();
     const assistant = { ...actor, contextType: 'CLINIC_STAFF', roleCode: 'CLINIC_STAFF' };
     memberships.executeByRoleMembershipId.mockResolvedValue({ roleMembershipId: 'membership-1', contextId: 'doctor-1' });
     doctors.findById.mockResolvedValue({ id: 'doctor-1', deleted_at: null });
     affiliations.findByDoctorId.mockResolvedValue([affiliationRow()]);
+    staffAssignments.findClinicBranchIdsByRoleMembership.mockResolvedValue(['branch-1']);
 
     const scope = await useCase.execute(assistant);
 
@@ -101,5 +103,33 @@ describe('ResolveDoctorScopeUseCase', () => {
     expect(doctors.findById).toHaveBeenCalledWith(expect.anything(), 'doctor-1');
     expect(doctors.findByUserId).not.toHaveBeenCalled();
     expect(scope.affiliationIds).toEqual(['aff-1']);
+  });
+
+  it("scopes an assistant down to only their assigned branches, excluding the doctor's other branches", async () => {
+    const { doctors, affiliations, staffAssignments, memberships, useCase } = setup();
+    const assistant = { ...actor, contextType: 'CLINIC_STAFF', roleCode: 'CLINIC_STAFF' };
+    memberships.executeByRoleMembershipId.mockResolvedValue({ roleMembershipId: 'membership-1', contextId: 'doctor-1' });
+    doctors.findById.mockResolvedValue({ id: 'doctor-1', deleted_at: null });
+    affiliations.findByDoctorId.mockResolvedValue([
+      affiliationRow(),
+      affiliationRow({ id: 'aff-2', clinic_branch: { ...affiliationRow().clinic_branch, id: 'branch-2' } }),
+    ]);
+    // Assistant is only assigned to branch-1, not branch-2.
+    staffAssignments.findClinicBranchIdsByRoleMembership.mockResolvedValue(['branch-1']);
+
+    const scope = await useCase.execute(assistant);
+
+    expect(scope.clinicBranchIds).toEqual(['branch-1']);
+    expect(scope.affiliationIds).toEqual(['aff-1']);
+  });
+
+  it('a doctor caller (not CLINIC_STAFF) is never scoped down by staff assignments', async () => {
+    const { doctors, affiliations, staffAssignments, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', deleted_at: null });
+    affiliations.findByDoctorId.mockResolvedValue([affiliationRow()]);
+
+    await useCase.execute(actor);
+
+    expect(staffAssignments.findClinicBranchIdsByRoleMembership).not.toHaveBeenCalled();
   });
 });

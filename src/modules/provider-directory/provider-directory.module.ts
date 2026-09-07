@@ -64,6 +64,7 @@ import { VerifyPharmacyBranchUseCase } from './application/verify-pharmacy-branc
 import { VerifyPharmacyUseCase } from './application/verify-pharmacy.use-case';
 import { AddressRepository } from './infrastructure/address.repository';
 import { AffiliationRepository } from './infrastructure/affiliation.repository';
+import { ClinicStaffAssignmentRepository } from './infrastructure/clinic-staff-assignment.repository';
 import { ClinicRepository } from './infrastructure/clinic.repository';
 import { ClinicBranchRepository } from './infrastructure/clinic-branch.repository';
 import { DoctorRepository } from './infrastructure/doctor.repository';
@@ -121,6 +122,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     PharmacyRepository,
     PharmacyBranchRepository,
     AffiliationRepository,
+    ClinicStaffAssignmentRepository,
     VerificationDocumentRepository,
     DoctorSearchRepository,
     PharmacyBranchSearchRepository,
