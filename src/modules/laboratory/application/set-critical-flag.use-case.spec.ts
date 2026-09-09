@@ -7,18 +7,19 @@ function setup() {
   const labResults = { findById: jest.fn(), setCriticalCall: jest.fn() };
   const getActiveRoleMembership = { execute: jest.fn() };
   const audit = { record: jest.fn() };
-  const useCase = new SetCriticalFlagUseCase(prisma as any, labOrders as any, labResults as any, getActiveRoleMembership as any, audit as any);
-  return { tx, labOrders, labResults, getActiveRoleMembership, audit, useCase };
+  const outbox = { emit: jest.fn() };
+  const useCase = new SetCriticalFlagUseCase(prisma as any, labOrders as any, labResults as any, getActiveRoleMembership as any, audit as any, outbox as any);
+  return { tx, labOrders, labResults, getActiveRoleMembership, audit, outbox, useCase };
 }
 
 describe('SetCriticalFlagUseCase', () => {
   const actor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'LAB_STAFF', contextType: 'LAB_STAFF', permissions: [] } as any;
   const membership = { roleMembershipId: 'm-2', contextId: 'branch-1' };
-  const order = { id: 'order-1', status: 'RESULTS_READY', lab_branch_id: 'branch-1' };
+  const order = { id: 'order-1', status: 'RESULTS_READY', lab_branch_id: 'branch-1', patient_id: 'patient-1' };
   const result = { id: 'res-1', lab_order_id: 'order-1', version: 1, review_state: 'UNREVIEWED', file_label: 'cbc.pdf' };
 
-  it('makes the critical call and audits CRITICAL_FLAGGED when true', async () => {
-    const { tx, getActiveRoleMembership, labOrders, labResults, audit, useCase } = setup();
+  it('makes the critical call, audits CRITICAL_FLAGGED, and emits CriticalLabResult when true', async () => {
+    const { tx, getActiveRoleMembership, labOrders, labResults, audit, outbox, useCase } = setup();
     getActiveRoleMembership.execute.mockResolvedValue(membership);
     labOrders.findById.mockResolvedValue(order);
     labResults.findById.mockResolvedValue(result);
@@ -27,10 +28,11 @@ describe('SetCriticalFlagUseCase', () => {
 
     expect(labResults.setCriticalCall).toHaveBeenCalledWith(tx, 'res-1', 1, true);
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'laboratory.lab-order.critical-flagged', reasonCode: 'cbc.pdf' }));
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'CriticalLabResult', { labOrderId: 'order-1', patientId: 'patient-1', resultId: 'res-1' });
   });
 
-  it('makes the non-critical call without auditing an event (never critical-and-unreviewed at once)', async () => {
-    const { getActiveRoleMembership, labOrders, labResults, audit, useCase } = setup();
+  it('makes the non-critical call without auditing or emitting an event (never critical-and-unreviewed at once)', async () => {
+    const { getActiveRoleMembership, labOrders, labResults, audit, outbox, useCase } = setup();
     getActiveRoleMembership.execute.mockResolvedValue(membership);
     labOrders.findById.mockResolvedValue(order);
     labResults.findById.mockResolvedValue(result);
@@ -38,6 +40,7 @@ describe('SetCriticalFlagUseCase', () => {
     await useCase.execute('order-1', 'res-1', { isCritical: false }, actor);
 
     expect(audit.record).not.toHaveBeenCalled();
+    expect(outbox.emit).not.toHaveBeenCalled();
   });
 
   it('409s a second call against an already-reviewed result', async () => {

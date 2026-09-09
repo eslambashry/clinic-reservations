@@ -108,6 +108,10 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   INSUFFICIENT_WALLET_BALANCE: 'رصيد المحفظة غير كافٍ لإتمام هذه العملية.',
   INVALID_AMOUNT: 'قيمة الشحن يجب أن تكون أكبر من صفر.',
 
+  // ── Notifications ───────────────────────────────────────────────────────
+  SAFETY_CRITICAL_NOTIFICATION_NOT_DISABLEABLE: 'لا يمكن تعطيل الإشعارات الحرِجة المتعلقة بسلامتك.',
+  PUSH_PROVIDER_NOT_CONFIGURED: 'خدمة الإشعارات غير مُهيّأة حاليًا.',
+
   // ── Prescriptions ───────────────────────────────────────────────────────
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',
   CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED:
@@ -177,6 +181,7 @@ export const AR_RESOURCE_NAMES: Readonly<Record<string, string>> = {
   LabOrder: 'طلب التحاليل',
   LabOrderItem: 'التحليل المطلوب',
   LabResultDocument: 'ملف نتيجة التحليل',
+  Notification: 'الإشعار',
   PaymentIntent: 'عملية الدفع',
   Pharmacy: 'الصيدلية',
   PharmacyBranch: 'فرع الصيدلية',

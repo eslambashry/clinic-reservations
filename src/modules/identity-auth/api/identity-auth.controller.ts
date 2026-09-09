@@ -8,6 +8,7 @@ import { GetCurrentUserResult, GetCurrentUserUseCase } from '../application/get-
 import { LoginWithPasswordResult, LoginWithPasswordUseCase } from '../application/login-with-password.use-case';
 import { LogoutUseCase } from '../application/logout.use-case';
 import { RefreshTokenResult, RefreshTokenUseCase } from '../application/refresh-token.use-case';
+import { RegisterDeviceResult, RegisterDeviceUseCase } from '../application/register-device.use-case';
 import { RequestOtpResult, RequestOtpUseCase } from '../application/request-otp.use-case';
 import { ResetPasswordUseCase } from '../application/reset-password.use-case';
 import { SetPasswordUseCase } from '../application/set-password.use-case';
@@ -20,6 +21,7 @@ import { LoginWithPasswordDto } from './dto/login-with-password.dto';
 import { LoginWithPasswordQueryDto } from './dto/login-with-password-query.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RegisterDeviceDto } from './dto/register-device.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -52,6 +54,7 @@ export class IdentityAuthController {
     @Inject(VerifyResetCodeUseCase) private readonly verifyResetCode: VerifyResetCodeUseCase,
     @Inject(UpdateCurrentUserUseCase) private readonly updateCurrentUser: UpdateCurrentUserUseCase,
     @Inject(SwitchContextUseCase) private readonly switchContextUseCase: SwitchContextUseCase,
+    @Inject(RegisterDeviceUseCase) private readonly registerDeviceUseCase: RegisterDeviceUseCase,
   ) {}
 
   @Public()
@@ -82,6 +85,13 @@ export class IdentityAuthController {
   @Get('me')
   me(@CurrentUser() payload: AccessTokenPayload): Promise<GetCurrentUserResult> {
     return this.getCurrentUser.execute({ userId: payload.sub, activeRoleCode: payload.roleCode });
+  }
+
+  /** File 12 Part 53 — registers/refreshes an FCM token so `notifications` has somewhere to actually push to. */
+  @Post('devices')
+  @HttpCode(200)
+  registerDevice(@CurrentUser() payload: AccessTokenPayload, @Body() dto: RegisterDeviceDto): Promise<RegisterDeviceResult> {
+    return this.registerDeviceUseCase.execute({ userId: payload.sub, fcmToken: dto.fcmToken, platform: dto.platform, appVersion: dto.appVersion });
   }
 
   /** S-2 fix — see `SwitchContextUseCase`'s doc comment. Bearer-authenticated like `/me`, not `@Public()`. */

@@ -112,6 +112,26 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   PAYMOB_HMAC_SECRET?: string;
+
+  /**
+   * Firebase (File 12 Part 53) — all optional, same reasoning as `PAYMOB_*`:
+   * a fresh environment won't have a service account yet, and the process
+   * must still boot. `FcmPushNotificationAdapter` fails clearly the first
+   * time a push is actually attempted without these, rather than pretending
+   * to succeed.
+   */
+  @IsString()
+  @IsOptional()
+  FIREBASE_PROJECT_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  FIREBASE_CLIENT_EMAIL?: string;
+
+  /** PEM private key from the service account JSON, with real newlines escaped as `\n` (single-line env var). */
+  @IsString()
+  @IsOptional()
+  FIREBASE_PRIVATE_KEY?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

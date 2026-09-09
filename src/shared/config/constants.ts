@@ -42,6 +42,21 @@ export const OUTBOX_CONSTANTS = {
   BATCH_SIZE: 20,
 } as const;
 
+/**
+ * File 11 Part 19: "retried by a worker on FAILED up to N attempts, then
+ * marked permanently FAILED" doesn't state N — same "engineering starting
+ * point, tune from real traffic" spirit as `OUTBOX_CONSTANTS`, not a File
+ * 10/11 citation. This is a SEPARATE retry loop from `OUTBOX_CONSTANTS`
+ * (that one retries *delivering the event to the handler*; this one retries
+ * *actually sending* an individual channel row the handler already created
+ * — File 12 Part 53).
+ */
+export const NOTIFICATION_CONSTANTS = {
+  MAX_SEND_ATTEMPTS: 5,
+  RETRY_SWEEP_BATCH_SIZE: 50,
+  DEFAULT_LIST_LIMIT: 20,
+} as const;
+
 /** File 11 Part 12 ("e.g., next 30 days") / File 12 Part 33.9. */
 export const SCHEDULING_CONSTANTS = {
   SLOT_GENERATION_WINDOW_DAYS: 30,

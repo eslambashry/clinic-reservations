@@ -113,7 +113,7 @@ export class ProcessCancellationRefundUseCase {
       }
     }
 
-    await this.outbox.emit(tx, 'RefundIssued', { paymentIntentId: intent.id, refundAmount, feeApplied });
+    await this.outbox.emit(tx, 'RefundIssued', { paymentIntentId: intent.id, payerUserId: intent.payer_user_id, refundAmount, feeApplied });
 
     return { refundAmount, feeApplied };
   }

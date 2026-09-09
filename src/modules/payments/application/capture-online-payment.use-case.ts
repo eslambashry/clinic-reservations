@@ -95,6 +95,7 @@ export class CaptureOnlinePaymentUseCase {
 
     await this.outbox.emit(tx, 'PaymentCaptured', {
       paymentIntentId: intent.id,
+      payerUserId: intent.payer_user_id,
       payableType: intent.payable_type,
       payableId: intent.payable_id,
       amount: intent.amount.toString(),

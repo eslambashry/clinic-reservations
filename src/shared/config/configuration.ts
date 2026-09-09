@@ -40,6 +40,12 @@ export interface AppConfig {
     iframeId: string | null;
     hmacSecret: string | null;
   };
+  /** File 12 Part 53: `devices.fcm_token` already commits this codebase to Firebase — optional because a fresh environment won't have a service account yet; `FcmPushNotificationAdapter` fails clearly at call time, not at boot. */
+  firebase: {
+    projectId: string | null;
+    clientEmail: string | null;
+    privateKey: string | null;
+  };
 }
 
 export default (): AppConfig => ({
@@ -75,5 +81,11 @@ export default (): AppConfig => ({
     integrationIdWallet: process.env.PAYMOB_INTEGRATION_ID_WALLET ?? null,
     iframeId: process.env.PAYMOB_IFRAME_ID ?? null,
     hmacSecret: process.env.PAYMOB_HMAC_SECRET ?? null,
+  },
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID ?? null,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
+    // `.env` files can't hold a literal multi-line PEM, so the private key is stored with escaped `\n` sequences and unescaped here — the one place this needs to happen.
+    privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
   },
 });

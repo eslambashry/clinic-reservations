@@ -72,6 +72,7 @@ export class HandleLatePaymentAfterExpiryUseCase {
 
     await this.outbox.emit(tx, 'PaymentAutoRefunded', {
       paymentIntentId: intent.id,
+      payerUserId: intent.payer_user_id,
       amount: intent.amount.toString(),
       reason: 'HOLD_EXPIRED_BEFORE_PAYMENT_CONFIRMED',
       requiresManualFollowUp: !gatewayRefundReference,

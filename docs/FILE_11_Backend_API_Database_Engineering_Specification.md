@@ -587,7 +587,7 @@ REF File 10 Part 6 for the full option evaluation and state machine (unchanged).
 | `PrescriptionUploaded` (confirmation to patient) | INFORMATIONAL | Push |
 | `PrescriptionAccepted`/`Rejected` | TRANSACTIONAL | Push |
 | `SubstitutionProposed` | TRANSACTIONAL | Push |
-| `PaymentSucceeded` | TRANSACTIONAL | Push |
+| `PaymentCaptured` (2026-09 correction — was documented as `PaymentSucceeded`; the code's actual emitted name matches `PaymentIntentStatus.CAPTURED`, File 11 Part 09's own terminology reconciliation) | TRANSACTIONAL | Push |
 | `PaymentFailed` | TRANSACTIONAL | Push |
 | `LabResultReady` | INFORMATIONAL (SAFETY_CRITICAL if flagged critical) | **FUTURE** (Phase 3) |
 | `CriticalLabResult` | SAFETY_CRITICAL, bypasses quiet hours | **FUTURE** (Phase 3) |

@@ -104,6 +104,7 @@ export class CapturePayAtClinicPaymentUseCase {
 
     await this.outbox.emit(tx, 'PaymentCaptured', {
       paymentIntentId: intent.id,
+      payerUserId: input.payerUserId,
       payableType: input.payableType,
       payableId: input.payableId,
       amount: input.amount,
