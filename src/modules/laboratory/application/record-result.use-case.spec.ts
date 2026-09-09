@@ -9,6 +9,7 @@ function setup() {
   const testCatalog = { findByCodes: jest.fn().mockResolvedValue([{ code: 'CBC', display_name: 'صورة دم كاملة' }]) };
   const getActiveRoleMembership = { execute: jest.fn() };
   const audit = { record: jest.fn() };
+  const outbox = { emit: jest.fn() };
   const mediaStorage = { upload: jest.fn().mockResolvedValue({ url: 'https://ik.imagekit.io/x/lab-results/order-1/f.pdf' }), getSignedUrl: jest.fn() };
   const useCase = new RecordResultUseCase(
     prisma as any,
@@ -18,15 +19,16 @@ function setup() {
     testCatalog as any,
     getActiveRoleMembership as any,
     audit as any,
+    outbox as any,
     mediaStorage as any,
   );
-  return { tx, labOrders, labOrderItems, labResults, getActiveRoleMembership, audit, mediaStorage, useCase };
+  return { tx, labOrders, labOrderItems, labResults, getActiveRoleMembership, audit, outbox, mediaStorage, useCase };
 }
 
 describe('RecordResultUseCase', () => {
   const actor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'LAB_STAFF', contextType: 'LAB_STAFF', permissions: [] } as any;
   const membership = { roleMembershipId: 'm-2', contextId: 'branch-1' };
-  const order = { id: 'order-1', version: 1, status: 'IN_ANALYSIS', lab_branch_id: 'branch-1' };
+  const order = { id: 'order-1', version: 1, status: 'IN_ANALYSIS', lab_branch_id: 'branch-1', patient_id: 'patient-1' };
   const item = { id: 'item-1', lab_order_id: 'order-1', version: 1, catalog_code: 'CBC', result_state: 'PENDING' };
 
   it('records a result for one item and keeps the order IN_ANALYSIS while other items remain pending', async () => {
@@ -45,8 +47,8 @@ describe('RecordResultUseCase', () => {
     expect(result).toEqual({ labOrderId: 'order-1', status: 'IN_ANALYSIS' });
   });
 
-  it('flips the order to RESULTS_READY once every item is recorded', async () => {
-    const { getActiveRoleMembership, labOrders, labOrderItems, useCase } = setup();
+  it('flips the order to RESULTS_READY once every item is recorded, and emits LabResultReady', async () => {
+    const { tx, getActiveRoleMembership, labOrders, labOrderItems, outbox, useCase } = setup();
     getActiveRoleMembership.execute.mockResolvedValue(membership);
     labOrders.findById.mockResolvedValue(order);
     labOrderItems.findById.mockResolvedValue(item);
@@ -56,6 +58,19 @@ describe('RecordResultUseCase', () => {
 
     expect(labOrders.setStatus).toHaveBeenCalledWith(expect.anything(), 'order-1', 1, 'RESULTS_READY');
     expect(result.status).toBe('RESULTS_READY');
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'LabResultReady', { labOrderId: 'order-1', patientId: 'patient-1' });
+  });
+
+  it('does NOT emit LabResultReady while other items are still pending', async () => {
+    const { outbox, getActiveRoleMembership, labOrders, labOrderItems, useCase } = setup();
+    getActiveRoleMembership.execute.mockResolvedValue(membership);
+    labOrders.findById.mockResolvedValue(order);
+    labOrderItems.findById.mockResolvedValue(item);
+    labOrderItems.findByOrderId.mockResolvedValue([item, { id: 'item-2', result_state: 'PENDING' }]);
+
+    await useCase.execute('order-1', { itemId: 'item-1', fileLabel: '', sizeKb: 120, files: [] }, actor);
+
+    expect(outbox.emit).not.toHaveBeenCalled();
   });
 
   it('409s when a result was already recorded for this item', async () => {
@@ -85,8 +100,8 @@ describe('RecordResultUseCase', () => {
   });
 
   describe('freeform order (no registered LabOrderItem, File 12 Part 50)', () => {
-    it('records an order-level result with no itemId and flips IN_ANALYSIS straight to RESULTS_READY', async () => {
-      const { tx, getActiveRoleMembership, labOrders, labOrderItems, labResults, audit, useCase } = setup();
+    it('records an order-level result with no itemId, flips IN_ANALYSIS straight to RESULTS_READY, and emits LabResultReady', async () => {
+      const { tx, getActiveRoleMembership, labOrders, labOrderItems, labResults, audit, outbox, useCase } = setup();
       getActiveRoleMembership.execute.mockResolvedValue(membership);
       labOrders.findById.mockResolvedValue(order);
       labOrderItems.findByOrderId.mockResolvedValue([]);
@@ -98,11 +113,12 @@ describe('RecordResultUseCase', () => {
       expect(labOrderItems.markRecorded).not.toHaveBeenCalled();
       expect(labOrders.setStatus).toHaveBeenCalledWith(tx, 'order-1', 1, 'RESULTS_READY');
       expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'laboratory.lab-order.result-recorded' }));
+      expect(outbox.emit).toHaveBeenCalledWith(tx, 'LabResultReady', { labOrderId: 'order-1', patientId: 'patient-1' });
       expect(result).toEqual({ labOrderId: 'order-1', status: 'RESULTS_READY' });
     });
 
-    it('allows recording additional freeform results once already RESULTS_READY, without re-flipping status', async () => {
-      const { getActiveRoleMembership, labOrders, labOrderItems, useCase } = setup();
+    it('allows recording additional freeform results once already RESULTS_READY, without re-flipping status or re-emitting LabResultReady', async () => {
+      const { getActiveRoleMembership, labOrders, labOrderItems, outbox, useCase } = setup();
       getActiveRoleMembership.execute.mockResolvedValue(membership);
       labOrders.findById.mockResolvedValue({ ...order, status: 'RESULTS_READY' });
       labOrderItems.findByOrderId.mockResolvedValue([]);
@@ -110,6 +126,7 @@ describe('RecordResultUseCase', () => {
       const result = await useCase.execute('order-1', { fileLabel: 'extra-page.pdf', sizeKb: 80, files: [] }, actor);
 
       expect(labOrders.setStatus).not.toHaveBeenCalled();
+      expect(outbox.emit).not.toHaveBeenCalled();
       expect(result).toEqual({ labOrderId: 'order-1', status: 'RESULTS_READY' });
     });
 

@@ -16,8 +16,17 @@ describe('ProcessCancellationRefundUseCase', () => {
     const refunds = { create: jest.fn() };
     const ledger = { findByRelatedPaymentIntentId: jest.fn(), create: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const useCase = new ProcessCancellationRefundUseCase(paymentIntents as any, refunds as any, ledger as any, outbox as any);
-    return { tx, paymentIntents, refunds, ledger, outbox, useCase };
+    const wallets = { credit: jest.fn() };
+    const walletTransactions = { findByPaymentIntentId: jest.fn(), create: jest.fn() };
+    const useCase = new ProcessCancellationRefundUseCase(
+      paymentIntents as any,
+      refunds as any,
+      ledger as any,
+      outbox as any,
+      wallets as any,
+      walletTransactions as any,
+    );
+    return { tx, paymentIntents, refunds, ledger, outbox, wallets, walletTransactions, useCase };
   }
 
   it('404s when the payment intent does not exist', async () => {
@@ -80,5 +89,28 @@ describe('ProcessCancellationRefundUseCase', () => {
 
     expect(refunds.create).toHaveBeenCalled();
     expect(ledger.create).not.toHaveBeenCalled();
+  });
+
+  it('credits the wallet back through a new REFUND transaction when the original payment method was INTERNAL_WALLET', async () => {
+    const { tx, ledger, wallets, walletTransactions, paymentIntents, useCase } = setup();
+    paymentIntents.findById.mockResolvedValue({ ...capturedIntent, method: 'INTERNAL_WALLET' });
+    paymentIntents.markRefunded.mockResolvedValue(true);
+    ledger.findByRelatedPaymentIntentId.mockResolvedValue([]);
+    walletTransactions.findByPaymentIntentId.mockResolvedValue({ wallet_id: 'wallet-1', appointment_id: 'appt-1' });
+    wallets.credit.mockResolvedValue({ id: 'wallet-1', balance: { toFixed: () => '480.00' } });
+
+    const result = await useCase.execute(tx, { paymentIntentId: 'intent-1', feePercent: 0 });
+
+    expect(wallets.credit).toHaveBeenCalledWith(tx, 'wallet-1', '200.00');
+    expect(walletTransactions.create).toHaveBeenCalledWith(tx, {
+      walletId: 'wallet-1',
+      type: 'REFUND',
+      status: 'COMPLETED',
+      amount: '200.00',
+      resultingBalance: '480.00',
+      paymentIntentId: 'intent-1',
+      appointmentId: 'appt-1',
+    });
+    expect(result).toEqual({ refundAmount: '200.00', feeApplied: '0.00' });
   });
 });

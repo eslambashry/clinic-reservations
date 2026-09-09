@@ -3,6 +3,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabOrderRepository } from '../infrastructure/lab-order.repository';
@@ -28,6 +29,11 @@ export interface SetCriticalFlagResult {
  * the safety invariant `docs/PROPOSED_CONTRACT.md` §2 calls out explicitly.
  * A second call against an already-`REVIEWED` result 409s rather than
  * silently overwriting a prior human decision.
+ *
+ * Emits `CriticalLabResult` (File 11 Part 19: SAFETY_CRITICAL, bypasses
+ * quiet hours) when `isCritical`. File 12 Part 52 gap fix — this was one of
+ * the two Lab events File 11 already named as "FUTURE" before Lab existed;
+ * nobody wired it in when Lab was actually un-postponed (Part 47).
  */
 @Injectable()
 export class SetCriticalFlagUseCase {
@@ -37,6 +43,7 @@ export class SetCriticalFlagUseCase {
     @Inject(LabResultRepository) private readonly labResults: LabResultRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(labOrderId: string, resultId: string, input: SetCriticalFlagInput, actor: AccessTokenPayload): Promise<SetCriticalFlagResult> {
@@ -68,6 +75,12 @@ export class SetCriticalFlagUseCase {
           resourceType: 'lab_order',
           resourceId: labOrderId,
           reasonCode: input.note?.trim() || result.file_label,
+        });
+
+        await this.outbox.emit(tx, 'CriticalLabResult', {
+          labOrderId,
+          patientId: order.patient_id,
+          resultId,
         });
       }
 

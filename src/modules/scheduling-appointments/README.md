@@ -35,3 +35,22 @@ appointment) rather than returning a 5-minute hold the patient must confirm,
 because the old appointment is already `RESCHEDULED` by then and an expired
 hold would strand the patient with nothing. `payment_intent_id` carries over.
 See Part 49.9 for the full reasoning.
+
+Added 2026-09-05 (Part 50, Payments Phase 9 — online gateway + internal
+wallet, DEC-001 = Paymob): `POST /v1/appointments/{holdId}/payments`
+(`InitiateOnlineAppointmentPaymentUseCase`) initiates a `CARD`/`FAWRY`/
+`MOBILE_WALLET` payment against a hold — extends the hold to that method's
+window (15 min Fawry / 10 min mobile wallet / unchanged 5 min card) and
+returns the client-facing iframe URL / Fawry reference / wallet redirect.
+The appointment is NOT created here — only once `POST
+/v1/webhooks/payments/{provider}` (`PaymentsWebhookController` +
+`ProcessPaymentWebhookUseCase`) receives a signature-verified success
+callback does it atomically convert the hold and confirm the appointment
+(reusing the same `AppointmentHold.markConverted` race-guard `ConfirmAppointmentUseCase`
+already relies on); a webhook arriving after the hold has already expired
+triggers `payments`' capture-then-auto-refund path instead of confirming a
+stale booking. `ConfirmAppointmentUseCase` itself gained one more
+synchronous branch — `paymentMethod: 'INTERNAL_WALLET'` — alongside the
+unchanged `PAY_AT_CLINIC` one. This webhook controller is hosted here
+(not in `payments`) specifically to avoid a circular module import — see
+its own doc comment. See `payments/README.md` for the wallet/gateway side.

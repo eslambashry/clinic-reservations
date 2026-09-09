@@ -121,7 +121,7 @@ export class ReviewPrescriptionUseCase {
 
       const eventName = OUTBOX_EVENT_BY_DECISION[input.decision];
       if (eventName) {
-        await this.outbox.emit(tx, eventName, { prescriptionId, reviewId: review.id, decision: input.decision });
+        await this.outbox.emit(tx, eventName, { prescriptionId, reviewId: review.id, decision: input.decision, patientId: prescription.patient_id });
       }
 
       return { status: newStatus };

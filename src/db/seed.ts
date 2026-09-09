@@ -92,6 +92,27 @@ async function main() {
     );
   }
 
+  // File 11 Part 19: "quiet hours stored per-region in policy_configs" —
+  // 22:00-08:00 Africa/Cairo local time is an engineering starting default
+  // (File 11/12 don't state exact hours), same status as the two policies
+  // above. SAFETY_CRITICAL bypasses this window regardless (File 10 §11).
+  const existingQuietHoursPolicy = await prisma.policyConfig.findFirst({
+    where: { region_code: DEFAULT_REGION, policy_type: 'NOTIFICATION_QUIET_HOURS' },
+  });
+
+  if (!existingQuietHoursPolicy) {
+    const createdQuietHours = await prisma.policyConfig.create({
+      data: {
+        region_code: DEFAULT_REGION,
+        policy_type: 'NOTIFICATION_QUIET_HOURS',
+        value: { startHour: 22, endHour: 8 },
+      },
+    });
+    console.log(
+      `✅ Seeded policy config: ${createdQuietHours.policy_type} (${createdQuietHours.region_code}) = ${JSON.stringify(createdQuietHours.value)}`,
+    );
+  }
+
   // Seed baseline + demo-data specialties (File 10 §3.3: specialties are
   // static reference data). The original four are the load-bearing baseline
   // the test doctor below depends on; the rest exist so the doctor roster
@@ -173,65 +194,6 @@ async function main() {
     });
     console.log(`✅ Granted ADMIN role_membership to ${adminUser.phone}`);
   }
-
-  // Phase 6 (Prescriptions, File 12 Part 37): a Pharmacy Staff test user, so
-  // there's someone who can actually call the review queue/review endpoints
-  // — pharmacy-staff role_memberships are Admin-provisioned, no self-service
-  // signup exists (same pattern as the ADMIN seed above). Password-login-ready
-  // + branch-scoped (context_id), mirroring the lab-staff seed below, so the
-  // pharmacy dashboard is testable end-to-end against a real local Postgres.
-  const demoPharmacyBranchId = '00000000-0000-0000-0000-000000000111';
-  let pharmacyStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000003' } });
-  if (!pharmacyStaffUser) {
-    pharmacyStaffUser = await prisma.user.create({
-      data: {
-        phone: '+201000000003',
-        first_name: 'Youssef',
-        last_name: 'Adel',
-        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
-      },
-    });
-    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
-  } else if (!pharmacyStaffUser.password_hash) {
-    pharmacyStaffUser = await prisma.user.update({
-      where: { id: pharmacyStaffUser.id },
-      data: { password_hash: await argon2.hash(DEMO_STAFF_PASSWORD) },
-    });
-    console.log(`✅ Backfilled password for existing pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
-  }
-  let pharmacyStaffMembership = await prisma.roleMembership.findFirst({
-    where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
-  });
-  if (!pharmacyStaffMembership) {
-    pharmacyStaffMembership = await prisma.roleMembership.create({
-      data: {
-        user_id: pharmacyStaffUser.id,
-        role_code: 'PHARMACY_STAFF',
-        context_type: 'PHARMACY_STAFF',
-        context_id: demoPharmacyBranchId,
-        status: 'ACTIVE',
-      },
-    });
-    console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone} (branch ${demoPharmacyBranchId})`);
-  } else if (!pharmacyStaffMembership.context_id) {
-    pharmacyStaffMembership = await prisma.roleMembership.update({
-      where: { id: pharmacyStaffMembership.id },
-      data: { context_id: demoPharmacyBranchId },
-    });
-    console.log(`✅ Assigned branch ${demoPharmacyBranchId} to existing PHARMACY_STAFF membership for ${pharmacyStaffUser.phone}`);
-  }
-  // FK-verified mirror of the membership above (`PharmacyStaffAssignment`) —
-  // real referential integrity to `pharmacy_branches`/`users`, kept 1:1 with
-  // the role_membership via its id so there's no duplicated status.
-  await prisma.pharmacyStaffAssignment.upsert({
-    where: { role_membership_id: pharmacyStaffMembership.id },
-    update: {},
-    create: {
-      user_id: pharmacyStaffUser.id,
-      pharmacy_branch_id: demoPharmacyBranchId,
-      role_membership_id: pharmacyStaffMembership.id,
-    },
-  });
 
   // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
   // this is what makes the Phase 2 Definition of Done runnable end-to-end
@@ -413,6 +375,70 @@ async function main() {
     });
     console.log(`✅ Seeded demo pharmacy: ${p.brandName} (${p.id}), branch ${p.branchId}`);
   }
+
+  // Phase 6 (Prescriptions, File 12 Part 37): a Pharmacy Staff test user, so
+  // there's someone who can actually call the review queue/review endpoints
+  // — pharmacy-staff role_memberships are Admin-provisioned, no self-service
+  // signup exists (same pattern as the ADMIN seed above). Password-login-ready
+  // + branch-scoped (context_id), mirroring the lab-staff seed below, so the
+  // pharmacy dashboard is testable end-to-end against a real local Postgres.
+  // Moved to run after the demoPharmacies loop above (2026-09-07 fix): this
+  // block references demoPharmacyBranchId === demoPharmacies[0].branchId
+  // ('...0111'), so the pharmacy_branches row it FK's against must exist
+  // first — running before demoPharmacies caused a P2003 FK violation on
+  // pharmacy_staff_assignments_pharmacy_branch_id_fkey.
+  const demoPharmacyBranchId = '00000000-0000-0000-0000-000000000111';
+  let pharmacyStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000003' } });
+  if (!pharmacyStaffUser) {
+    pharmacyStaffUser = await prisma.user.create({
+      data: {
+        phone: '+201000000003',
+        first_name: 'Youssef',
+        last_name: 'Adel',
+        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
+      },
+    });
+    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+  } else if (!pharmacyStaffUser.password_hash) {
+    pharmacyStaffUser = await prisma.user.update({
+      where: { id: pharmacyStaffUser.id },
+      data: { password_hash: await argon2.hash(DEMO_STAFF_PASSWORD) },
+    });
+    console.log(`✅ Backfilled password for existing pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+  }
+  let pharmacyStaffMembership = await prisma.roleMembership.findFirst({
+    where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
+  });
+  if (!pharmacyStaffMembership) {
+    pharmacyStaffMembership = await prisma.roleMembership.create({
+      data: {
+        user_id: pharmacyStaffUser.id,
+        role_code: 'PHARMACY_STAFF',
+        context_type: 'PHARMACY_STAFF',
+        context_id: demoPharmacyBranchId,
+        status: 'ACTIVE',
+      },
+    });
+    console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone} (branch ${demoPharmacyBranchId})`);
+  } else if (!pharmacyStaffMembership.context_id) {
+    pharmacyStaffMembership = await prisma.roleMembership.update({
+      where: { id: pharmacyStaffMembership.id },
+      data: { context_id: demoPharmacyBranchId },
+    });
+    console.log(`✅ Assigned branch ${demoPharmacyBranchId} to existing PHARMACY_STAFF membership for ${pharmacyStaffUser.phone}`);
+  }
+  // FK-verified mirror of the membership above (`PharmacyStaffAssignment`) —
+  // real referential integrity to `pharmacy_branches`/`users`, kept 1:1 with
+  // the role_membership via its id so there's no duplicated status.
+  await prisma.pharmacyStaffAssignment.upsert({
+    where: { role_membership_id: pharmacyStaffMembership.id },
+    update: {},
+    create: {
+      user_id: pharmacyStaffUser.id,
+      pharmacy_branch_id: demoPharmacyBranchId,
+      role_membership_id: pharmacyStaffMembership.id,
+    },
+  });
 
   // Laboratory module (un-postponed 2026-09-02, File 12 Part 47/48): one demo
   // laboratory + branch, same shape as the demoPharmacies block above, so

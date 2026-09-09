@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { assertStatusIn } from '../domain/lab-order.rules';
@@ -39,6 +40,13 @@ export interface RecordResultResult {
  * prescription needing item-by-item transcription) has no items at all, so
  * the first result recorded against it flips the order straight to
  * `RESULTS_READY` — there is no per-item completeness to track.
+ *
+ * Emits `LabResultReady` (File 11 Part 19's event-tier table:
+ * INFORMATIONAL, escalated by a consumer once a result is later flagged
+ * critical — `SetCriticalFlagUseCase`) at both `IN_ANALYSIS→RESULTS_READY`
+ * transitions below. File 12 Part 52 gap fix: this module previously
+ * emitted zero events, despite File 11 already naming this one before Lab
+ * was un-postponed (Part 47) — nobody wired it in when that happened.
  */
 @Injectable()
 export class RecordResultUseCase {
@@ -50,6 +58,7 @@ export class RecordResultUseCase {
     @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
@@ -117,6 +126,7 @@ export class RecordResultUseCase {
       if (allRecorded && order.status === 'IN_ANALYSIS') {
         await this.labOrders.setStatus(tx, labOrderId, order.version, 'RESULTS_READY');
         status = 'RESULTS_READY';
+        await this.outbox.emit(tx, 'LabResultReady', { labOrderId, patientId: order.patient_id });
       }
 
       const catalog = await this.testCatalog.findByCodes(tx, [item.catalog_code]);
@@ -136,7 +146,7 @@ export class RecordResultUseCase {
   /** `order` here is a freeform order — verified below to genuinely have zero registered items, not just an omitted `itemId` on a catalog-based one. */
   private async recordFreeformResult(
     tx: Prisma.TransactionClient,
-    order: { id: string; version: number; status: string },
+    order: { id: string; version: number; status: string; patient_id: string },
     input: RecordResultInput,
     fileUrls: string[],
     actor: AccessTokenPayload,
@@ -164,6 +174,7 @@ export class RecordResultUseCase {
     if (order.status === 'IN_ANALYSIS') {
       await this.labOrders.setStatus(tx, order.id, order.version, 'RESULTS_READY');
       status = 'RESULTS_READY';
+      await this.outbox.emit(tx, 'LabResultReady', { labOrderId: order.id, patientId: order.patient_id });
     }
 
     await this.audit.record(tx, {

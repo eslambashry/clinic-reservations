@@ -5,13 +5,16 @@ import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
 import { GetActiveRoleMembershipUseCase } from './application/get-active-role-membership.use-case';
 import { GrantRoleMembershipUseCase } from './application/grant-role-membership.use-case';
 import { GetCurrentUserUseCase } from './application/get-current-user.use-case';
+import { GetUserContactInfoUseCase } from './application/get-user-contact-info.use-case';
 import { GetUserSummaryUseCase } from './application/get-user-summary.use-case';
 import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
 import { ListStaffByContextUseCase } from './application/list-staff-by-context.use-case';
+import { ListUserDeviceTokensUseCase } from './application/list-user-device-tokens.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
 import { ProvisionStaffUserUseCase } from './application/provision-staff-user.use-case';
 import { RefreshTokenUseCase } from './application/refresh-token.use-case';
+import { RegisterDeviceUseCase } from './application/register-device.use-case';
 import { RequestOtpUseCase } from './application/request-otp.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { RevokeStaffMembershipUseCase } from './application/revoke-staff-membership.use-case';
@@ -22,6 +25,7 @@ import { UpdateStaffMembershipUseCase } from './application/update-staff-members
 import { UpdateUserProfileUseCase } from './application/update-user-profile.use-case';
 import { VerifyOtpUseCase } from './application/verify-otp.use-case';
 import { VerifyResetCodeUseCase } from './application/verify-reset-code.use-case';
+import { DeviceRepository } from './infrastructure/device.repository';
 import { LoggingOtpSender } from './infrastructure/logging-otp-sender';
 import { OtpRequestRepository } from './infrastructure/otp-request.repository';
 import { PermissionRepository } from './infrastructure/permission.repository';
@@ -82,11 +86,15 @@ import { UserRepository } from './infrastructure/user.repository';
     ListStaffByContextUseCase,
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
+    RegisterDeviceUseCase,
+    ListUserDeviceTokensUseCase,
+    GetUserContactInfoUseCase,
     UserRepository,
     OtpRequestRepository,
     RoleMembershipRepository,
     RefreshTokenRepository,
     PermissionRepository,
+    DeviceRepository,
     TokenService,
     PhoneRateLimiterService,
     { provide: OTP_SENDER, useClass: LoggingOtpSender },
@@ -100,6 +108,8 @@ import { UserRepository } from './infrastructure/user.repository';
     ListStaffByContextUseCase,
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
+    ListUserDeviceTokensUseCase,
+    GetUserContactInfoUseCase,
     UserRepository,
     RoleMembershipRepository,
   ],
