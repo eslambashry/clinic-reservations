@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PayableType, PaymentIntent, Prisma } from '@prisma/client';
+import { PayableType, PaymentIntent, PaymentMethod, Prisma } from '@prisma/client';
 
 export interface NewPaymentIntent {
   payerUserId: string;
@@ -8,6 +8,8 @@ export interface NewPaymentIntent {
   amount: string;
   currency: string;
   idempotencyKey: string;
+  /** File 12 Part 50: defaults to `PAY_AT_CLINIC` — every pre-existing call site is unaffected. */
+  method?: PaymentMethod;
 }
 
 @Injectable()
@@ -21,6 +23,7 @@ export class PaymentIntentRepository {
         amount: input.amount,
         currency: input.currency,
         idempotency_key: input.idempotencyKey,
+        method: input.method ?? 'PAY_AT_CLINIC',
         status: 'CREATED',
       },
     });
@@ -35,6 +38,21 @@ export class PaymentIntentRepository {
     const result = await db.paymentIntent.updateMany({
       where: { id, version: currentVersion, status: 'CREATED' },
       data: { status: 'CAPTURED', version: { increment: 1 } },
+    });
+    return result.count === 1;
+  }
+
+  /**
+   * File 12 Part 50.5: `CREATED→CANCELLED`, used when a hold expires while
+   * an online payment against it is still unresolved — a webhook that
+   * arrives afterward finds a terminal, non-`CREATED` intent and knows not
+   * to confirm (Part 50.6's late-webhook race guard). `false` means the
+   * intent already moved on its own (captured, or already cancelled).
+   */
+  async markCancelled(db: Prisma.TransactionClient, id: string, currentVersion: number): Promise<boolean> {
+    const result = await db.paymentIntent.updateMany({
+      where: { id, version: currentVersion, status: 'CREATED' },
+      data: { status: 'CANCELLED', version: { increment: 1 } },
     });
     return result.count === 1;
   }

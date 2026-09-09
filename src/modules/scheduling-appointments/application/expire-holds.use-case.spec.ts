@@ -10,8 +10,9 @@ describe('ExpireHoldsUseCase', () => {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const holds = { findActiveExpired: jest.fn(), markExpired: jest.fn() };
     const slots = { markOpen: jest.fn() };
-    const useCase = new ExpireHoldsUseCase(prisma as any, holds as any, slots as any);
-    return { tx, holds, slots, useCase };
+    const cancelOnlinePayment = { execute: jest.fn() };
+    const useCase = new ExpireHoldsUseCase(prisma as any, holds as any, slots as any, cancelOnlinePayment as any);
+    return { tx, holds, slots, cancelOnlinePayment, useCase };
   }
 
   it('releases the slot for every hold it actually flips to EXPIRED', async () => {
@@ -52,5 +53,25 @@ describe('ExpireHoldsUseCase', () => {
 
     expect(result.expired).toBe(1);
     expect(slots.markOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels the linked online PaymentIntent for a hold that had one in flight (File 12 Part 50.5)', async () => {
+    const { tx, holds, cancelOnlinePayment, useCase } = setup();
+    holds.findActiveExpired.mockResolvedValue([{ id: 'hold-1', slot_id: 'slot-1', payment_intent_id: 'intent-1' }]);
+    holds.markExpired.mockResolvedValue(true);
+
+    await useCase.execute();
+
+    expect(cancelOnlinePayment.execute).toHaveBeenCalledWith(tx, 'intent-1');
+  });
+
+  it('does not touch payments for a plain pay-at-clinic hold with no linked PaymentIntent', async () => {
+    const { holds, cancelOnlinePayment, useCase } = setup();
+    holds.findActiveExpired.mockResolvedValue([{ id: 'hold-1', slot_id: 'slot-1', payment_intent_id: null }]);
+    holds.markExpired.mockResolvedValue(true);
+
+    await useCase.execute();
+
+    expect(cancelOnlinePayment.execute).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,7 @@ import { AppointmentsController } from './api/appointments.controller';
 import { DoctorAppointmentsController } from './api/doctor-appointments.controller';
 import { DoctorScheduleTemplatesController } from './api/doctor-schedule-templates.controller';
 import { DoctorSlotsController } from './api/doctor-slots.controller';
+import { PaymentsWebhookController } from './api/payments-webhook.controller';
 import { ScheduleTemplatesController } from './api/schedule-templates.controller';
 import { CancelAppointmentUseCase } from './application/cancel-appointment.use-case';
 import { ConfirmAppointmentUseCase } from './application/confirm-appointment.use-case';
@@ -15,8 +16,10 @@ import { GenerateSlotsUseCase } from './application/generate-slots.use-case';
 import { GetAppointmentUseCase } from './application/get-appointment.use-case';
 import { GetDoctorAppointmentUseCase } from './application/get-doctor-appointment.use-case';
 import { GetDoctorSlotsUseCase } from './application/get-doctor-slots.use-case';
+import { InitiateOnlineAppointmentPaymentUseCase } from './application/initiate-online-appointment-payment.use-case';
 import { ListDoctorAppointmentsUseCase } from './application/list-doctor-appointments.use-case';
 import { ListAppointmentsUseCase } from './application/list-appointments.use-case';
+import { ProcessPaymentWebhookUseCase } from './application/process-payment-webhook.use-case';
 import { ListMyScheduleTemplatesUseCase } from './application/list-my-schedule-templates.use-case';
 import { ListScheduleTemplatesUseCase } from './application/list-schedule-templates.use-case';
 import { ManageMyScheduleTemplatesUseCase } from './application/manage-my-schedule-templates.use-case';
@@ -50,6 +53,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     DoctorSlotsController,
     AppointmentsController,
     DoctorAppointmentsController,
+    PaymentsWebhookController,
   ],
   providers: [
     // infrastructure
@@ -79,6 +83,8 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     ListDoctorAppointmentsUseCase,
     GetDoctorAppointmentUseCase,
     ExpireHoldsUseCase,
+    InitiateOnlineAppointmentPaymentUseCase,
+    ProcessPaymentWebhookUseCase,
   ],
 })
 export class SchedulingAppointmentsModule {}

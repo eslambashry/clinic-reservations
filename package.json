@@ -19,6 +19,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx src/db/seed.ts",
     "db:seed:doctor-mahmoud": "tsx src/db/seed-doctor-mahmoud.ts",
+    "db:generate-slots": "tsx src/db/generate-slots-now.ts",
     "db:studio": "prisma studio"
   },
   "keywords": [
@@ -45,6 +46,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "0.14.1",
     "dotenv": "^16.4.5",
+    "firebase-admin": "^14.3.0",
     "ioredis": "^5.4.1",
     "ioredis-mock": "^8.13.1",
     "luxon": "^3.7.2",
@@ -73,5 +75,13 @@
     "ts-jest": "^29.2.5",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
+  },
+  "allowScripts": {
+    "@nestjs/core@10.4.22": true,
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "@scarf/scarf@1.4.0": true,
+    "esbuild@0.28.2": true,
+    "prisma@5.22.0": true
   }
 }

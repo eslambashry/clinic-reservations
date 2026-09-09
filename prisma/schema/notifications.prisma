@@ -1,10 +1,28 @@
+/// File 12 Part 53: `title`/`body` are rendered text (Arabic-only, matching
+/// the rest of this API — File 12 Part 12's error-catalog precedent), not
+/// re-derivable from `template_code` alone at read time (the event payload
+/// that fed the template isn't stored anywhere else) — File 11's own table
+/// sketch (`id, user_id, tier, channel, template_code, status, sent_at,
+/// read_at`) has no way to render the "Notifications Center" screen (File
+/// 10 Part 9's documented screen) without them, so this is a genuinely
+/// necessary additive gap-fill, not a speculative column. `data` carries
+/// whatever the client needs for deep-linking (e.g. `{"appointmentId":
+/// "..."}"`), same "shape varies by a discriminator column" precedent as
+/// `PolicyConfig.value`/`PaymentAttempt.metadata`.
 model Notification {
   id            String           @id @default(uuid()) @db.Uuid
   user_id       String           @db.Uuid
   tier          NotificationTier
   channel       String
   template_code String
+  title         String
+  body          String
+  data          Json?
   status        String
+  /// File 11 Part 19's "retried by a worker on FAILED up to N attempts,
+  /// then marked permanently FAILED" — `NotificationRetryJob`'s counter,
+  /// same shape as `OutboxEvent.attempts`.
+  attempts      Int              @default(0)
   sent_at       DateTime?        @db.Timestamptz(6)
   read_at       DateTime?        @db.Timestamptz(6)
   created_at    DateTime         @default(now()) @db.Timestamptz(6)
@@ -12,6 +30,7 @@ model Notification {
   version       Int              @default(1)
   user          User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([user_id, created_at])
   @@map("notifications")
 }
 

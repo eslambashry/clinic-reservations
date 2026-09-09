@@ -42,6 +42,7 @@ model User {
   provider_verifications_reviewed ProviderVerificationDocument[] @relation("ReviewedByAdmin")
   reviews                         Review[]
   substitutions_proposed          Substitution[]
+  wallet                          Wallet?
 
   @@map("users")
 }
