@@ -7,7 +7,14 @@ function buildTx() {
 
 describe('CancelAppointmentUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
-  const appointment = { id: 'appointment-1', slot_id: 'slot-1', patient_id: 'patient-1', status: 'CONFIRMED', version: 1 };
+  const appointment = {
+    id: 'appointment-1',
+    slot_id: 'slot-1',
+    patient_id: 'patient-1',
+    status: 'CONFIRMED',
+    version: 1,
+    doctor_clinic_affiliation_id: 'aff-1',
+  };
   const appointmentWithPayment = { ...appointment, payment_intent_id: 'intent-1' };
   const input = { reason: 'PATIENT_REQUEST' as const };
 
@@ -21,6 +28,16 @@ describe('CancelAppointmentUseCase', () => {
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
     const appointmentScope = { execute: jest.fn().mockResolvedValue({ kind: 'PATIENT', patientUserId: 'patient-1' }) };
+    const affiliationBilling = {
+      execute: jest.fn().mockResolvedValue({
+        consultFee: '200.00',
+        currency: 'EGP',
+        doctorId: 'doctor-1',
+        doctorUserId: 'doctor-user-1',
+        clinicBranchId: 'branch-1',
+      }),
+    };
+    const assistantUserIds = { execute: jest.fn().mockResolvedValue([]) };
     const useCase = new CancelAppointmentUseCase(
       prisma as any,
       appointments as any,
@@ -30,8 +47,10 @@ describe('CancelAppointmentUseCase', () => {
       audit as any,
       outbox as any,
       appointmentScope as any,
+      affiliationBilling as any,
+      assistantUserIds as any,
     );
-    return { tx, appointments, slots, policyConfig, refund, audit, outbox, appointmentScope, useCase };
+    return { tx, appointments, slots, policyConfig, refund, audit, outbox, appointmentScope, affiliationBilling, assistantUserIds, useCase };
   }
 
   it('404s when the appointment does not exist or belongs to a different patient', async () => {
@@ -72,6 +91,57 @@ describe('CancelAppointmentUseCase', () => {
       expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment.cancel', resourceId: 'appointment-1' }),
     );
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentCancelled', expect.objectContaining({ appointmentId: 'appointment-1' }));
+    expect(outbox.emit).toHaveBeenCalledWith(
+      tx,
+      'AppointmentCancelledForDoctor',
+      expect.objectContaining({ appointmentId: 'appointment-1', doctorUserId: 'doctor-user-1' }),
+    );
+  });
+
+  it('notifies every assistant assigned to the branch when the doctor is not the canceller', async () => {
+    const { appointments, outbox, assistantUserIds, useCase } = setup();
+    appointments.findById.mockResolvedValue(appointment);
+    appointments.cancel.mockResolvedValue(true);
+    assistantUserIds.execute.mockResolvedValue(['assistant-1', 'assistant-2']);
+
+    await useCase.execute('appointment-1', input, actor);
+
+    expect(assistantUserIds.execute).toHaveBeenCalledWith(expect.anything(), 'branch-1');
+    expect(outbox.emit).toHaveBeenCalledWith(
+      expect.anything(),
+      'AppointmentCancelledForAssistant',
+      expect.objectContaining({ appointmentId: 'appointment-1', assistantUserId: 'assistant-1' }),
+    );
+    expect(outbox.emit).toHaveBeenCalledWith(
+      expect.anything(),
+      'AppointmentCancelledForAssistant',
+      expect.objectContaining({ appointmentId: 'appointment-1', assistantUserId: 'assistant-2' }),
+    );
+  });
+
+  it('does not notify assistants either when the doctor themselves cancelled', async () => {
+    const { appointments, outbox, appointmentScope, assistantUserIds, useCase } = setup();
+    appointments.findById.mockResolvedValue(appointment);
+    appointments.cancel.mockResolvedValue(true);
+    appointmentScope.execute.mockResolvedValue({ kind: 'DOCTOR', doctorId: 'doctor-1', affiliationIds: ['aff-1'] });
+
+    await useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST' }, actor);
+
+    expect(assistantUserIds.execute).not.toHaveBeenCalled();
+    const assistantNotifyCalls = outbox.emit.mock.calls.filter((call: unknown[]) => call[1] === 'AppointmentCancelledForAssistant');
+    expect(assistantNotifyCalls).toHaveLength(0);
+  });
+
+  it('does not notify the doctor when the doctor themselves cancelled', async () => {
+    const { appointments, outbox, appointmentScope, useCase } = setup();
+    appointments.findById.mockResolvedValue(appointment);
+    appointments.cancel.mockResolvedValue(true);
+    appointmentScope.execute.mockResolvedValue({ kind: 'DOCTOR', doctorId: 'doctor-1', affiliationIds: ['aff-1'] });
+
+    await useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST' }, actor);
+
+    const doctorNotifyCalls = outbox.emit.mock.calls.filter((call: unknown[]) => call[1] === 'AppointmentCancelledForDoctor');
+    expect(doctorNotifyCalls).toHaveLength(0);
   });
 
   it('reads the CANCELLATION_TIER fee percent and processes a real refund when a payment_intent_id is present', async () => {

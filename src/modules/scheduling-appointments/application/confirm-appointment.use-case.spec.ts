@@ -10,7 +10,7 @@ describe('ConfirmAppointmentUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const hold = { id: 'hold-1', slot_id: 'slot-1', patient_id: 'patient-1', version: 1 };
   const slot = { id: 'slot-1', doctor_clinic_affiliation_id: 'aff-1' };
-  const billing = { consultFee: '200.00', currency: 'EGP', doctorId: 'doctor-1' };
+  const billing = { consultFee: '200.00', currency: 'EGP', doctorId: 'doctor-1', doctorUserId: 'doctor-user-1', clinicBranchId: 'branch-1' };
   const payAtClinic = { paymentMethod: 'PAY_AT_CLINIC' as const };
 
   function setup() {
@@ -24,6 +24,7 @@ describe('ConfirmAppointmentUseCase', () => {
     const walletCapture = { execute: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
+    const assistantUserIds = { execute: jest.fn().mockResolvedValue([]) };
     const useCase = new ConfirmAppointmentUseCase(
       prisma as any,
       holds as any,
@@ -34,8 +35,9 @@ describe('ConfirmAppointmentUseCase', () => {
       walletCapture as any,
       audit as any,
       outbox as any,
+      assistantUserIds as any,
     );
-    return { tx, prisma, holds, slots, appointments, affiliationBilling, paymentsCapture, walletCapture, audit, outbox, useCase };
+    return { tx, prisma, holds, slots, appointments, affiliationBilling, paymentsCapture, walletCapture, audit, outbox, assistantUserIds, useCase };
   }
 
   it('rejects ONLINE payment as not yet supported, before touching the database', async () => {
@@ -103,6 +105,58 @@ describe('ConfirmAppointmentUseCase', () => {
       expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment.confirm', resourceId: 'appointment-1' }),
     );
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentConfirmed', expect.objectContaining({ appointmentId: 'appointment-1' }));
+    expect(outbox.emit).toHaveBeenCalledWith(
+      tx,
+      'NewAppointmentBookedForDoctor',
+      expect.objectContaining({ appointmentId: 'appointment-1', doctorUserId: 'doctor-user-1' }),
+    );
+  });
+
+  it('notifies every assistant assigned to the appointment branch, scoped to that branch only', async () => {
+    const { tx, holds, slots, appointments, affiliationBilling, paymentsCapture, outbox, assistantUserIds, useCase } = setup();
+    holds.findById.mockResolvedValue(hold);
+    holds.markConverted.mockResolvedValue(undefined);
+    slots.findById.mockResolvedValue(slot);
+    slots.markBooked.mockResolvedValue(true);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    paymentsCapture.execute.mockResolvedValue({ paymentIntentId: 'intent-1', commissionAmount: '30.00', providerAmount: '170.00' });
+    appointments.create.mockResolvedValue({ id: 'appointment-1' });
+    assistantUserIds.execute.mockResolvedValue(['assistant-1', 'assistant-2']);
+
+    await useCase.execute('hold-1', payAtClinic, actor);
+
+    expect(assistantUserIds.execute).toHaveBeenCalledWith(tx, 'branch-1');
+    expect(outbox.emit).toHaveBeenCalledWith(
+      tx,
+      'NewAppointmentBookedForAssistant',
+      expect.objectContaining({ appointmentId: 'appointment-1', assistantUserId: 'assistant-1' }),
+    );
+    expect(outbox.emit).toHaveBeenCalledWith(
+      tx,
+      'NewAppointmentBookedForAssistant',
+      expect.objectContaining({ appointmentId: 'appointment-1', assistantUserId: 'assistant-2' }),
+    );
+  });
+
+  it('emits AppointmentRescheduledForDoctor instead of NewAppointmentBookedForDoctor when the hold carries rescheduledFromAppointmentId', async () => {
+    const { tx, holds, slots, appointments, affiliationBilling, paymentsCapture, outbox, useCase } = setup();
+    const rescheduleHold = { ...hold, rescheduled_from_appointment_id: 'appointment-old' };
+    holds.findById.mockResolvedValue(rescheduleHold);
+    holds.markConverted.mockResolvedValue(undefined);
+    slots.findById.mockResolvedValue(slot);
+    slots.markBooked.mockResolvedValue(true);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    paymentsCapture.execute.mockResolvedValue({ paymentIntentId: 'intent-3', commissionAmount: '30.00', providerAmount: '170.00' });
+    appointments.create.mockResolvedValue({ id: 'appointment-3' });
+
+    await useCase.execute('hold-1', payAtClinic, actor);
+
+    expect(outbox.emit).toHaveBeenCalledWith(
+      tx,
+      'AppointmentRescheduledForDoctor',
+      expect.objectContaining({ appointmentId: 'appointment-3', doctorUserId: 'doctor-user-1' }),
+    );
+    expect(outbox.emit).not.toHaveBeenCalledWith(tx, 'NewAppointmentBookedForDoctor', expect.anything());
   });
 
   it('confirms via CaptureInternalWalletPaymentUseCase (not the pay-at-clinic path) for paymentMethod=INTERNAL_WALLET', async () => {

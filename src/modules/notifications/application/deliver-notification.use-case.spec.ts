@@ -5,7 +5,14 @@ function buildTx() {
 }
 
 describe('DeliverNotificationUseCase', () => {
-  const base = { id: 'notif-1', userId: 'patient-1', title: 'title', body: 'body', data: { x: 1 } };
+  const base = {
+    id: 'notif-1',
+    userId: 'patient-1',
+    templateCode: 'AppointmentConfirmed',
+    title: 'title',
+    body: 'body',
+    data: { x: 1 },
+  };
 
   function setup() {
     const prisma = buildTx();
@@ -32,7 +39,11 @@ describe('DeliverNotificationUseCase', () => {
 
     await useCase.execute({ ...base, channel: 'PUSH' });
 
-    expect(push.send).toHaveBeenCalledWith(['token-1', 'token-2'], { title: 'title', body: 'body', data: { x: 1 } });
+    expect(push.send).toHaveBeenCalledWith(['token-1', 'token-2'], {
+      title: 'title',
+      body: 'body',
+      data: { x: 1, templateCode: 'AppointmentConfirmed' },
+    });
     expect(notifications.markSent).toHaveBeenCalledWith(prisma, 'notif-1');
     expect(notifications.markFailed).not.toHaveBeenCalled();
   });

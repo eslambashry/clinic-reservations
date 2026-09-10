@@ -34,6 +34,16 @@ describe('Doctor-initiated appointment actions', () => {
       const audit = { record: jest.fn() };
       const outbox = { emit: jest.fn() };
       const appointmentScope = { execute: jest.fn().mockResolvedValue(scope) };
+      const affiliationBilling = {
+        execute: jest.fn().mockResolvedValue({
+          consultFee: '200.00',
+          currency: 'EGP',
+          doctorId: 'doctor-1',
+          doctorUserId: 'doctor-user-1',
+          clinicBranchId: 'branch-1',
+        }),
+      };
+      const assistantUserIds = { execute: jest.fn().mockResolvedValue([]) };
       const useCase = new CancelAppointmentUseCase(
         prisma as any,
         appointments as any,
@@ -43,8 +53,10 @@ describe('Doctor-initiated appointment actions', () => {
         audit as any,
         outbox as any,
         appointmentScope as any,
+        affiliationBilling as any,
+        assistantUserIds as any,
       );
-      return { tx, appointments, slots, policyConfig, refund, audit, outbox, useCase };
+      return { tx, appointments, slots, policyConfig, refund, audit, outbox, affiliationBilling, assistantUserIds, useCase };
     }
 
     it("404s an appointment outside the doctor's own affiliations", async () => {
@@ -64,7 +76,7 @@ describe('Doctor-initiated appointment actions', () => {
     });
 
     it('releases the slot, refunds in full with no fee, audits and emits — all in one transaction', async () => {
-      const { tx, appointments, slots, policyConfig, refund, audit, outbox, useCase } = setup();
+      const { tx, appointments, slots, policyConfig, refund, audit, outbox, affiliationBilling, assistantUserIds, useCase } = setup();
 
       const result = await useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST', note: 'Doctor unavailable' }, doctorActor);
 
@@ -81,6 +93,12 @@ describe('Doctor-initiated appointment actions', () => {
         expect.objectContaining({ patientId: 'patient-1', cancelledBy: 'DOCTOR', reason: 'PROVIDER_REQUEST' }),
       );
       expect(result).toEqual({ status: 'CANCELLED', refundAmount: 250, feeApplied: 0 });
+      // The doctor is the one who cancelled — no self-notification, and no
+      // need to even look up their user id.
+      expect(affiliationBilling.execute).not.toHaveBeenCalled();
+      expect(assistantUserIds.execute).not.toHaveBeenCalled();
+      expect(outbox.emit).not.toHaveBeenCalledWith(tx, 'AppointmentCancelledForDoctor', expect.anything());
+      expect(outbox.emit).not.toHaveBeenCalledWith(tx, 'AppointmentCancelledForAssistant', expect.anything());
     });
 
     it('409s instead of double-cancelling when the version guard loses a race', async () => {

@@ -1,7 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
-import { NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { NotFoundError, DomainError } from '../../../shared/core/errors/domain-errors';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
+import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
+import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
+import { parseDataUri } from '../../../shared/kernel/storage/data-uri.util';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 import { GetMyDoctorProfileUseCase, MyDoctorProfile } from './get-my-doctor-profile.use-case';
@@ -10,15 +14,16 @@ export interface UpdateMyDoctorProfileInput {
   bio?: string;
   degree?: string;
   experienceYears?: number;
+  photoDataUri?: string;
 }
 
 /**
  * `PATCH /v1/doctors/me` (File 12 Part 45) — the doctor's own self-edit,
  * deliberately narrower than the Admin-only `PATCH /v1/doctors/{id}`:
  * `specialtyCode`/`licenseNumber`/`regionCode` stay Admin-controlled (a
- * doctor can't re-specialize or re-license themselves), and `photoUrl`
- * is excluded until an object-storage decision exists (same gap as
- * `ProviderVerificationDocument.file_url`/prescription uploads).
+ * doctor can't re-specialize or re-license themselves). `photoDataUri`
+ * reuses the same ImageKit upload path `SelfRegisterProviderUseCase`
+ * already established for the initial registration photo.
  */
 @Injectable()
 export class UpdateMyDoctorProfileUseCase {
@@ -27,6 +32,7 @@ export class UpdateMyDoctorProfileUseCase {
     @Inject(DoctorRepository) private readonly doctors: DoctorRepository,
     @Inject(GetMyDoctorProfileUseCase) private readonly getMyDoctorProfile: GetMyDoctorProfileUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(actor: AccessTokenPayload, input: UpdateMyDoctorProfileInput): Promise<MyDoctorProfile> {
@@ -35,12 +41,20 @@ export class UpdateMyDoctorProfileUseCase {
       throw new NotFoundError('Doctor', actor.sub);
     }
 
-    if (input.bio !== undefined || input.degree !== undefined || input.experienceYears !== undefined) {
+    const photoUrl = await this.uploadPhotoIfPresent(input.photoDataUri, actor.sub);
+
+    if (
+      input.bio !== undefined ||
+      input.degree !== undefined ||
+      input.experienceYears !== undefined ||
+      photoUrl !== undefined
+    ) {
       await this.prisma.$transaction(async (tx) => {
         await this.doctors.update(tx, doctor.id, doctor.version, {
           bio: input.bio,
           degree: input.degree,
           experienceYears: input.experienceYears,
+          photoUrl,
         });
 
         // File 12 Part 49.1: a doctor editing their own directory record is
@@ -57,5 +71,25 @@ export class UpdateMyDoctorProfileUseCase {
     }
 
     return this.getMyDoctorProfile.execute(actor);
+  }
+
+  private async uploadPhotoIfPresent(photoDataUri: string | undefined, userId: string): Promise<string | undefined> {
+    if (!photoDataUri) {
+      return undefined;
+    }
+
+    const file = parseDataUri(photoDataUri, 'profile-photo');
+    if (!file) {
+      throw new DomainError(400, 'INVALID_PHOTO_DATA_URI', 'صيغة الصورة المُرسَلة غير صحيحة. أعد رفع الصورة.');
+    }
+
+    assertValidMediaFiles([file], {
+      allowedMimeTypes: MEDIA_CONSTANTS.IMAGE_MIME_TYPES,
+      maxFileSizeBytes: MEDIA_CONSTANTS.MAX_IMAGE_SIZE_BYTES,
+      maxFileCount: 1,
+    });
+
+    const stored = await this.mediaStorage.upload(file, { folder: `doctor-profiles/${userId}`, isPrivate: false });
+    return stored.url;
   }
 }

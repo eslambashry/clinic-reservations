@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { CaptureInternalWalletPaymentUseCase } from '../../payments/application/capture-internal-wallet-payment.use-case';
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
+import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
@@ -47,6 +48,7 @@ export class ConfirmAppointmentUseCase {
     @Inject(CaptureInternalWalletPaymentUseCase) private readonly walletCapture: CaptureInternalWalletPaymentUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(ListAssistantUserIdsForBranchUseCase) private readonly assistantUserIds: ListAssistantUserIdsForBranchUseCase,
   ) {}
 
   async execute(holdId: string, input: ConfirmAppointmentInput, actor: AccessTokenPayload): Promise<ConfirmAppointmentResult> {
@@ -153,6 +155,26 @@ export class ConfirmAppointmentUseCase {
         slotId: slot.id,
         patientId: actor.sub,
       });
+
+      // Separate event from the patient-facing one above — the two
+      // templates have different recipients (patient vs doctor) and the
+      // outbox is strictly one event -> one template (File 12 Part 53).
+      const isReschedule = Boolean(hold.rescheduled_from_appointment_id);
+      await this.outbox.emit(tx, isReschedule ? 'AppointmentRescheduledForDoctor' : 'NewAppointmentBookedForDoctor', {
+        appointmentId: appointment.id,
+        doctorUserId: billing.doctorUserId,
+      });
+
+      // One event per assistant at this branch — same reasoning as the
+      // doctor event above, just fanned out to however many assistants are
+      // assigned to this specific branch (not every branch the doctor has).
+      const assistantIds = await this.assistantUserIds.execute(tx, billing.clinicBranchId);
+      for (const assistantUserId of assistantIds) {
+        await this.outbox.emit(tx, isReschedule ? 'AppointmentRescheduledForAssistant' : 'NewAppointmentBookedForAssistant', {
+          appointmentId: appointment.id,
+          assistantUserId,
+        });
+      }
 
       return { appointmentId: appointment.id, status: 'CONFIRMED' as const };
     }, { timeout: 15000 });

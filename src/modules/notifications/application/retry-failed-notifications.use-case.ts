@@ -35,6 +35,7 @@ export class RetryFailedNotificationsUseCase {
         id: notification.id,
         userId: notification.user_id,
         channel: notification.channel,
+        templateCode: notification.template_code,
         title: notification.title,
         body: notification.body,
         data: notification.data as Record<string, unknown> | null,

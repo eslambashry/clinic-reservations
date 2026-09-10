@@ -11,8 +11,15 @@ describe('UpdateMyDoctorProfileUseCase', () => {
     const doctors = { findByUserId: jest.fn(), update: jest.fn() };
     const getMyDoctorProfile = { execute: jest.fn() };
     const audit = { record: jest.fn() };
-    const useCase = new UpdateMyDoctorProfileUseCase(prisma as any, doctors as any, getMyDoctorProfile as any, audit as any);
-    return { tx, doctors, getMyDoctorProfile, audit, useCase };
+    const mediaStorage = { upload: jest.fn() };
+    const useCase = new UpdateMyDoctorProfileUseCase(
+      prisma as any,
+      doctors as any,
+      getMyDoctorProfile as any,
+      audit as any,
+      mediaStorage as any,
+    );
+    return { tx, doctors, getMyDoctorProfile, audit, mediaStorage, useCase };
   }
 
   it('404s when the caller has no doctor row', async () => {
@@ -29,7 +36,12 @@ describe('UpdateMyDoctorProfileUseCase', () => {
 
     const result = await useCase.execute(actor, { bio: 'New bio', degree: 'MD', experienceYears: 12 });
 
-    expect(doctors.update).toHaveBeenCalledWith(tx, 'doctor-1', 3, { bio: 'New bio', degree: 'MD', experienceYears: 12 });
+    expect(doctors.update).toHaveBeenCalledWith(tx, 'doctor-1', 3, {
+      bio: 'New bio',
+      degree: 'MD',
+      experienceYears: 12,
+      photoUrl: undefined,
+    });
     expect(getMyDoctorProfile.execute).toHaveBeenCalledWith(actor);
     expect(result).toBe(profile);
   });
@@ -59,5 +71,27 @@ describe('UpdateMyDoctorProfileUseCase', () => {
 
     expect(doctors.update).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('uploads a provided photo and persists the resulting URL onto Doctor.photo_url', async () => {
+    const { tx, doctors, getMyDoctorProfile, mediaStorage, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', version: 3 });
+    mediaStorage.upload.mockResolvedValue({ url: 'https://ik.imagekit.io/x/doctor-profiles/user-1/photo.jpg' });
+    getMyDoctorProfile.execute.mockResolvedValue(profile);
+
+    await useCase.execute(actor, {
+      photoDataUri: 'data:image/jpeg;base64,AAAA',
+    });
+
+    expect(mediaStorage.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ mimeType: 'image/jpeg' }),
+      expect.objectContaining({ folder: 'doctor-profiles/user-1' }),
+    );
+    expect(doctors.update).toHaveBeenCalledWith(tx, 'doctor-1', 3, {
+      bio: undefined,
+      degree: undefined,
+      experienceYears: undefined,
+      photoUrl: 'https://ik.imagekit.io/x/doctor-profiles/user-1/photo.jpg',
+    });
   });
 });

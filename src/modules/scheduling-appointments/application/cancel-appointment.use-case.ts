@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
+import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
+import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { ProcessCancellationRefundUseCase } from '../../payments/application/process-cancellation-refund.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { DomainError, BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -53,6 +55,8 @@ export class CancelAppointmentUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ResolveAppointmentScopeUseCase) private readonly appointmentScope: ResolveAppointmentScopeUseCase,
+    @Inject(GetAffiliationBillingInfoUseCase) private readonly affiliationBilling: GetAffiliationBillingInfoUseCase,
+    @Inject(ListAssistantUserIdsForBranchUseCase) private readonly assistantUserIds: ListAssistantUserIdsForBranchUseCase,
   ) {}
 
   async execute(appointmentId: string, input: CancelAppointmentInput, actor: AccessTokenPayload): Promise<CancelAppointmentResult> {
@@ -117,6 +121,8 @@ export class CancelAppointmentUseCase {
         reasonCode: input.reason,
       });
 
+      const cancelledBy = scope.kind === 'PATIENT' ? 'PATIENT' : scope.kind;
+
       await this.outbox.emit(tx, 'AppointmentCancelled', {
         appointmentId: appointment.id,
         slotId: appointment.slot_id,
@@ -125,8 +131,29 @@ export class CancelAppointmentUseCase {
         // (Notifications, Phase 8) needs to reach them, not the canceller.
         patientId: appointment.patient_id,
         reason: input.reason,
-        cancelledBy: scope.kind === 'PATIENT' ? 'PATIENT' : scope.kind,
+        cancelledBy,
       });
+
+      // Only notify the doctor when they weren't the one who cancelled —
+      // no one needs to be told about their own action. Assistants are
+      // notified either way: cancelling this use-case's caller can never be
+      // an assistant themselves (CLINIC_STAFF stays deferred, see class
+      // doc), so there is no "own action" case to suppress for them.
+      if (cancelledBy !== 'DOCTOR') {
+        const billing = await this.affiliationBilling.execute(tx, appointment.doctor_clinic_affiliation_id);
+        await this.outbox.emit(tx, 'AppointmentCancelledForDoctor', {
+          appointmentId: appointment.id,
+          doctorUserId: billing.doctorUserId,
+        });
+
+        const assistantIds = await this.assistantUserIds.execute(tx, billing.clinicBranchId);
+        for (const assistantUserId of assistantIds) {
+          await this.outbox.emit(tx, 'AppointmentCancelledForAssistant', {
+            appointmentId: appointment.id,
+            assistantUserId,
+          });
+        }
+      }
 
       return { status: 'CANCELLED' as const, refundAmount, feeApplied };
     }, { timeout: 15000 });

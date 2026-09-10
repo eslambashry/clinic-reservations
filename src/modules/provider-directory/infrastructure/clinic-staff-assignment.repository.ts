@@ -31,6 +31,23 @@ export class ClinicStaffAssignmentRepository {
       });
   }
 
+  /**
+   * The reverse lookup: every active assistant assigned to one branch,
+   * as their own `User.id` (not `role_membership_id`) — this is what
+   * notification dispatch needs (`extractUserId` addresses a `User`, never
+   * a `RoleMembership`). Filters `RoleMembership.status = ACTIVE` so a
+   * revoked assistant's stale assignment row never resurfaces them as a
+   * notification recipient.
+   */
+  findActiveUserIdsByClinicBranchId(db: Prisma.TransactionClient, clinicBranchId: string): Promise<string[]> {
+    return db.clinicStaffAssignment
+      .findMany({
+        where: { clinic_branch_id: clinicBranchId, role_membership: { status: 'ACTIVE' } },
+        select: { role_membership: { select: { user_id: true } } },
+      })
+      .then((rows) => rows.map((row) => row.role_membership.user_id));
+  }
+
   createMany(db: Prisma.TransactionClient, roleMembershipId: string, clinicBranchIds: string[]): Promise<Prisma.BatchPayload> {
     return db.clinicStaffAssignment.createMany({
       data: clinicBranchIds.map((clinicBranchId) => ({

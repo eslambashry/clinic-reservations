@@ -28,6 +28,7 @@ import { GetDoctorUseCase } from './application/get-doctor.use-case';
 import { GetMyDoctorRegistrationStatusUseCase } from './application/get-my-doctor-registration-status.use-case';
 import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.use-case';
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
+import { ListAssistantUserIdsForBranchUseCase } from './application/list-assistant-user-ids-for-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
 import { ListAssistantsUseCase } from './application/list-assistants.use-case';
 import { ListDoctorsUseCase } from './application/list-doctors.use-case';
@@ -180,6 +181,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     ListMyDoctorClinicsUseCase,
     UpdateMyClinicBranchUseCase,
     UpdateMyAffiliationUseCase,
+    ListAssistantUserIdsForBranchUseCase,
   ],
   exports: [
     ResolveAffiliationForSchedulingUseCase,
@@ -191,6 +193,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     // `scheduling-appointments` for schedule-template and appointment
     // ownership checks — never its `infrastructure/`.
     ResolveDoctorScopeUseCase,
+    ListAssistantUserIdsForBranchUseCase,
   ],
 })
 export class ProviderDirectoryModule {}

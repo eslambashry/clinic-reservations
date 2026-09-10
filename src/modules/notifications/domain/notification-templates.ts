@@ -157,4 +157,72 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { labOrderId: p.labOrderId, resultId: p.resultId },
     }),
   },
+
+  // --- Doctor-facing (recipient is the doctor's own User, not the patient) ---
+  NewAppointmentBookedForDoctor: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({
+      title: 'حجز موعد جديد',
+      body: 'حجز مريض موعدًا جديدًا معك. راجع التفاصيل داخل التطبيق.',
+      data: { appointmentId: p.appointmentId },
+    }),
+  },
+  AppointmentCancelledForDoctor: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({
+      title: 'تم إلغاء موعد',
+      body: 'ألغى أحد المرضى موعده معك.',
+      data: { appointmentId: p.appointmentId },
+    }),
+  },
+  AppointmentRescheduledForDoctor: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({
+      title: 'تم تغيير موعد',
+      body: 'غيّر أحد المرضى موعده معك إلى وقت آخر.',
+      data: { appointmentId: p.appointmentId },
+    }),
+  },
+
+  // --- Assistant-facing (recipient is one CLINIC_STAFF assistant at the
+  // branch the appointment belongs to — dispatched once per assistant, see
+  // the emit call sites for the fan-out). Phrased around the branch/queue,
+  // not "معك", since it's their assigned branch's queue, not their own
+  // patient relationship. ---
+  NewAppointmentBookedForAssistant: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.assistantUserId,
+    render: (p) => ({
+      title: 'حجز موعد جديد',
+      body: 'تم حجز موعد جديد في فرعك. راجع التفاصيل داخل التطبيق.',
+      data: { appointmentId: p.appointmentId },
+    }),
+  },
+  AppointmentCancelledForAssistant: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.assistantUserId,
+    render: (p) => ({
+      title: 'تم إلغاء موعد',
+      body: 'تم إلغاء أحد مواعيد فرعك.',
+      data: { appointmentId: p.appointmentId },
+    }),
+  },
+  AppointmentRescheduledForAssistant: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.assistantUserId,
+    render: (p) => ({
+      title: 'تم تغيير موعد',
+      body: 'تم تغيير موعد أحد مرضى فرعك إلى وقت آخر.',
+      data: { appointmentId: p.appointmentId },
+    }),
+  },
 };

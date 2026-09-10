@@ -10,6 +10,7 @@ export interface DeliverableNotification {
   id: string;
   userId: string;
   channel: string;
+  templateCode: string;
   title: string;
   body: string;
   data?: Record<string, unknown> | null;
@@ -51,7 +52,11 @@ export class DeliverNotificationUseCase {
         if (tokens.length === 0) {
           throw new Error('No registered device tokens for this user');
         }
-        await this.push.send(tokens, { title: notification.title, body: notification.body, data: notification.data ?? undefined });
+        await this.push.send(tokens, {
+          title: notification.title,
+          body: notification.body,
+          data: { ...(notification.data ?? {}), templateCode: notification.templateCode },
+        });
       } else if (notification.channel === 'SMS') {
         const contact = await this.getUserContactInfo.execute(notification.userId);
         if (!contact) {

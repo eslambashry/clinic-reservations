@@ -85,7 +85,15 @@ export class DispatchNotificationUseCase {
     });
 
     for (const item of toDeliver) {
-      await this.deliver.execute({ id: item.id, userId, channel: item.channel, title: rendered.title, body: rendered.body, data: rendered.data });
+      await this.deliver.execute({
+        id: item.id,
+        userId,
+        channel: item.channel,
+        templateCode: eventName,
+        title: rendered.title,
+        body: rendered.body,
+        data: rendered.data,
+      });
     }
   }
 

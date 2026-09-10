@@ -80,7 +80,12 @@ export class DoctorsController {
   @Patch('me')
   @ApiOperation({ summary: "A doctor's own self-edit — bio/degree/experienceYears only, narrower than the Admin PATCH below" })
   updateMe(@CurrentUser() user: AccessTokenPayload, @Body() dto: UpdateMyDoctorProfileDto): Promise<MyDoctorProfile> {
-    return this.updateMyDoctorProfile.execute(user, dto);
+    return this.updateMyDoctorProfile.execute(user, {
+      bio: dto.bio,
+      degree: dto.degree,
+      experienceYears: dto.experienceYears,
+      photoDataUri: dto.photo_data_uri,
+    });
   }
 
   @OptionalAuth()
