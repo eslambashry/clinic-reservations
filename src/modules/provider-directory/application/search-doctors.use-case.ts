@@ -26,6 +26,7 @@ export interface SearchDoctorItem {
   reviewCount: number;
   consultFee: string;
   currency: string;
+  photoUrl: string | null;
   /** File 12 Part 32.12 — always null until Phase 3 (Scheduling) exists. */
   nextAvailableSlot: string | null;
 }
@@ -107,6 +108,7 @@ function toSearchItem(row: DoctorSearchRow): SearchDoctorItem {
     reviewCount: row.rating_count,
     consultFee: row.consult_fee.toString(),
     currency: row.currency,
+    photoUrl: row.photo_url,
     nextAvailableSlot: null,
   };
 }
