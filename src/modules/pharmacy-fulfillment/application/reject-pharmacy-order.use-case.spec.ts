@@ -7,16 +7,17 @@ function setup() {
   const broadcasts = { findByOrderAndBranch: jest.fn(), markResponded: jest.fn() };
   const getActiveRoleMembership = { execute: jest.fn() };
   const audit = { record: jest.fn() };
-  const useCase = new RejectPharmacyOrderUseCase(prisma as any, pharmacyOrders as any, broadcasts as any, getActiveRoleMembership as any, audit as any);
-  return { tx, pharmacyOrders, broadcasts, getActiveRoleMembership, audit, useCase };
+  const outbox = { emit: jest.fn() };
+  const useCase = new RejectPharmacyOrderUseCase(prisma as any, pharmacyOrders as any, broadcasts as any, getActiveRoleMembership as any, audit as any, outbox as any);
+  return { tx, pharmacyOrders, broadcasts, getActiveRoleMembership, audit, outbox, useCase };
 }
 
 describe('RejectPharmacyOrderUseCase', () => {
   const actor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'PHARMACY_STAFF', contextType: 'PHARMACY_STAFF', permissions: [] } as any;
   const membership = { roleMembershipId: 'm-2', contextId: 'branch-1' };
-  const unclaimedOrder = { id: 'order-1', version: 1, status: 'RECEIVED', pharmacy_branch_id: null };
-  const claimedOrder = { id: 'order-1', version: 1, status: 'UNDER_REVIEW', pharmacy_branch_id: 'branch-1' };
-  const acceptedOrder = { id: 'order-1', version: 2, status: 'ACCEPTED', pharmacy_branch_id: 'branch-1' };
+  const unclaimedOrder = { id: 'order-1', version: 1, status: 'RECEIVED', pharmacy_branch_id: null, patient_id: 'patient-1' };
+  const claimedOrder = { id: 'order-1', version: 1, status: 'UNDER_REVIEW', pharmacy_branch_id: 'branch-1', patient_id: 'patient-1' };
+  const acceptedOrder = { id: 'order-1', version: 2, status: 'ACCEPTED', pharmacy_branch_id: 'branch-1', patient_id: 'patient-1' };
   const unrespondedBroadcast = { id: 'bc-1', response: null };
 
   describe('decline path — unresponded broadcast', () => {

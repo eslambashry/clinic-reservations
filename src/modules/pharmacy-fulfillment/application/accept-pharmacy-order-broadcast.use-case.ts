@@ -76,7 +76,11 @@ export class AcceptPharmacyOrderBroadcastUseCase {
         resourceId: pharmacyOrderId,
       });
 
-      await this.outbox.emit(tx, 'PharmacyOrderAccepted', { pharmacyOrderId, pharmacyBranchId: branchId });
+      await this.outbox.emit(tx, 'PharmacyOrderAccepted', {
+        pharmacyOrderId,
+        pharmacyBranchId: branchId,
+        patientId: order.patient_id,
+      });
 
       return { pharmacyOrderId, status: 'UNDER_REVIEW' as const };
     });

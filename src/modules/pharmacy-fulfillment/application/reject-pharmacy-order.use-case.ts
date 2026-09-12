@@ -4,6 +4,7 @@ import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { PharmacyOrderBroadcastRepository } from '../infrastructure/pharmacy-order-broadcast.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
@@ -63,6 +64,7 @@ export class RejectPharmacyOrderUseCase {
     @Inject(PharmacyOrderBroadcastRepository) private readonly broadcasts: PharmacyOrderBroadcastRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(pharmacyOrderId: string, input: RejectPharmacyOrderInput, actor: AccessTokenPayload): Promise<RejectPharmacyOrderResult> {
@@ -120,6 +122,12 @@ export class RejectPharmacyOrderUseCase {
         action: 'pharmacy-fulfillment.pharmacy-order.reject',
         resourceType: 'pharmacy_order',
         resourceId: pharmacyOrderId,
+      });
+
+      await this.outbox.emit(tx, 'PharmacyOrderRejected', {
+        pharmacyOrderId,
+        patientId: order.patient_id,
+        reason,
       });
 
       return { pharmacyOrderId, status: 'REJECTED' as const };

@@ -93,7 +93,11 @@ export class SubmitPharmacyOrderQuoteUseCase {
           throw new ConflictError('ORDER_ALREADY_CLAIMED', 'استلم فرع صيدلية آخر هذا الطلب قبلك.');
         }
         await this.broadcasts.markResponded(tx, broadcast.id, 'ACCEPTED');
-        await this.outbox.emit(tx, 'PharmacyOrderAccepted', { pharmacyOrderId, pharmacyBranchId: branchId });
+        await this.outbox.emit(tx, 'PharmacyOrderAccepted', {
+          pharmacyOrderId,
+          pharmacyBranchId: branchId,
+          patientId: order.patient_id,
+        });
         currentVersion += 1;
         status = 'UNDER_REVIEW';
       } else if (order.pharmacy_branch_id !== branchId) {
@@ -138,7 +142,12 @@ export class SubmitPharmacyOrderQuoteUseCase {
         resourceId: pharmacyOrderId,
       });
 
-      await this.outbox.emit(tx, 'PharmacyOrderQuoted', { pharmacyOrderId, totalPrice: input.totalPrice, currency });
+      await this.outbox.emit(tx, 'PharmacyOrderQuoted', {
+        pharmacyOrderId,
+        totalPrice: input.totalPrice,
+        currency,
+        patientId: order.patient_id,
+      });
 
       return { pharmacyOrderId, status: 'ACCEPTED' as const, totalPrice: input.totalPrice, currency };
     });

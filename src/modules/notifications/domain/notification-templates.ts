@@ -87,6 +87,36 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { prescriptionId: p.prescriptionId },
     }),
   },
+  PharmacyOrderAccepted: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.patientId,
+    render: (p) => ({
+      title: 'جارٍ مراجعة طلبك',
+      body: 'استلمت الصيدلية طلبك وجارٍ تجهيز التسعير الآن.',
+      data: { pharmacyOrderId: p.pharmacyOrderId },
+    }),
+  },
+  PharmacyOrderQuoted: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.patientId,
+    render: (p) => ({
+      title: 'تم قبول طلبك',
+      body: `تم تسعير طلبك بمبلغ ${money(p.totalPrice, p.currency)}. أكمل الدفع لمتابعة التجهيز.`,
+      data: { pharmacyOrderId: p.pharmacyOrderId },
+    }),
+  },
+  PharmacyOrderRejected: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.patientId,
+    render: (p) => ({
+      title: 'تم رفض طلبك',
+      body: 'رفضت الصيدلية طلبك. راجع التفاصيل داخل التطبيق.',
+      data: { pharmacyOrderId: p.pharmacyOrderId },
+    }),
+  },
   PaymentCaptured: {
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],
