@@ -9,6 +9,7 @@ import { GetUserContactInfoUseCase } from './application/get-user-contact-info.u
 import { GetUserSummaryUseCase } from './application/get-user-summary.use-case';
 import { LoginWithPasswordUseCase } from './application/login-with-password.use-case';
 import { LogoutUseCase } from './application/logout.use-case';
+import { ListActiveAdminUserIdsUseCase } from './application/list-active-admin-user-ids.use-case';
 import { ListStaffByContextUseCase } from './application/list-staff-by-context.use-case';
 import { ListUserDeviceTokensUseCase } from './application/list-user-device-tokens.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
@@ -60,7 +61,12 @@ import { UserRepository } from './infrastructure/user.repository';
  * (ownership-scoped mutate) — first used by `provider-directory`'s clinic
  * assistant endpoints (`role_code='CLINIC_STAFF'`, `contextId=doctor.id`),
  * but intentionally not doctor-specific, same reusability reasoning as
- * `GetActiveRoleMembershipUseCase`.
+ * `GetActiveRoleMembershipUseCase`. `laboratory`/`pharmacy-fulfillment` reuse
+ * the same `ListStaffByContextUseCase` (role `LAB_STAFF`/`PHARMACY_STAFF`,
+ * `contextId=branchId`) to resolve dashboard-notification recipients for a
+ * new order. `ListActiveAdminUserIdsUseCase` is the `ADMIN` equivalent for
+ * `provider-directory`'s self-registration notification — `ADMIN` has no
+ * `context_id` to scope by, so it can't reuse `ListStaffByContextUseCase`.
  */
 @Module({
   imports: [AuthCoreModule],
@@ -84,6 +90,7 @@ import { UserRepository } from './infrastructure/user.repository';
     GrantRoleMembershipUseCase,
     ProvisionStaffUserUseCase,
     ListStaffByContextUseCase,
+    ListActiveAdminUserIdsUseCase,
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
     RegisterDeviceUseCase,
@@ -106,6 +113,7 @@ import { UserRepository } from './infrastructure/user.repository';
     GrantRoleMembershipUseCase,
     ProvisionStaffUserUseCase,
     ListStaffByContextUseCase,
+    ListActiveAdminUserIdsUseCase,
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
     ListUserDeviceTokensUseCase,
