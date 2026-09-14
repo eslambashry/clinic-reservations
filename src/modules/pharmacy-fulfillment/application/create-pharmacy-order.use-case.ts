@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { FulfillmentType } from '@prisma/client';
+import { FulfillmentType, RoleContextType } from '@prisma/client';
+import { ListStaffByContextUseCase } from '../../identity-auth/application/list-staff-by-context.use-case';
 import { GetAcceptedPrescriptionForOrderUseCase } from '../../prescriptions/application/get-accepted-prescription-for-order.use-case';
 import { GetPharmacyBranchUseCase } from '../../provider-directory/application/get-pharmacy-branch.use-case';
 import { SearchPharmacyBranchesUseCase } from '../../provider-directory/application/search-pharmacy-branches.use-case';
@@ -44,6 +45,12 @@ export interface CreatePharmacyOrderResult {
  * already uses for its quality-check/OCR calls: neither repository
  * participates in the write transaction anyway, and failing fast avoids
  * opening a transaction that's doomed to roll back.
+ *
+ * Also emits one `NewPharmacyOrderForStaff` event per `PHARMACY_STAFF`
+ * member at each broadcast branch (dashboard notification) — resolved via
+ * `IdentityAuthModule`'s generic `ListStaffByContextUseCase`, same
+ * one-event-per-recipient convention `ConfirmAppointmentUseCase` uses to
+ * notify a branch's assistants.
  */
 @Injectable()
 export class CreatePharmacyOrderUseCase {
@@ -57,6 +64,7 @@ export class CreatePharmacyOrderUseCase {
     @Inject(GetPharmacyBranchUseCase) private readonly getPharmacyBranch: GetPharmacyBranchUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(ListStaffByContextUseCase) private readonly listStaffByContext: ListStaffByContextUseCase,
   ) {}
 
   async execute(input: CreatePharmacyOrderInput, actor: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
@@ -107,6 +115,23 @@ export class CreatePharmacyOrderUseCase {
         patientId: actor.sub,
         broadcastBranchIds: branchIds,
       });
+
+      // One event per PHARMACY_STAFF member at each broadcast branch — same
+      // one-event-per-recipient fan-out `ConfirmAppointmentUseCase` uses for
+      // assistants, so the dispatch pipeline needs no multi-recipient support.
+      for (const branchId of branchIds) {
+        const pharmacyStaff = await this.listStaffByContext.execute({
+          roleCode: 'PHARMACY_STAFF',
+          contextType: RoleContextType.PHARMACY_STAFF,
+          contextId: branchId,
+        });
+        for (const staff of pharmacyStaff) {
+          await this.outbox.emit(tx, 'NewPharmacyOrderForStaff', {
+            pharmacyOrderId: order.id,
+            pharmacyStaffUserId: staff.userId,
+          });
+        }
+      }
 
       return { pharmacyOrderId: order.id, status: order.status, broadcastedBranchIds: branchIds };
     });

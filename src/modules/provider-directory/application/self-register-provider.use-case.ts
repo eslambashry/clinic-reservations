@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
+import { ListActiveAdminUserIdsUseCase } from '../../identity-auth/application/list-active-admin-user-ids.use-case';
 import { UpdateUserProfileUseCase } from '../../identity-auth/application/update-user-profile.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS, PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
 import { BusinessRuleError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
 import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
 import { parseDataUri } from '../../../shared/kernel/storage/data-uri.util';
@@ -77,6 +79,8 @@ export class SelfRegisterProviderUseCase {
     @Inject(UpdateUserProfileUseCase) private readonly updateUserProfile: UpdateUserProfileUseCase,
     @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
     @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(ListActiveAdminUserIdsUseCase) private readonly listActiveAdminUserIds: ListActiveAdminUserIdsUseCase,
   ) {}
 
   async execute(dto: SubmitProviderRegistrationDto, actor: AccessTokenPayload): Promise<SelfRegisterProviderResult> {
@@ -179,6 +183,18 @@ export class SelfRegisterProviderUseCase {
           action: 'provider_directory.self_registration.schedule_template.create',
           resourceType: 'schedule_template',
           resourceId: scheduleTemplateId,
+        });
+      }
+
+      // One event per ADMIN — same one-event-per-recipient fan-out
+      // `ConfirmAppointmentUseCase` uses for assistants, so the dispatch
+      // pipeline needs no multi-recipient support.
+      const adminUserIds = await this.listActiveAdminUserIds.execute();
+      for (const adminUserId of adminUserIds) {
+        await this.outbox.emit(tx, 'NewProviderRegistrationForAdmin', {
+          doctorId: doctor.id,
+          clinicId: clinic.id,
+          adminUserId,
         });
       }
 

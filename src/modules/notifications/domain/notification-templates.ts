@@ -255,4 +255,40 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { appointmentId: p.appointmentId },
     }),
   },
+
+  // --- Dashboard/staff-facing (recipient is one staff/admin User resolved
+  // by role_membership, not the patient/doctor who triggered the event) —
+  // same one-event-per-recipient fan-out convention as the assistant
+  // templates above; see the emit call sites in each owning module's
+  // create-order/self-register use-case. ---
+  NewLabOrderForStaff: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.labStaffUserId,
+    render: (p) => ({
+      title: 'طلب تحليل جديد',
+      body: 'وصل طلب تحليل جديد إلى فرعك. راجع الطلب داخل لوحة التحكم.',
+      data: { labOrderId: p.labOrderId },
+    }),
+  },
+  NewPharmacyOrderForStaff: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.pharmacyStaffUserId,
+    render: (p) => ({
+      title: 'طلب صيدلية جديد',
+      body: 'وصل طلب جديد إلى فرعك. راجع الطلب داخل لوحة التحكم.',
+      data: { pharmacyOrderId: p.pharmacyOrderId },
+    }),
+  },
+  NewProviderRegistrationForAdmin: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.adminUserId,
+    render: (p) => ({
+      title: 'طلب تسجيل مقدّم خدمة جديد',
+      body: 'قدّم طبيب جديد طلب تسجيل وهو الآن في انتظار المراجعة.',
+      data: { doctorId: p.doctorId, clinicId: p.clinicId },
+    }),
+  },
 };

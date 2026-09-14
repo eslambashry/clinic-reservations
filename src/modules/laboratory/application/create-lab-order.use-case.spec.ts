@@ -8,8 +8,19 @@ function setup() {
   const labBranches = { findById: jest.fn() };
   const testCatalog = { findAllCodes: jest.fn() };
   const audit = { record: jest.fn() };
-  const useCase = new CreateLabOrderUseCase(prisma as any, labOrders as any, labOrderItems as any, labBranches as any, testCatalog as any, audit as any);
-  return { tx, prisma, labOrders, labOrderItems, labBranches, testCatalog, audit, useCase };
+  const outbox = { emit: jest.fn() };
+  const listStaffByContext = { execute: jest.fn().mockResolvedValue([]) };
+  const useCase = new CreateLabOrderUseCase(
+    prisma as any,
+    labOrders as any,
+    labOrderItems as any,
+    labBranches as any,
+    testCatalog as any,
+    audit as any,
+    outbox as any,
+    listStaffByContext as any,
+  );
+  return { tx, prisma, labOrders, labOrderItems, labBranches, testCatalog, audit, outbox, listStaffByContext, useCase };
 }
 
 describe('CreateLabOrderUseCase', () => {
@@ -27,6 +38,20 @@ describe('CreateLabOrderUseCase', () => {
     expect(labOrderItems.createMany).toHaveBeenCalledWith(tx, 'order-1', [{ catalogCode: 'CBC' }]);
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'laboratory.lab-order.request-received', resourceId: 'order-1' }));
     expect(result).toEqual({ labOrderId: 'order-1', status: 'REQUESTED' });
+  });
+
+  it('notifies every LAB_STAFF member at the order\'s branch, one event per staff member', async () => {
+    const { tx, labOrders, labBranches, testCatalog, outbox, listStaffByContext, useCase } = setup();
+    labBranches.findById.mockResolvedValue(branch);
+    testCatalog.findAllCodes.mockResolvedValue(['CBC']);
+    labOrders.create.mockResolvedValue({ id: 'order-1', status: 'REQUESTED' });
+    listStaffByContext.execute.mockResolvedValue([{ userId: 'lab-staff-1' }, { userId: 'lab-staff-2' }]);
+
+    await useCase.execute({ labBranchId: 'branch-1', collectionType: 'VISIT', testCodes: ['CBC'] }, actor);
+
+    expect(listStaffByContext.execute).toHaveBeenCalledWith({ roleCode: 'LAB_STAFF', contextType: 'LAB_STAFF', contextId: 'branch-1' });
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewLabOrderForStaff', { labOrderId: 'order-1', labStaffUserId: 'lab-staff-1' });
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewLabOrderForStaff', { labOrderId: 'order-1', labStaffUserId: 'lab-staff-2' });
   });
 
   it('creates a prescription-only order with zero items ("incomplete request")', async () => {

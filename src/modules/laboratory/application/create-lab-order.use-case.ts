@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { RoleContextType } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
+import { ListStaffByContextUseCase } from '../../identity-auth/application/list-staff-by-context.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabBranchRepository } from '../infrastructure/lab-branch.repository';
@@ -48,6 +51,8 @@ export class CreateLabOrderUseCase {
     @Inject(LabBranchRepository) private readonly labBranches: LabBranchRepository,
     @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(ListStaffByContextUseCase) private readonly listStaffByContext: ListStaffByContextUseCase,
   ) {}
 
   async execute(input: CreateLabOrderInput, actor: AccessTokenPayload): Promise<CreateLabOrderResult> {
@@ -96,6 +101,21 @@ export class CreateLabOrderUseCase {
         resourceId: order.id,
         subjectPatientId: actor.sub,
       });
+
+      // One event per LAB_STAFF member at this branch — same
+      // one-event-per-recipient fan-out `ConfirmAppointmentUseCase` uses for
+      // assistants, so the dispatch pipeline needs no multi-recipient support.
+      const labStaff = await this.listStaffByContext.execute({
+        roleCode: 'LAB_STAFF',
+        contextType: RoleContextType.LAB_STAFF,
+        contextId: input.labBranchId,
+      });
+      for (const staff of labStaff) {
+        await this.outbox.emit(tx, 'NewLabOrderForStaff', {
+          labOrderId: order.id,
+          labStaffUserId: staff.userId,
+        });
+      }
 
       return { labOrderId: order.id, status: 'REQUESTED' as const };
     });
