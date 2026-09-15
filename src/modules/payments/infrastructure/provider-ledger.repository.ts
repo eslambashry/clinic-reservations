@@ -26,4 +26,11 @@ export class ProviderLedgerRepository {
   findByRelatedPaymentIntentId(db: Prisma.TransactionClient, paymentIntentId: string): Promise<ProviderLedgerEntry[]> {
     return db.providerLedgerEntry.findMany({ where: { related_payment_intent_id: paymentIntentId } });
   }
+
+  /** Every entry for one provider, across every payment method — the raw input `computeOutstandingEarningBalance` (domain) reduces into a balance. */
+  findAllByProvider(db: Prisma.TransactionClient, params: { providerType: ProviderType; providerId: string }): Promise<ProviderLedgerEntry[]> {
+    return db.providerLedgerEntry.findMany({
+      where: { provider_type: params.providerType, provider_id: params.providerId },
+    });
+  }
 }

@@ -79,7 +79,7 @@ describe('ProcessCancellationRefundUseCase', () => {
     expect(result).toEqual({ refundAmount: '180.00', feeApplied: '20.00' });
   });
 
-  it('still writes the Refund row but skips the ledger reversal when no COMMISSION_DEDUCTION entry is found', async () => {
+  it('still writes the Refund row but skips the ledger reversal when no COMMISSION_DEDUCTION/EARNING entry is found', async () => {
     const { tx, refunds, ledger, paymentIntents, useCase } = setup();
     paymentIntents.findById.mockResolvedValue(capturedIntent);
     paymentIntents.markRefunded.mockResolvedValue(true);
@@ -89,6 +89,36 @@ describe('ProcessCancellationRefundUseCase', () => {
 
     expect(refunds.create).toHaveBeenCalled();
     expect(ledger.create).not.toHaveBeenCalled();
+  });
+
+  it('reverses an EARNING entry (online/wallet-paid appointment) on a full refund — the bug fix', async () => {
+    const { tx, ledger, paymentIntents, useCase } = setup();
+    const earningEntry = { provider_type: 'DOCTOR', provider_id: 'doctor-1', entry_type: 'EARNING', amount: '170.00' };
+    paymentIntents.findById.mockResolvedValue(capturedIntent);
+    paymentIntents.markRefunded.mockResolvedValue(true);
+    ledger.findByRelatedPaymentIntentId.mockResolvedValue([earningEntry]);
+
+    await useCase.execute(tx, { paymentIntentId: 'intent-1', feePercent: 0 });
+
+    expect(ledger.create).toHaveBeenCalledWith(tx, {
+      providerType: 'DOCTOR',
+      providerId: 'doctor-1',
+      entryType: 'ADJUSTMENT',
+      amount: '-170.00',
+      relatedPaymentIntentId: 'intent-1',
+    });
+  });
+
+  it('reverses only a proportional share of an EARNING entry on a partial refund', async () => {
+    const { tx, ledger, paymentIntents, useCase } = setup();
+    const earningEntry = { provider_type: 'DOCTOR', provider_id: 'doctor-1', entry_type: 'EARNING', amount: '170.00' };
+    paymentIntents.findById.mockResolvedValue(capturedIntent);
+    paymentIntents.markRefunded.mockResolvedValue(true);
+    ledger.findByRelatedPaymentIntentId.mockResolvedValue([earningEntry]);
+
+    await useCase.execute(tx, input);
+
+    expect(ledger.create).toHaveBeenCalledWith(tx, expect.objectContaining({ entryType: 'ADJUSTMENT', amount: '-153.00' }));
   });
 
   it('credits the wallet back through a new REFUND transaction when the original payment method was INTERNAL_WALLET', async () => {
