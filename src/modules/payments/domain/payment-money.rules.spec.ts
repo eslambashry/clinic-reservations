@@ -1,4 +1,9 @@
-import { computeCancellationFeeSplit, computeCommissionSplit, computeProportionalCommissionReversal } from './payment-money.rules';
+import {
+  computeCancellationFeeSplit,
+  computeCommissionSplit,
+  computeOutstandingEarningBalance,
+  computeProportionalCommissionReversal,
+} from './payment-money.rules';
 
 describe('computeCommissionSplit', () => {
   it('splits an even amount cleanly', () => {
@@ -63,5 +68,58 @@ describe('computeProportionalCommissionReversal', () => {
     expect(
       computeProportionalCommissionReversal({ originalCommission: '0.00', capturedAmount: '0.00', refundAmount: '0.00' }),
     ).toBe('0.00');
+  });
+});
+
+describe('computeOutstandingEarningBalance', () => {
+  it('sums EARNING entries', () => {
+    expect(
+      computeOutstandingEarningBalance([
+        { entryType: 'EARNING', amount: '1000.00', relatedPaymentIntentId: 'intent-1' },
+        { entryType: 'EARNING', amount: '1500.00', relatedPaymentIntentId: 'intent-2' },
+        { entryType: 'EARNING', amount: '2000.00', relatedPaymentIntentId: 'intent-3' },
+      ]),
+    ).toBe('4500.00');
+  });
+
+  it('subtracts PAYOUT entries from the EARNING total', () => {
+    expect(
+      computeOutstandingEarningBalance([
+        { entryType: 'EARNING', amount: '4500.00', relatedPaymentIntentId: 'intent-1' },
+        { entryType: 'PAYOUT', amount: '-2000.00', relatedPaymentIntentId: null },
+      ]),
+    ).toBe('2500.00');
+  });
+
+  it('ignores COMMISSION_DEDUCTION entries entirely — opposite direction, never netted', () => {
+    expect(
+      computeOutstandingEarningBalance([
+        { entryType: 'EARNING', amount: '850.00', relatedPaymentIntentId: 'intent-1' },
+        { entryType: 'COMMISSION_DEDUCTION', amount: '30.00', relatedPaymentIntentId: 'intent-2' },
+      ]),
+    ).toBe('850.00');
+  });
+
+  it('counts an ADJUSTMENT that reverses an EARNING entry for the same payment intent', () => {
+    expect(
+      computeOutstandingEarningBalance([
+        { entryType: 'EARNING', amount: '850.00', relatedPaymentIntentId: 'intent-1' },
+        { entryType: 'ADJUSTMENT', amount: '-850.00', relatedPaymentIntentId: 'intent-1' },
+      ]),
+    ).toBe('0.00');
+  });
+
+  it('ignores an ADJUSTMENT that reverses a COMMISSION_DEDUCTION for a different payment intent (no EARNING row shares its intent id)', () => {
+    expect(
+      computeOutstandingEarningBalance([
+        { entryType: 'EARNING', amount: '850.00', relatedPaymentIntentId: 'intent-1' },
+        { entryType: 'COMMISSION_DEDUCTION', amount: '30.00', relatedPaymentIntentId: 'intent-2' },
+        { entryType: 'ADJUSTMENT', amount: '-30.00', relatedPaymentIntentId: 'intent-2' },
+      ]),
+    ).toBe('850.00');
+  });
+
+  it('returns 0.00 for an empty ledger', () => {
+    expect(computeOutstandingEarningBalance([])).toBe('0.00');
   });
 });

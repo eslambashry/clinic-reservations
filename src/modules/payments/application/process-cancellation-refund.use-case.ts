@@ -80,17 +80,24 @@ export class ProcessCancellationRefundUseCase {
       status: 'COMPLETED',
     });
 
+    // Reverses whichever ledger entry this intent originally wrote — a
+    // COMMISSION_DEDUCTION (pay-at-clinic) or an EARNING (online gateway/
+    // internal wallet). A payment intent only ever produces one of the two
+    // at capture time, never both, so "find either" is unambiguous. Without
+    // this EARNING branch, cancelling an online/wallet-paid appointment left
+    // the original EARNING row untouched forever — overstating what
+    // MedSuper owes the doctor for money it already refunded.
     const ledgerEntries = await this.ledger.findByRelatedPaymentIntentId(tx, intent.id);
-    const commissionEntry = ledgerEntries.find((entry) => entry.entry_type === 'COMMISSION_DEDUCTION');
-    if (commissionEntry) {
+    const reversibleEntry = ledgerEntries.find((entry) => entry.entry_type === 'COMMISSION_DEDUCTION' || entry.entry_type === 'EARNING');
+    if (reversibleEntry) {
       const reversal = computeProportionalCommissionReversal({
-        originalCommission: commissionEntry.amount.toString(),
+        originalCommission: reversibleEntry.amount.toString(),
         capturedAmount: intent.amount.toString(),
         refundAmount,
       });
       await this.ledger.create(tx, {
-        providerType: commissionEntry.provider_type,
-        providerId: commissionEntry.provider_id,
+        providerType: reversibleEntry.provider_type,
+        providerId: reversibleEntry.provider_id,
         entryType: 'ADJUSTMENT',
         amount: reversal,
         relatedPaymentIntentId: intent.id,
