@@ -11,7 +11,7 @@ export interface NewPharmacyOrder {
 export interface FlatQuote {
   totalPrice: string;
   currency: string;
-  estimatedReadyMinutes: number;
+  estimatedReadyMinutes: number | null;
   note: string | null;
 }
 
@@ -82,27 +82,12 @@ export class PharmacyOrderRepository {
     return result.count === 1;
   }
 
-  /** Version-guarded — no concurrency race here (the pharmacist quote and patient reject/approve steps are each one actor acting once), so the generic optimistic-lock helper is sufficient. */
+  /** Version-guarded — lifecycle mutations are single-actor writes, so the shared optimistic-lock helper is sufficient. */
   async setStatus(db: Prisma.TransactionClient, id: string, currentVersion: number, status: PharmacyOrderStatus): Promise<void> {
     await updateWithOptimisticLock(db.pharmacyOrder, id, currentVersion, { status });
   }
 
-  /**
-   * File 11 Part 14 (`ACCEPTED --> PAID: payment_intent captured`). A
-   * conditional `updateMany` rather than the shared optimistic-lock helper
-   * (which throws) — the caller (`ApprovePharmacyOrderUseCase`) needs a
-   * plain boolean to guard the same "patient double-clicks approve" race
-   * `ConfirmAppointmentUseCase` relies on `holds.markConverted` for.
-   */
-  async markPaid(db: Prisma.TransactionClient, id: string, currentVersion: number, paymentIntentId: string): Promise<boolean> {
-    const result = await db.pharmacyOrder.updateMany({
-      where: { id, version: currentVersion },
-      data: { status: 'PAID', payment_intent_id: paymentIntentId, version: { increment: 1 } },
-    });
-    return result.count === 1;
-  }
-
-  /** 2026-08-29: `UNDER_REVIEW --> ACCEPTED` with the pharmacist's flat total — no per-item pricing (see domain/pharmacy-order-quote.rules.ts). */
+  /** `UNDER_REVIEW --> ACCEPTED` with the pharmacist's flat price and optional note. */
   async submitQuote(db: Prisma.TransactionClient, id: string, currentVersion: number, quote: FlatQuote): Promise<void> {
     await updateWithOptimisticLock(db.pharmacyOrder, id, currentVersion, {
       status: 'ACCEPTED',

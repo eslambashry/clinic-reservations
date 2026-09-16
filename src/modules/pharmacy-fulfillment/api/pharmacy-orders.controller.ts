@@ -2,7 +2,6 @@ import { Body, Controller, Get, Inject, Param, ParseUUIDPipe, Post, Query, UseIn
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { AcceptPharmacyOrderBroadcastResult, AcceptPharmacyOrderBroadcastUseCase } from '../application/accept-pharmacy-order-broadcast.use-case';
-import { ApprovePharmacyOrderResult, ApprovePharmacyOrderUseCase } from '../application/approve-pharmacy-order.use-case';
 import { CompletePharmacyOrderResult, CompletePharmacyOrderUseCase } from '../application/complete-pharmacy-order.use-case';
 import { ConfirmPharmacyOrderReceiptResult, ConfirmPharmacyOrderReceiptUseCase } from '../application/confirm-pharmacy-order-receipt.use-case';
 import { CreatePharmacyOrderResult, CreatePharmacyOrderUseCase } from '../application/create-pharmacy-order.use-case';
@@ -26,15 +25,15 @@ import { SubmitPharmacyOrderQuoteDto } from './dto/submit-pharmacy-order-quote.d
 /**
  * File 11 Part 14/05 / File 12 Part 39 — patient-triggered order creation
  * from an already-`ACCEPTED` prescription, pharmacy-staff broadcast
- * accept/decline, the pharmacist's quote, and the patient's approval/payment.
+ * accept/decline, the pharmacist's price/note response, and staff fulfillment.
  * `accept`/`decline`/`quote`/`fulfill`/`complete` take no `branchId` — it's
  * resolved server-side from the caller's own role membership (Part 39), so a
  * pharmacy-staff user can only ever act as their own branch.
  *
  * 2026-08-29 additions (`medsuper-pharmacy-dashboard` integration pass):
  * `GET /` (the queue-listing endpoint File 12 Part 39 item 11 named but
- * never built), `POST /:id/fulfill` and `POST /:id/complete` (post-payment
- * progression, previously entirely missing), and `quote`'s body is now a
+ * never built), `POST /:id/fulfill` and `POST /:id/complete`, and `quote`'s
+ * body is now a
  * flat total instead of File 10's item-by-item contract (see
  * `submit-pharmacy-order-quote.use-case.ts`). The dashboard's UI never had a
  * separate "accept this broadcast" screen, so `quote`/`reject` (PHARMACY_STAFF)
@@ -57,7 +56,6 @@ export class PharmacyOrdersController {
     @Inject(SubmitPharmacyOrderQuoteUseCase) private readonly submitQuote: SubmitPharmacyOrderQuoteUseCase,
     @Inject(RejectPharmacyOrderUseCase) private readonly rejectOrder: RejectPharmacyOrderUseCase,
     @Inject(RejectPharmacyOrderSubstitutionUseCase) private readonly rejectSubstitution: RejectPharmacyOrderSubstitutionUseCase,
-    @Inject(ApprovePharmacyOrderUseCase) private readonly approvePharmacyOrder: ApprovePharmacyOrderUseCase,
     @Inject(FulfillPharmacyOrderUseCase) private readonly fulfillPharmacyOrder: FulfillPharmacyOrderUseCase,
     @Inject(CompletePharmacyOrderUseCase) private readonly completePharmacyOrder: CompletePharmacyOrderUseCase,
     @Inject(ConfirmPharmacyOrderReceiptUseCase) private readonly confirmPharmacyOrderReceipt: ConfirmPharmacyOrderReceiptUseCase,
@@ -107,7 +105,7 @@ export class PharmacyOrdersController {
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({
     summary:
-      'Submit a flat total/ETA/note — no per-item pricing. Claims an unclaimed RECEIVED order first if needed (2026-08-29, docs/PROPOSED_CONTRACT.md §1)',
+      'Submit a flat total and optional note — no per-item pricing. Claims an unclaimed RECEIVED order first if needed.',
   })
   quote(
     @Param('pharmacyOrderId', ParseUUIDPipe) pharmacyOrderId: string,
@@ -135,21 +133,10 @@ export class PharmacyOrdersController {
     return this.rejectSubstitution.execute(pharmacyOrderId, user);
   }
 
-  @Roles(RoleContextType.PATIENT)
-  @Post(':pharmacyOrderId/approve')
-  @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Approve and pay — the same moment, not decoupled (File 10 Part 8.1)' })
-  approve(
-    @Param('pharmacyOrderId', ParseUUIDPipe) pharmacyOrderId: string,
-    @CurrentUser() user: AccessTokenPayload,
-  ): Promise<ApprovePharmacyOrderResult> {
-    return this.approvePharmacyOrder.execute(pharmacyOrderId, user);
-  }
-
   @Roles(RoleContextType.PHARMACY_STAFF)
   @Post(':pharmacyOrderId/fulfill')
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'PAID --> READY_FOR_PICKUP or OUT_FOR_DELIVERY, by the order\'s own fulfillment type (2026-08-29 addition)' })
+  @ApiOperation({ summary: 'ACCEPTED --> READY_FOR_PICKUP or OUT_FOR_DELIVERY after staff pricing; legacy PAID/PREPARING rows remain supported' })
   fulfill(
     @Param('pharmacyOrderId', ParseUUIDPipe) pharmacyOrderId: string,
     @Body() _dto: LifecycleTransitionDto,

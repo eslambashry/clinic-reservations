@@ -4,7 +4,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { assertOrderIsPaid, nextStatusAfterFulfill } from '../domain/pharmacy-order.rules';
+import { assertOrderCanBeginFulfillment, nextStatusAfterFulfill } from '../domain/pharmacy-order.rules';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
 
 export interface FulfillPharmacyOrderResult {
@@ -42,7 +42,7 @@ export class FulfillPharmacyOrderUseCase {
       if (!order || order.pharmacy_branch_id !== branchId) {
         throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
       }
-      assertOrderIsPaid(order.status);
+      assertOrderCanBeginFulfillment(order.status);
 
       const nextStatus = nextStatusAfterFulfill(order.fulfillment_type);
       await this.pharmacyOrders.setStatus(tx, pharmacyOrderId, order.version, nextStatus);

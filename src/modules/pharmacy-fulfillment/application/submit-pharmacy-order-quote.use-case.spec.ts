@@ -12,7 +12,7 @@ describe('SubmitPharmacyOrderQuoteUseCase', () => {
   const orderItem1 = { id: 'oi-1', prescription_item_id: 'pi-1', version: 1, quantity: 20 };
   const orderItem2 = { id: 'oi-2', prescription_item_id: 'pi-2', version: 1, quantity: 10 };
 
-  const validInput = { totalPrice: '225.00', estimatedReadyMinutes: 45, note: 'كل الأصناف متوفرة' };
+  const validInput = { totalPrice: '225.00', note: 'كل الأصناف متوفرة' };
 
   function setup() {
     const tx = buildTx();
@@ -62,7 +62,7 @@ describe('SubmitPharmacyOrderQuoteUseCase', () => {
     expect(pharmacyOrders.submitQuote).toHaveBeenCalledWith(tx, 'order-1', 1, {
       totalPrice: '225.00',
       currency: 'EGP',
-      estimatedReadyMinutes: 45,
+      estimatedReadyMinutes: null,
       note: 'كل الأصناف متوفرة',
     });
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'PharmacyOrderQuoted', { pharmacyOrderId: 'order-1', totalPrice: '225.00', currency: 'EGP' });

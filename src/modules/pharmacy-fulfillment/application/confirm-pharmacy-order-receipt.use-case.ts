@@ -20,8 +20,8 @@ export interface ConfirmPharmacyOrderReceiptResult {
  * delivery actually arrives — staff-side `complete` on an `OUT_FOR_DELIVERY`
  * order (File 12 Part 40 item 5) can only ever be a guess. The patient is the
  * only party who genuinely knows the order was received. Ownership is
- * checked the same way `ApprovePharmacyOrderUseCase`/
- * `RejectPharmacyOrderSubstitutionUseCase` do — a 404, not a 403, for anyone
+ * checked the same way `RejectPharmacyOrderSubstitutionUseCase` does — a
+ * 404, not a 403, for anyone
  * who isn't the order's own patient (hides existence).
  */
 @Injectable()

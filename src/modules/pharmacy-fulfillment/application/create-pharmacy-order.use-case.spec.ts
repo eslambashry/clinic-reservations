@@ -21,6 +21,7 @@ describe('CreatePharmacyOrderUseCase', () => {
     const getPharmacyBranch = { execute: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
+    const listStaffByContext = { execute: jest.fn().mockResolvedValue([]) };
     const useCase = new CreatePharmacyOrderUseCase(
       prisma as any,
       pharmacyOrders as any,
@@ -31,8 +32,9 @@ describe('CreatePharmacyOrderUseCase', () => {
       getPharmacyBranch as any,
       audit as any,
       outbox as any,
+      listStaffByContext as any,
     );
-    return { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, audit, outbox, useCase };
+    return { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, audit, outbox, listStaffByContext, useCase };
   }
 
   it('creates the order, its items, and one broadcast per nearby branch', async () => {
@@ -53,6 +55,24 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'PharmacyOrderCreated', expect.objectContaining({ pharmacyOrderId: 'order-1' }));
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'pharmacy-fulfillment.pharmacy-order.create' }));
     expect(result).toEqual({ pharmacyOrderId: 'order-1', status: 'RECEIVED', broadcastedBranchIds: ['branch-1', 'branch-2'] });
+  });
+
+  it('notifies every PHARMACY_STAFF member at each broadcast branch, one event per (branch, staff member)', async () => {
+    const { tx, pharmacyOrders, getAcceptedPrescription, searchPharmacyBranches, outbox, listStaffByContext, useCase } = setup();
+    searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
+    pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
+    getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
+    pharmacyOrders.create.mockResolvedValue({ id: 'order-1', status: 'RECEIVED' });
+    listStaffByContext.execute.mockImplementation(({ contextId }: any) =>
+      Promise.resolve(contextId === 'branch-1' ? [{ userId: 'staff-a' }] : [{ userId: 'staff-b' }]),
+    );
+
+    await useCase.execute(input, actor);
+
+    expect(listStaffByContext.execute).toHaveBeenCalledWith({ roleCode: 'PHARMACY_STAFF', contextType: 'PHARMACY_STAFF', contextId: 'branch-1' });
+    expect(listStaffByContext.execute).toHaveBeenCalledWith({ roleCode: 'PHARMACY_STAFF', contextType: 'PHARMACY_STAFF', contextId: 'branch-2' });
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewPharmacyOrderForStaff', { pharmacyOrderId: 'order-1', pharmacyStaffUserId: 'staff-a' });
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewPharmacyOrderForStaff', { pharmacyOrderId: 'order-1', pharmacyStaffUserId: 'staff-b' });
   });
 
   it('passes deliveryCapable: true when fulfillmentType is DELIVERY', async () => {

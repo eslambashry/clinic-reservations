@@ -121,6 +121,21 @@ export class RoleMembershipRepository {
     });
   }
 
+  /**
+   * Platform-wide fan-out (e.g. "every ADMIN"): unlike `listByContext`,
+   * `ADMIN` memberships carry no `context_id` to scope by (File 11 Part 03 —
+   * admin is a global role, not owner/branch-scoped), so this intentionally
+   * omits that filter rather than accepting a required param nothing can supply.
+   */
+  listActiveByRoleContextType(
+    db: Prisma.TransactionClient,
+    params: { roleCode: string; contextType: RoleContextType },
+  ): Promise<RoleMembership[]> {
+    return db.roleMembership.findMany({
+      where: { role_code: params.roleCode, context_type: params.contextType, status: 'ACTIVE' },
+    });
+  }
+
   async setStatus(
     db: Prisma.TransactionClient,
     id: string,

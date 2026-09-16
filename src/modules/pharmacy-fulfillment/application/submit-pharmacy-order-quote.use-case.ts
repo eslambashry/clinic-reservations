@@ -15,7 +15,6 @@ import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.reposi
 
 export interface SubmitPharmacyOrderQuoteInput {
   totalPrice: string;
-  estimatedReadyMinutes: number;
   note?: string;
   controlledSubstanceConfirmed?: boolean;
 }
@@ -30,8 +29,8 @@ export interface SubmitPharmacyOrderQuoteResult {
 /**
  * 2026-08-29 rewrite (File 12 Part 39 follow-up, `docs/PROPOSED_CONTRACT.md`
  * §1 resolved in `medsuper-pharmacy-dashboard`'s favor over the original
- * item-by-item quote contract): the pharmacist types one total, one ETA, and
- * an optional note — no `PharmacyOrderItem` pricing, no substitution
+ * item-by-item quote contract): the pharmacist types one total and an
+ * optional note — no `PharmacyOrderItem` pricing, no substitution
  * proposals. `SUBSTITUTION_PROPOSED` stays in the schema for forward-compat
  * but no code path here produces it any more (same "unreachable enum
  * member" precedent as `AppointmentStatus.HELD`).
@@ -44,8 +43,7 @@ export interface SubmitPharmacyOrderQuoteResult {
  * conditional update `AcceptPharmacyOrderBroadcastUseCase` uses, File 11 line
  * 456) and then quotes it, inside one transaction — the intermediate
  * `UNDER_REVIEW` hop is real but never separately observable, same "not
- * decoupled" reasoning File 10 Part 8.1 already established for `approve`'s
- * two hops. `AcceptPharmacyOrderBroadcastUseCase`/`.../accept` still exist
+ * separately observable. `AcceptPharmacyOrderBroadcastUseCase`/`.../accept` still exist
  * as a documented, separately-callable primitive — just unused by this
  * console.
  */
@@ -130,7 +128,7 @@ export class SubmitPharmacyOrderQuoteUseCase {
       await this.pharmacyOrders.submitQuote(tx, pharmacyOrderId, currentVersion, {
         totalPrice: input.totalPrice,
         currency,
-        estimatedReadyMinutes: input.estimatedReadyMinutes,
+        estimatedReadyMinutes: null,
         note: input.note ?? null,
       });
 

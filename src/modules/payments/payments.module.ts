@@ -17,6 +17,7 @@ import { MarkOnlinePaymentFailedUseCase } from './application/mark-online-paymen
 import { PAYMENT_GATEWAY } from './application/ports/payment-gateway.port';
 import { ProcessCancellationRefundUseCase } from './application/process-cancellation-refund.use-case';
 import { ProcessWalletTopUpUseCase } from './application/process-wallet-top-up.use-case';
+import { RecordProviderPayoutUseCase } from './application/record-provider-payout.use-case';
 import { PaymentAttemptRepository } from './infrastructure/payment-attempt.repository';
 import { PaymentIntentRepository } from './infrastructure/payment-intent.repository';
 import { PaymentSplitRepository } from './infrastructure/payment-split.repository';
@@ -25,6 +26,7 @@ import { ProviderLedgerRepository } from './infrastructure/provider-ledger.repos
 import { RefundRepository } from './infrastructure/refund.repository';
 import { WalletRepository } from './infrastructure/wallet.repository';
 import { WalletTransactionRepository } from './infrastructure/wallet-transaction.repository';
+import { AuditModule } from '../audit/audit.module';
 
 /**
  * File 11 Part 03/13: owns `payment_intents`, `payment_attempts`,
@@ -43,6 +45,13 @@ import { WalletTransactionRepository } from './infrastructure/wallet-transaction
  * payment webhook controller (`POST /v1/webhooks/payments/:provider`)
  * specifically because it's the one direction that already depends on this
  * module (avoids a circular module import; see its own doc comment).
+ *
+ * `ProviderPayoutsController` (Admin-only): the outstanding-balance/payout
+ * feature — reads `ProviderLedgerEntry` back into a balance and records that
+ * Admin transferred money to a provider outside the system (no schema
+ * change: reuses the already-reserved `PAYOUT` ledger entry type). Needs
+ * `AuditModule` for the first time in this module, since recording a payout
+ * is audited like any other admin action.
  */
 @Module({
   controllers: [WalletController, FinanceController],

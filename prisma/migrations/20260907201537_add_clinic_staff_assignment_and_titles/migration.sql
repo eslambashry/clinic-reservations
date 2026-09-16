@@ -27,8 +27,29 @@ ALTER TABLE "clinic_staff_assignments" ADD CONSTRAINT "clinic_staff_assignments_
 -- AddForeignKey
 ALTER TABLE "clinic_staff_assignments" ADD CONSTRAINT "clinic_staff_assignments_clinic_branch_id_fkey" FOREIGN KEY ("clinic_branch_id") REFERENCES "clinic_branches"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- RenameIndex
-ALTER INDEX "pharmacy_order_broadcasts_branch_response_idx" RENAME TO "pharmacy_order_broadcasts_pharmacy_branch_id_response_idx";
+-- RenameIndex (safe: only renames if old name still exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'pharmacy_order_broadcasts_branch_response_idx'
+  ) THEN
+    ALTER INDEX "pharmacy_order_broadcasts_branch_response_idx"
+      RENAME TO "pharmacy_order_broadcasts_pharmacy_branch_id_response_idx";
+  END IF;
+END $$;
 
--- RenameIndex
-ALTER INDEX "pharmacy_order_broadcasts_order_branch_idx" RENAME TO "pharmacy_order_broadcasts_pharmacy_order_id_pharmacy_branch_idx";
+-- RenameIndex (safe: only renames if old name still exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'pharmacy_order_broadcasts_order_branch_idx'
+  ) THEN
+    ALTER INDEX "pharmacy_order_broadcasts_order_branch_idx"
+      RENAME TO "pharmacy_order_broadcasts_pharmacy_order_id_pharmacy_branch_idx";
+  END IF;
+END $$;
+

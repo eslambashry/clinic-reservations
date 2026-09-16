@@ -1,7 +1,7 @@
 import {
   assertHasFulfillableItems,
   assertNoActiveOrderExists,
-  assertOrderIsPaid,
+  assertOrderCanBeginFulfillment,
   assertOrderIsReadyToComplete,
   isActiveOrderStatus,
   nextStatusAfterFulfill,
@@ -59,13 +59,17 @@ describe('nextStatusAfterFulfill', () => {
   });
 });
 
-describe('assertOrderIsPaid', () => {
-  it('allows PAID', () => {
-    expect(() => assertOrderIsPaid('PAID')).not.toThrow();
+describe('assertOrderCanBeginFulfillment', () => {
+  it('allows newly priced ACCEPTED orders and legacy PAID/PREPARING orders', () => {
+    expect(() => assertOrderCanBeginFulfillment('ACCEPTED')).not.toThrow();
+    expect(() => assertOrderCanBeginFulfillment('PAID')).not.toThrow();
+    expect(() => assertOrderCanBeginFulfillment('PREPARING')).not.toThrow();
   });
 
-  it('throws PHARMACY_ORDER_NOT_PAID for anything else', () => {
-    expect(() => assertOrderIsPaid('ACCEPTED')).toThrow(expect.objectContaining({ code: 'PHARMACY_ORDER_NOT_PAID', httpStatus: 422 }));
+  it('rejects an order that has not been priced', () => {
+    expect(() => assertOrderCanBeginFulfillment('UNDER_REVIEW')).toThrow(
+      expect.objectContaining({ code: 'PHARMACY_ORDER_NOT_READY_FOR_FULFILLMENT', httpStatus: 422 }),
+    );
   });
 });
 

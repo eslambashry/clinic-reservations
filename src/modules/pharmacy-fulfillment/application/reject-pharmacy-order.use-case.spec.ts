@@ -80,15 +80,15 @@ describe('RejectPharmacyOrderUseCase', () => {
       await expect(useCase.execute('order-1', {}, actor)).rejects.toMatchObject({ code: 'REJECTION_REASON_REQUIRED', httpStatus: 422 });
     });
 
-    it('also rejects an already-ACCEPTED order (patient stalling on payment)', async () => {
+    it('also rejects an already-ACCEPTED order before fulfillment starts', async () => {
       const { tx, pharmacyOrders, broadcasts, getActiveRoleMembership, useCase } = setup();
       getActiveRoleMembership.execute.mockResolvedValue(membership);
       pharmacyOrders.findById.mockResolvedValue(acceptedOrder);
       broadcasts.findByOrderAndBranch.mockResolvedValue({ id: 'bc-1', response: 'ACCEPTED' });
 
-      const result = await useCase.execute('order-1', { reason: 'OTHER', note: 'no response' }, actor);
+      const result = await useCase.execute('order-1', { reason: 'OTHER', note: 'stock changed' }, actor);
 
-      expect(pharmacyOrders.rejectOrder).toHaveBeenCalledWith(tx, 'order-1', 2, { reason: 'OTHER', note: 'no response' });
+      expect(pharmacyOrders.rejectOrder).toHaveBeenCalledWith(tx, 'order-1', 2, { reason: 'OTHER', note: 'stock changed' });
       expect(result).toEqual({ pharmacyOrderId: 'order-1', status: 'REJECTED' });
     });
 

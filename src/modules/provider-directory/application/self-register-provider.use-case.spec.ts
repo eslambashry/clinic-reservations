@@ -36,6 +36,8 @@ describe('SelfRegisterProviderUseCase', () => {
     const updateUserProfile = { execute: jest.fn() };
     const mediaStorage = { upload: jest.fn().mockResolvedValue({ url: 'https://ik.imagekit.io/x/doctor-profiles/user-1/photo.jpg', fileId: 'file-1', filePath: '/doctor-profiles/user-1/photo.jpg' }), getSignedUrl: jest.fn() };
     const scheduleTemplates = { create: jest.fn().mockResolvedValue({ id: 'template-1' }) };
+    const outbox = { emit: jest.fn() };
+    const listActiveAdminUserIds = { execute: jest.fn().mockResolvedValue([]) };
     const useCase = new SelfRegisterProviderUseCase(
       prisma as any,
       specialties as any,
@@ -48,8 +50,10 @@ describe('SelfRegisterProviderUseCase', () => {
       updateUserProfile as any,
       mediaStorage as any,
       scheduleTemplates as any,
+      outbox as any,
+      listActiveAdminUserIds as any,
     );
-    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, scheduleTemplates, useCase };
+    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, scheduleTemplates, outbox, listActiveAdminUserIds, useCase };
   }
 
   it('rejects an unknown specialty before creating anything', async () => {
@@ -125,6 +129,24 @@ describe('SelfRegisterProviderUseCase', () => {
       affiliationId: 'affiliation-1',
       status: 'PENDING',
       notPersisted: [...SELF_REGISTRATION_NOT_PERSISTED_FIELDS],
+    });
+  });
+
+  it('notifies every active ADMIN, one event per admin', async () => {
+    const { tx, outbox, listActiveAdminUserIds, useCase } = setup();
+    listActiveAdminUserIds.execute.mockResolvedValue(['admin-1', 'admin-2']);
+
+    await useCase.execute(dto, actor);
+
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewProviderRegistrationForAdmin', {
+      doctorId: 'doctor-1',
+      clinicId: 'clinic-1',
+      adminUserId: 'admin-1',
+    });
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewProviderRegistrationForAdmin', {
+      doctorId: 'doctor-1',
+      clinicId: 'clinic-1',
+      adminUserId: 'admin-2',
     });
   });
 

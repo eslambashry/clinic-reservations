@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 import { randomUUID } from 'node:crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AcceptPharmacyOrderBroadcastUseCase } from '../application/accept-pharmacy-order-broadcast.use-case';
-import { ApprovePharmacyOrderUseCase } from '../application/approve-pharmacy-order.use-case';
 import { CompletePharmacyOrderUseCase } from '../application/complete-pharmacy-order.use-case';
 import { FulfillPharmacyOrderUseCase } from '../application/fulfill-pharmacy-order.use-case';
 import { GetPharmacyOrderUseCase } from '../application/get-pharmacy-order.use-case';
@@ -18,6 +17,7 @@ import { PolicyConfigModule } from '../../../shared/kernel/policy-config/policy-
 import { PrismaModule } from '../../../shared/kernel/prisma/prisma.module';
 import { RedisModule } from '../../../shared/kernel/redis/redis.module';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { MediaStorageModule } from '../../../shared/kernel/storage/media-storage.module';
 import { PharmacyFulfillmentModule } from '../pharmacy-fulfillment.module';
 
 dotenv.config();
@@ -38,7 +38,6 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
   let prisma: PrismaService;
   let submitQuote: SubmitPharmacyOrderQuoteUseCase;
   let rejectOrder: RejectPharmacyOrderUseCase;
-  let approveOrder: ApprovePharmacyOrderUseCase;
   let fulfillOrder: FulfillPharmacyOrderUseCase;
   let completeOrder: CompletePharmacyOrderUseCase;
   let getOrder: GetPharmacyOrderUseCase;
@@ -62,14 +61,22 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [AppConfigModule, PrismaModule, PolicyConfigModule, OutboxModule, RequestContextModule, RedisModule, PharmacyFulfillmentModule],
+      imports: [
+        AppConfigModule,
+        PrismaModule,
+        PolicyConfigModule,
+        OutboxModule,
+        RequestContextModule,
+        RedisModule,
+        MediaStorageModule,
+        PharmacyFulfillmentModule,
+      ],
     }).compile();
     await moduleRef.init();
 
     prisma = moduleRef.get(PrismaService);
     submitQuote = moduleRef.get(SubmitPharmacyOrderQuoteUseCase);
     rejectOrder = moduleRef.get(RejectPharmacyOrderUseCase);
-    approveOrder = moduleRef.get(ApprovePharmacyOrderUseCase);
     fulfillOrder = moduleRef.get(FulfillPharmacyOrderUseCase);
     completeOrder = moduleRef.get(CompletePharmacyOrderUseCase);
     getOrder = moduleRef.get(GetPharmacyOrderUseCase);
@@ -117,14 +124,10 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
   }, 30000);
 
   afterAll(async () => {
-    await prisma.paymentSplit.deleteMany({ where: { payment_intent: { payer_user_id: patientId } } });
-    await prisma.providerLedgerEntry.deleteMany({ where: { provider_id: { in: [branchA1, branchB1] } } });
-    await prisma.pharmacyOrder.updateMany({ where: { patient_id: patientId }, data: { payment_intent_id: null } });
-    await prisma.paymentIntent.deleteMany({ where: { payer_user_id: patientId } });
     await prisma.pharmacyOrderBroadcast.deleteMany({ where: { pharmacy_branch_id: { in: [branchA1, branchB1] } } });
     await prisma.pharmacyOrder.deleteMany({ where: { patient_id: patientId } });
     await prisma.prescription.deleteMany({ where: { patient_id: patientId } });
-    await prisma.outboxEvent.deleteMany({ where: { event_name: { in: ['PharmacyOrderAccepted', 'PharmacyOrderQuoted', 'PaymentCaptured'] } } });
+    await prisma.outboxEvent.deleteMany({ where: { event_name: { in: ['PharmacyOrderAccepted', 'PharmacyOrderQuoted'] } } });
     await prisma.auditLog.deleteMany({ where: { resource_type: 'pharmacy_order' } });
     await prisma.roleMembership.deleteMany({ where: { id: { in: [staffA.membershipId, staffB.membershipId, patientMembershipId] } } });
     await prisma.user.deleteMany({ where: { id: { in: [staffA.userId, staffB.userId, patientId] } } });
@@ -158,10 +161,10 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
   // ---------------------------------------------------------------------
 
   describe('full workflow', () => {
-    it('PICKUP: RECEIVED -> claim-on-quote -> ACCEPTED -> approve/pay -> PAID -> fulfill -> READY_FOR_PICKUP -> complete -> FULFILLED', async () => {
+    it('PICKUP: RECEIVED -> claim-on-quote -> ACCEPTED -> fulfill -> READY_FOR_PICKUP -> complete -> FULFILLED', async () => {
       const orderId = await createBroadcastOrder([branchA1, branchB1], 'PICKUP');
 
-      const quote = await submitQuote.execute(orderId, { totalPrice: '150.00', estimatedReadyMinutes: 30, note: 'كل الأصناف متوفرة' }, actorFor(staffA));
+      const quote = await submitQuote.execute(orderId, { totalPrice: '150.00', note: 'كل الأصناف متوفرة' }, actorFor(staffA));
       expect(quote).toEqual({ pharmacyOrderId: orderId, status: 'ACCEPTED', totalPrice: '150.00', currency: 'EGP' });
       let row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
       expect(row.status).toBe('ACCEPTED');
@@ -169,16 +172,6 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       expect(row.total_price?.toFixed(2)).toBe('150.00');
       const broadcastA = await prisma.pharmacyOrderBroadcast.findFirst({ where: { pharmacy_order_id: orderId, pharmacy_branch_id: branchA1 } });
       expect(broadcastA?.response).toBe('ACCEPTED');
-
-      const approval = await approveOrder.execute(orderId, patientActor());
-      expect(approval.status).toBe('PAID');
-      expect(approval.totalAmount).toBe('150.00');
-      row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
-      expect(row.status).toBe('PAID');
-      expect(row.payment_intent_id).toBe(approval.paymentIntentId);
-      const intent = await prisma.paymentIntent.findUniqueOrThrow({ where: { id: approval.paymentIntentId } });
-      expect(intent.status).toBe('CAPTURED');
-      expect(intent.amount.toFixed(2)).toBe('150.00');
 
       const fulfilled = await fulfillOrder.execute(orderId, actorFor(staffA));
       expect(fulfilled.status).toBe('READY_FOR_PICKUP');
@@ -193,13 +186,12 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       // Read path agrees with what was persisted, from the owning patient's side.
       const detail = await getOrder.execute(orderId, patientActor());
       expect(detail.status).toBe('FULFILLED');
-      expect(detail.quote).toEqual(expect.objectContaining({ totalPrice: '150.00', currency: 'EGP', estimatedReadyMinutes: 30 }));
+      expect(detail.quote).toEqual(expect.objectContaining({ totalPrice: '150.00', currency: 'EGP', estimatedReadyMinutes: null }));
     }, 20000);
 
     it('DELIVERY: fulfill goes to OUT_FOR_DELIVERY, complete closes it directly (no DELIVERED step anywhere)', async () => {
       const orderId = await createBroadcastOrder([branchA1], 'DELIVERY');
-      await submitQuote.execute(orderId, { totalPrice: '75.50', estimatedReadyMinutes: 60 }, actorFor(staffA));
-      await approveOrder.execute(orderId, patientActor());
+      await submitQuote.execute(orderId, { totalPrice: '75.50' }, actorFor(staffA));
 
       const fulfilled = await fulfillOrder.execute(orderId, actorFor(staffA));
       expect(fulfilled.status).toBe('OUT_FOR_DELIVERY');
@@ -248,11 +240,11 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       expect(row.rejected_at).not.toBeNull();
     });
 
-    it('rejects an already-ACCEPTED (quoted) order — patient stalling on payment', async () => {
+    it('rejects an already-ACCEPTED (priced) order before fulfillment starts', async () => {
       const orderId = await createBroadcastOrder([branchA1]);
-      await submitQuote.execute(orderId, { totalPrice: '200.00', estimatedReadyMinutes: 20 }, actorFor(staffA));
+      await submitQuote.execute(orderId, { totalPrice: '200.00' }, actorFor(staffA));
 
-      const result = await rejectOrder.execute(orderId, { reason: 'OTHER', note: 'no response from patient' }, actorFor(staffA));
+      const result = await rejectOrder.execute(orderId, { reason: 'OTHER', note: 'stock changed after pricing' }, actorFor(staffA));
       expect(result.status).toBe('REJECTED');
       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
       expect(row.status).toBe('REJECTED');
@@ -268,8 +260,8 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       const orderId = await createBroadcastOrder([branchA1, branchB1]);
 
       const outcomes = await Promise.allSettled([
-        submitQuote.execute(orderId, { totalPrice: '100.00', estimatedReadyMinutes: 20 }, actorFor(staffA)),
-        submitQuote.execute(orderId, { totalPrice: '120.00', estimatedReadyMinutes: 25 }, actorFor(staffB)),
+        submitQuote.execute(orderId, { totalPrice: '100.00' }, actorFor(staffA)),
+        submitQuote.execute(orderId, { totalPrice: '120.00' }, actorFor(staffB)),
       ]);
 
       const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
@@ -316,8 +308,8 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       await acceptBroadcast.execute(orderId, actorFor(staffA));
 
       const outcomes = await Promise.allSettled([
-        submitQuote.execute(orderId, { totalPrice: '90.00', estimatedReadyMinutes: 15 }, actorFor(staffA)),
-        submitQuote.execute(orderId, { totalPrice: '90.00', estimatedReadyMinutes: 15 }, actorFor(staffA)),
+        submitQuote.execute(orderId, { totalPrice: '90.00' }, actorFor(staffA)),
+        submitQuote.execute(orderId, { totalPrice: '90.00' }, actorFor(staffA)),
       ]);
 
       const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
@@ -332,10 +324,9 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       expect(row.version).toBe(3);
     }, 20000);
 
-    it('Race 4 (stale state on fulfill): two fulfill calls fired at once on the same PAID order — exactly one transitions it', async () => {
+    it('Race 4 (stale state on fulfill): two fulfill calls fired at once on the same priced order — exactly one transitions it', async () => {
       const orderId = await createBroadcastOrder([branchA1]);
-      await submitQuote.execute(orderId, { totalPrice: '60.00', estimatedReadyMinutes: 10 }, actorFor(staffA));
-      await approveOrder.execute(orderId, patientActor());
+      await submitQuote.execute(orderId, { totalPrice: '60.00' }, actorFor(staffA));
 
       const outcomes = await Promise.allSettled([
         fulfillOrder.execute(orderId, actorFor(staffA)),
@@ -354,8 +345,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
 
     it('Race 5 (duplicate complete): two complete calls fired at once — exactly one closes it, no corrupted state', async () => {
       const orderId = await createBroadcastOrder([branchA1]);
-      await submitQuote.execute(orderId, { totalPrice: '45.00', estimatedReadyMinutes: 10 }, actorFor(staffA));
-      await approveOrder.execute(orderId, patientActor());
+      await submitQuote.execute(orderId, { totalPrice: '45.00' }, actorFor(staffA));
       await fulfillOrder.execute(orderId, actorFor(staffA));
 
       const outcomes = await Promise.allSettled([
@@ -382,13 +372,12 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
     it("Branch B cannot get, quote, reject, fulfill, or complete Branch A's order by supplying its own credentials against A's orderId", async () => {
       // Broadcast ONLY to A1 — B1 has no legitimate relationship to this order at all.
       const orderId = await createBroadcastOrder([branchA1]);
-      await submitQuote.execute(orderId, { totalPrice: '80.00', estimatedReadyMinutes: 20 }, actorFor(staffA));
-      await approveOrder.execute(orderId, patientActor());
+      await submitQuote.execute(orderId, { totalPrice: '80.00' }, actorFor(staffA));
       await fulfillOrder.execute(orderId, actorFor(staffA));
 
       await expect(getOrder.execute(orderId, actorFor(staffB))).rejects.toBeInstanceOf(NotFoundError);
       await expect(
-        submitQuote.execute(orderId, { totalPrice: '999.00', estimatedReadyMinutes: 5 }, actorFor(staffB)),
+        submitQuote.execute(orderId, { totalPrice: '999.00' }, actorFor(staffB)),
       ).rejects.toBeInstanceOf(NotFoundError);
       await expect(rejectOrder.execute(orderId, { reason: 'OTHER' }, actorFor(staffB))).rejects.toBeInstanceOf(NotFoundError);
       await expect(fulfillOrder.execute(orderId, actorFor(staffB))).rejects.toBeInstanceOf(NotFoundError);
@@ -403,7 +392,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
 
     it("Branch B's queue never includes Branch A's claimed order or an order never broadcast to B", async () => {
       const orderId = await createBroadcastOrder([branchA1]);
-      await submitQuote.execute(orderId, { totalPrice: '55.00', estimatedReadyMinutes: 15 }, actorFor(staffA));
+      await submitQuote.execute(orderId, { totalPrice: '55.00' }, actorFor(staffA));
 
       const [queueA, queueB] = await Promise.all([listOrders.execute({}, actorFor(staffA)), listOrders.execute({}, actorFor(staffB))]);
       expect(queueA.orders.some((o) => o.id === orderId)).toBe(true);
@@ -422,7 +411,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       await expect(getOrder.execute(orderId, actorFor(staffB))).rejects.toBeInstanceOf(NotFoundError);
 
       // The moment A1 actually claims it (via quote), the same actor/order pair succeeds.
-      await submitQuote.execute(orderId, { totalPrice: '30.00', estimatedReadyMinutes: 10 }, actorFor(staffA));
+      await submitQuote.execute(orderId, { totalPrice: '30.00' }, actorFor(staffA));
       const detail = await getOrder.execute(orderId, actorFor(staffA));
       expect(detail.id).toBe(orderId);
       await expect(getOrder.execute(orderId, actorFor(staffB))).rejects.toBeInstanceOf(NotFoundError);
@@ -430,34 +419,17 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
   });
 
   // ---------------------------------------------------------------------
-  // Money — decimal precision end to end, no float corruption
+  // Money — decimal precision for the displayed quote, without payment wiring
   // ---------------------------------------------------------------------
 
   describe('money handling', () => {
-    it.each([
-      ['0.01', 15, '0.00', '0.01'],
-      ['10.00', 15, '1.50', '8.50'],
-      ['999.99', 15, '150.00', '849.99'],
-      ['12345.67', 15, '1851.85', '10493.82'],
-    ])('quotes %s, captures it exactly, and splits commission correctly (platform %s / provider %s)', async (amount, _rate, expectedPlatform, expectedProvider) => {
+    it.each(['0.01', '10.00', '999.99', '12345.67'])('persists and returns quote %s exactly', async (amount) => {
       const orderId = await createBroadcastOrder([branchA1]);
-      const quote = await submitQuote.execute(orderId, { totalPrice: amount, estimatedReadyMinutes: 30 }, actorFor(staffA));
+      const quote = await submitQuote.execute(orderId, { totalPrice: amount }, actorFor(staffA));
       expect(quote.totalPrice).toBe(amount);
 
       const persisted = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
       expect(persisted.total_price?.toFixed(2)).toBe(amount);
-
-      const approval = await approveOrder.execute(orderId, patientActor());
-      expect(approval.totalAmount).toBe(amount);
-
-      const splits = await prisma.paymentSplit.findMany({ where: { payment_intent_id: approval.paymentIntentId } });
-      const platform = splits.find((s) => s.payee_type === 'PLATFORM');
-      const provider = splits.find((s) => s.payee_type === 'PROVIDER');
-      expect(platform?.amount.toFixed(2)).toBe(expectedPlatform);
-      expect(provider?.amount.toFixed(2)).toBe(expectedProvider);
-
-      const intent = await prisma.paymentIntent.findUniqueOrThrow({ where: { id: approval.paymentIntentId } });
-      expect(intent.amount.toFixed(2)).toBe(amount);
     }, 20000);
   });
 });
