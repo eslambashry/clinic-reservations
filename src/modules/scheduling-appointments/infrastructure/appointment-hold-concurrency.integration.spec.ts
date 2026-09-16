@@ -23,8 +23,10 @@ import { RefundRepository } from '../../payments/infrastructure/refund.repositor
 import { WalletRepository } from '../../payments/infrastructure/wallet.repository';
 import { WalletTransactionRepository } from '../../payments/infrastructure/wallet-transaction.repository';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
+import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AffiliationRepository } from '../../provider-directory/infrastructure/affiliation.repository';
+import { ClinicStaffAssignmentRepository } from '../../provider-directory/infrastructure/clinic-staff-assignment.repository';
 import { DoctorRepository } from '../../provider-directory/infrastructure/doctor.repository';
 import { AppConfigModule } from '../../../shared/config/config.module';
 import { RequestContextService } from '../../../shared/core/context/request-context.service';
@@ -78,8 +80,10 @@ describe('Appointment booking loop (integration)', () => {
         OutboxService,
         PolicyConfigReader,
         AffiliationRepository,
+        ClinicStaffAssignmentRepository,
         DoctorRepository,
         GetAffiliationBillingInfoUseCase,
+        ListAssistantUserIdsForBranchUseCase,
         // File 12 Part 49.7: cancel/reschedule now resolve ownership through
         // this instead of hard-coding `patient_id === actor.sub`.
         ResolveDoctorScopeUseCase,

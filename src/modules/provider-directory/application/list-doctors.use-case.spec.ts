@@ -3,7 +3,7 @@ import { ListDoctorsUseCase } from './list-doctors.use-case';
 describe('ListDoctorsUseCase', () => {
   function setup() {
     const prisma = {} as any;
-    const doctors = { list: jest.fn() };
+    const doctors = { list: jest.fn(), count: jest.fn().mockResolvedValue(0) };
     const useCase = new ListDoctorsUseCase(prisma, doctors as any);
     return { prisma, doctors, useCase };
   }

@@ -55,11 +55,11 @@ export class ListAuditLogsQueryDto {
   @Min(1)
   page?: number;
 
-  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 50 })
+  @ApiPropertyOptional({ minimum: 1, maximum: 50, default: 50 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(50)
   limit?: number;
 }

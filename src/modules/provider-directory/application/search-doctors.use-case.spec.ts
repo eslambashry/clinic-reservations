@@ -26,7 +26,7 @@ function row(overrides: Partial<DoctorSearchRow> = {}): DoctorSearchRow {
 
 describe('SearchDoctorsUseCase', () => {
   function setup() {
-    const repository = { search: jest.fn() };
+    const repository = { search: jest.fn(), count: jest.fn().mockResolvedValue(0) };
     const useCase = new SearchDoctorsUseCase(repository as any);
     return { repository, useCase };
   }

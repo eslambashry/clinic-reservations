@@ -42,6 +42,7 @@ export class CreateLabStaffUseCase {
     return this.prisma.$transaction(
       async (tx) => {
         const branches = await this.resolveLabStaff.requireLaboratoryBranches(tx, laboratoryId);
+        await this.staffAssignments.acquireProvisioningLock(tx, laboratoryId);
         if (branches.length === 0) {
           throw new BusinessRuleError(
             'LAB_HAS_NO_BRANCH',

@@ -6,7 +6,10 @@ function buildTx() {
 
 describe('UploadPrescriptionUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
-  const input = { files: [{ buffer: Buffer.from('img'), originalName: 'rx1.jpg', mimeType: 'image/jpeg', sizeBytes: 3 }] };
+  const input = {
+    files: [{ buffer: Buffer.from('img'), originalName: 'rx1.jpg', mimeType: 'image/jpeg', sizeBytes: 3 }],
+    notes: 'Take with food',
+  };
   const prescription = { id: 'prescription-1', version: 1 };
 
   function setup() {

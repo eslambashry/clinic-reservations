@@ -62,14 +62,16 @@ export class ListProviderLedgerEntriesUseCase {
         this.prisma,
         offsetMode
           ? { ...filter, limit: offset.take, skip: offset.skip }
-          : { ...filter, cursor: cursor ? { createdAt: new Date(cursor.c), id: cursor.i } : undefined, limit },
+          : { ...filter, cursor: cursor ? { createdAt: new Date(cursor.c), id: cursor.i } : undefined, limit: limit + 1 },
       ),
       this.ledger.count(this.prisma, { ...filter, limit }),
     ]);
 
-    const last = rows.at(-1);
+    const hasMore = !offsetMode && rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const last = pageRows.at(-1);
     return {
-      entries: rows.map((row) => ({
+      entries: pageRows.map((row) => ({
         id: row.id,
         providerType: row.provider_type,
         providerId: row.provider_id,
@@ -78,7 +80,7 @@ export class ListProviderLedgerEntriesUseCase {
         createdAt: row.created_at.toISOString(),
       })),
       nextCursor:
-        !offsetMode && rows.length === limit && last
+        hasMore && last
           ? encodeCursor<LedgerCursor>({ c: last.created_at.toISOString(), i: last.id })
           : null,
       ...buildPageMeta(totalCount, offsetMode ? offset.page : 1, offsetMode ? offset.limit : limit),

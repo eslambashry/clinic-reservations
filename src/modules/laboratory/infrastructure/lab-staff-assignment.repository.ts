@@ -15,6 +15,13 @@ export interface LabStaffAssignmentRow {
  */
 @Injectable()
 export class LabStaffAssignmentRepository {
+  /** Serialize the one-active-staff-per-laboratory check and write. */
+  async acquireProvisioningLock(db: Prisma.TransactionClient, laboratoryId: string): Promise<void> {
+    await db.$queryRaw<Array<{ lock: string }>>(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`lab-staff:${laboratoryId}`}, 0))::text AS lock`,
+    );
+  }
+
   async create(
     db: Prisma.TransactionClient,
     input: { userId: string; labBranchId: string; roleMembershipId: string },

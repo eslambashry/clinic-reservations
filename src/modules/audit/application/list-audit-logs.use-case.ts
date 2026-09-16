@@ -84,14 +84,16 @@ export class ListAuditLogsUseCase {
         this.prisma,
         offsetMode
           ? { ...filter, limit: offset.take, skip: offset.skip }
-          : { ...filter, cursor: cursor ? { occurredAt: new Date(cursor.o), id: cursor.i } : undefined, limit },
+          : { ...filter, cursor: cursor ? { occurredAt: new Date(cursor.o), id: cursor.i } : undefined, limit: limit + 1 },
       ),
       this.auditLogs.count(this.prisma, { ...filter, limit }),
     ]);
 
-    const last = rows.at(-1);
+    const hasMore = !offsetMode && rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const last = pageRows.at(-1);
     return {
-      entries: rows.map((row) => ({
+      entries: pageRows.map((row) => ({
         id: row.id,
         actorUserId: row.actor_user_id,
         action: row.action,
@@ -102,7 +104,7 @@ export class ListAuditLogsUseCase {
         occurredAt: row.occurred_at.toISOString(),
       })),
       nextCursor:
-        !offsetMode && rows.length === limit && last
+        hasMore && last
           ? encodeCursor<AuditLogCursor>({ o: last.occurred_at.toISOString(), i: last.id })
           : null,
       ...buildPageMeta(totalCount, offsetMode ? offset.page : 1, offsetMode ? offset.limit : limit),

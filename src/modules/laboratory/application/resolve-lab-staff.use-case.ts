@@ -42,11 +42,14 @@ export class ResolveLabStaffUseCase {
     for (const branch of branches) {
       // `listByContext` already filters to ACTIVE memberships, so any hit
       // here is by definition the laboratory's live account.
-      const [active] = await this.listStaff.execute({
-        roleCode: LAB_STAFF_ROLE_CODE,
-        contextType: RoleContextType.LAB_STAFF,
-        contextId: branch.id,
-      });
+      const [active] = await this.listStaff.execute(
+        {
+          roleCode: LAB_STAFF_ROLE_CODE,
+          contextType: RoleContextType.LAB_STAFF,
+          contextId: branch.id,
+        },
+        db,
+      );
       if (active) {
         return { staff: active, labBranchId: branch.id };
       }

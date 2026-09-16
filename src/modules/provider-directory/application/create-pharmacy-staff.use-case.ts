@@ -57,6 +57,8 @@ export class CreatePharmacyStaffUseCase {
           throw new NotFoundError('Pharmacy', pharmacyId);
         }
 
+        await this.staffAssignments.acquireProvisioningLock(tx, pharmacyId);
+
         const branches = await this.branches.findByPharmacyId(tx, pharmacyId);
         if (branches.length === 0) {
           throw new BusinessRuleError(
@@ -88,11 +90,14 @@ export class CreatePharmacyStaffUseCase {
         // just the target one, because the invariant is per-pharmacy while
         // the membership is scoped per-branch.
         for (const candidate of branches) {
-          const existing = await this.listStaff.execute({
-            roleCode: PHARMACY_STAFF_ROLE_CODE,
-            contextType: RoleContextType.PHARMACY_STAFF,
-            contextId: candidate.id,
-          });
+          const existing = await this.listStaff.execute(
+            {
+              roleCode: PHARMACY_STAFF_ROLE_CODE,
+              contextType: RoleContextType.PHARMACY_STAFF,
+              contextId: candidate.id,
+            },
+            tx,
+          );
           if (existing.length > 0) {
             throw new ConflictError(
               'PHARMACY_STAFF_ALREADY_PROVISIONED',
