@@ -1,14 +1,17 @@
 import { Module } from '@nestjs/common';
+import { FinanceController } from './api/finance.controller';
 import { WalletController } from './api/wallet.controller';
 import { CancelOnlinePaymentIntentUseCase } from './application/cancel-online-payment-intent.use-case';
 import { CaptureInternalWalletPaymentUseCase } from './application/capture-internal-wallet-payment.use-case';
 import { CaptureOnlinePaymentUseCase } from './application/capture-online-payment.use-case';
 import { CapturePayAtClinicPaymentUseCase } from './application/capture-pay-at-clinic-payment.use-case';
 import { FindPaymentByGatewayReferenceUseCase } from './application/find-payment-by-gateway-reference.use-case';
+import { GetFinanceSummaryUseCase } from './application/get-finance-summary.use-case';
 import { GetWalletUseCase } from './application/get-wallet.use-case';
 import { HandleLatePaymentAfterExpiryUseCase } from './application/handle-late-payment-after-expiry.use-case';
 import { InitiateOnlinePaymentUseCase } from './application/initiate-online-payment.use-case';
 import { InitiateWalletTopUpUseCase } from './application/initiate-wallet-top-up.use-case';
+import { ListProviderLedgerEntriesUseCase } from './application/list-provider-ledger-entries.use-case';
 import { ListWalletTransactionsUseCase } from './application/list-wallet-transactions.use-case';
 import { MarkOnlinePaymentFailedUseCase } from './application/mark-online-payment-failed.use-case';
 import { PAYMENT_GATEWAY } from './application/ports/payment-gateway.port';
@@ -42,7 +45,7 @@ import { WalletTransactionRepository } from './infrastructure/wallet-transaction
  * module (avoids a circular module import; see its own doc comment).
  */
 @Module({
-  controllers: [WalletController],
+  controllers: [WalletController, FinanceController],
   providers: [
     PaymentIntentRepository,
     PaymentAttemptRepository,
@@ -65,6 +68,8 @@ import { WalletTransactionRepository } from './infrastructure/wallet-transaction
     InitiateWalletTopUpUseCase,
     GetWalletUseCase,
     ListWalletTransactionsUseCase,
+    GetFinanceSummaryUseCase,
+    ListProviderLedgerEntriesUseCase,
   ],
   exports: [
     PAYMENT_GATEWAY,

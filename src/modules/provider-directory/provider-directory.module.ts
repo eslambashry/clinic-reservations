@@ -7,6 +7,7 @@ import { ClinicsController } from './api/clinics.controller';
 import { DoctorsController } from './api/doctors.controller';
 import { PharmacyBranchesController } from './api/pharmacy-branches.controller';
 import { PharmaciesController } from './api/pharmacies.controller';
+import { PharmacyStaffController } from './api/pharmacy-staff.controller';
 import { ProviderRegistrationController } from './api/provider-registration.controller';
 import { SpecialtiesController } from './api/specialties.controller';
 import { VerificationDocumentsController } from './api/verification-documents.controller';
@@ -20,7 +21,12 @@ import { CreateDoctorUseCase } from './application/create-doctor.use-case';
 import { DeleteMyClinicBranchUseCase } from './application/delete-my-clinic-branch.use-case';
 import { DeleteAssistantUseCase } from './application/delete-assistant.use-case';
 import { CreatePharmacyBranchUseCase } from './application/create-pharmacy-branch.use-case';
+import { CreatePharmacyStaffUseCase } from './application/create-pharmacy-staff.use-case';
 import { CreatePharmacyUseCase } from './application/create-pharmacy.use-case';
+import { DeletePharmacyStaffUseCase } from './application/delete-pharmacy-staff.use-case';
+import { GetPharmacyStaffUseCase } from './application/get-pharmacy-staff.use-case';
+import { ListPharmaciesUseCase } from './application/list-pharmacies.use-case';
+import { UpdatePharmacyStaffUseCase } from './application/update-pharmacy-staff.use-case';
 import { GetAffiliationBillingInfoUseCase } from './application/get-affiliation-billing-info.use-case';
 import { GetClinicBranchUseCase } from './application/get-clinic-branch.use-case';
 import { GetClinicUseCase } from './application/get-clinic.use-case';
@@ -35,17 +41,17 @@ import { ListDoctorsUseCase } from './application/list-doctors.use-case';
 import { ListMyDoctorClinicsUseCase } from './application/list-my-doctor-clinics.use-case';
 import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
 import { ListSpecialtiesUseCase } from './application/list-specialties.use-case';
+import { ManageAddressUseCase } from './application/manage-address.use-case';
 import { ListVerificationDocumentsUseCase } from './application/list-verification-documents.use-case';
 import { RejectVerificationDocumentUseCase } from './application/reject-verification-document.use-case';
+import { RejectDoctorUseCase } from './application/reject-doctor.use-case';
 import { ResolveAffiliationForSchedulingUseCase } from './application/resolve-affiliation-for-scheduling.use-case';
 import { ResolveDoctorScopeUseCase } from './application/resolve-doctor-scope.use-case';
 import { SearchDoctorsUseCase } from './application/search-doctors.use-case';
 import { SearchPharmacyBranchesUseCase } from './application/search-pharmacy-branches.use-case';
 import { SelfRegisterProviderUseCase } from './application/self-register-provider.use-case';
-import { SuspendClinicBranchUseCase } from './application/suspend-clinic-branch.use-case';
 import { SuspendClinicUseCase } from './application/suspend-clinic.use-case';
 import { SuspendDoctorUseCase } from './application/suspend-doctor.use-case';
-import { SuspendPharmacyBranchUseCase } from './application/suspend-pharmacy-branch.use-case';
 import { SuspendPharmacyUseCase } from './application/suspend-pharmacy.use-case';
 import { UpdateAffiliationUseCase } from './application/update-affiliation.use-case';
 import { UpdateAssistantUseCase } from './application/update-assistant.use-case';
@@ -58,10 +64,8 @@ import { UpdateMyDoctorProfileUseCase } from './application/update-my-doctor-pro
 import { UpdatePharmacyBranchUseCase } from './application/update-pharmacy-branch.use-case';
 import { UpdatePharmacyUseCase } from './application/update-pharmacy.use-case';
 import { UploadVerificationDocumentUseCase } from './application/upload-verification-document.use-case';
-import { VerifyClinicBranchUseCase } from './application/verify-clinic-branch.use-case';
 import { VerifyClinicUseCase } from './application/verify-clinic.use-case';
 import { VerifyDoctorUseCase } from './application/verify-doctor.use-case';
-import { VerifyPharmacyBranchUseCase } from './application/verify-pharmacy-branch.use-case';
 import { VerifyPharmacyUseCase } from './application/verify-pharmacy.use-case';
 import { AddressRepository } from './infrastructure/address.repository';
 import { AffiliationRepository } from './infrastructure/affiliation.repository';
@@ -73,6 +77,7 @@ import { DoctorSearchRepository } from './infrastructure/doctor-search.repositor
 import { PharmacyRepository } from './infrastructure/pharmacy.repository';
 import { PharmacyBranchRepository } from './infrastructure/pharmacy-branch.repository';
 import { PharmacyBranchSearchRepository } from './infrastructure/pharmacy-branch-search.repository';
+import { PharmacyStaffAssignmentRepository } from './infrastructure/pharmacy-staff-assignment.repository';
 import { SpecialtyRepository } from './infrastructure/specialty.repository';
 import { VerificationDocumentRepository } from './infrastructure/verification-document.repository';
 import { AuditModule } from '../audit/audit.module';
@@ -107,6 +112,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     ClinicBranchesController,
     DoctorClinicsController,
     PharmaciesController,
+    PharmacyStaffController,
     PharmacyBranchesController,
     VerificationDocumentsController,
     SpecialtiesController,
@@ -127,12 +133,14 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     VerificationDocumentRepository,
     DoctorSearchRepository,
     PharmacyBranchSearchRepository,
+    PharmacyStaffAssignmentRepository,
     ScheduleTemplateRepository,
     // application
     CreateDoctorUseCase,
     UpdateDoctorUseCase,
     VerifyDoctorUseCase,
     SuspendDoctorUseCase,
+    RejectDoctorUseCase,
     GetDoctorUseCase,
     GetMyDoctorProfileUseCase,
     UpdateMyDoctorProfileUseCase,
@@ -147,18 +155,19 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     CreateMyClinicBranchUseCase,
     DeleteMyClinicBranchUseCase,
     UpdateClinicBranchUseCase,
-    VerifyClinicBranchUseCase,
-    SuspendClinicBranchUseCase,
     GetClinicBranchUseCase,
     CreatePharmacyUseCase,
     UpdatePharmacyUseCase,
     VerifyPharmacyUseCase,
     SuspendPharmacyUseCase,
     GetPharmacyUseCase,
+    ListPharmaciesUseCase,
+    GetPharmacyStaffUseCase,
+    CreatePharmacyStaffUseCase,
+    UpdatePharmacyStaffUseCase,
+    DeletePharmacyStaffUseCase,
     CreatePharmacyBranchUseCase,
     UpdatePharmacyBranchUseCase,
-    VerifyPharmacyBranchUseCase,
-    SuspendPharmacyBranchUseCase,
     GetPharmacyBranchUseCase,
     SearchPharmacyBranchesUseCase,
     CreateAffiliationUseCase,
@@ -182,6 +191,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     UpdateMyClinicBranchUseCase,
     UpdateMyAffiliationUseCase,
     ListAssistantUserIdsForBranchUseCase,
+    ManageAddressUseCase,
   ],
   exports: [
     ResolveAffiliationForSchedulingUseCase,
@@ -194,6 +204,10 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     // ownership checks — never its `infrastructure/`.
     ResolveDoctorScopeUseCase,
     ListAssistantUserIdsForBranchUseCase,
+    // `addresses` is this module's table, but `laboratory` owns
+    // `lab_branches` and needs to write the address behind one inside its
+    // own transaction — this is that application-layer seam (File 12 Part 05).
+    ManageAddressUseCase,
   ],
 })
 export class ProviderDirectoryModule {}

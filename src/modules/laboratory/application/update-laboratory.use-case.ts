@@ -3,32 +3,31 @@ import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { PharmacyBranchRepository } from '../infrastructure/pharmacy-branch.repository';
+import { LaboratoryRepository, UpdateLaboratoryInput } from '../infrastructure/laboratory.repository';
 
 @Injectable()
-export class VerifyPharmacyBranchUseCase {
+export class UpdateLaboratoryUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(PharmacyBranchRepository) private readonly branches: PharmacyBranchRepository,
+    @Inject(LaboratoryRepository) private readonly laboratories: LaboratoryRepository,
     @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
-  async execute(branchId: string, actor: AccessTokenPayload): Promise<void> {
+  async execute(laboratoryId: string, input: UpdateLaboratoryInput, actor: AccessTokenPayload): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const branch = await this.branches.findById(tx, branchId);
-      if (!branch) {
-        throw new NotFoundError('PharmacyBranch', branchId);
+      const laboratory = await this.laboratories.findById(tx, laboratoryId);
+      if (!laboratory || laboratory.deleted_at) {
+        throw new NotFoundError('Laboratory', laboratoryId);
       }
 
-      await this.branches.setStatus(tx, branchId, branch.version, 'VERIFIED');
+      await this.laboratories.update(tx, laboratoryId, laboratory.version, input);
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,
         actorRoleMembershipId: actor.roleMembershipId,
-        action: 'provider_directory.pharmacy_branch.verify',
-        resourceType: 'pharmacy_branch',
-        resourceId: branchId,
-        reasonCode: `previous_status:${branch.status}`,
+        action: 'laboratory.laboratory.update',
+        resourceType: 'laboratory',
+        resourceId: laboratoryId,
       });
     });
   }

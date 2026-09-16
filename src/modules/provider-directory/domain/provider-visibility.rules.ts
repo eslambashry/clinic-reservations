@@ -12,7 +12,7 @@
  */
 
 export interface VisibleDoctorInput {
-  status: 'PENDING' | 'VERIFIED' | 'SUSPENDED';
+  status: 'PENDING' | 'VERIFIED' | 'SUSPENDED' | 'REJECTED';
   deletedAt: Date | null;
 }
 

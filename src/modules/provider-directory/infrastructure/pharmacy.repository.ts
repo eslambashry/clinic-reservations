@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { Pharmacy, Prisma } from '@prisma/client';
+import { Pharmacy, Prisma, ProviderStatus } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
+
+export interface ListPharmaciesParams {
+  status?: ProviderStatus;
+  cursor?: { createdAt: string; id: string };
+  limit: number;
+  /** Offset mode (admin console only) — when set, the cursor branch is skipped. */
+  skip?: number;
+}
 
 export interface CreatePharmacyInput {
   legalName: string;
@@ -65,4 +73,39 @@ export class PharmacyRepository {
       ...(status === 'VERIFIED' && { verified_at: new Date() }),
     });
   }
+
+  /** Admin review queue — cursor pagination on `(created_at, id)`, oldest-first, same shape as `DoctorRepository.list`. */
+  list(db: Prisma.TransactionClient, params: ListPharmaciesParams): Promise<Pharmacy[]> {
+    return db.pharmacy.findMany({
+      where: buildListWhere(params),
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: params.limit,
+      ...(params.skip !== undefined && { skip: params.skip }),
+    });
+  }
+
+  /** Total rows matching the same filter, ignoring pagination. */
+  count(db: Prisma.TransactionClient, params: Pick<ListPharmaciesParams, 'status'>): Promise<number> {
+    return db.pharmacy.count({ where: buildListWhere(params) });
+  }
+}
+
+/**
+ * Shared so `list` and `count` can never drift apart — a count computed over a
+ * different filter than the page would report a wrong total page count.
+ * The cursor predicate is deliberately excluded in offset mode, where `skip`
+ * does the positioning instead.
+ */
+function buildListWhere(params: Pick<ListPharmaciesParams, 'status' | 'cursor' | 'skip'>): Prisma.PharmacyWhereInput {
+  return {
+    deleted_at: null,
+    ...(params.status && { status: params.status }),
+    ...(params.skip === undefined &&
+      params.cursor && {
+        OR: [
+          { created_at: { gt: new Date(params.cursor.createdAt) } },
+          { created_at: new Date(params.cursor.createdAt), id: { gt: params.cursor.id } },
+        ],
+      }),
+  };
 }

@@ -15,6 +15,14 @@ export class ListDoctorsQueryDto {
   @IsString()
   cursor?: string;
 
+  /** Admin console offset mode. When present, `cursor` is ignored. */
+  @ApiPropertyOptional({ minimum: 1, description: 'Offset page number (1-based). Takes precedence over cursor.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 50 })
   @IsOptional()
   @Type(() => Number)

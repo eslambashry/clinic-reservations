@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Pharmacy, PharmacyBranch, RoleContextType } from '@prisma/client';
 import { CreatePharmacyBranchUseCase } from '../application/create-pharmacy-branch.use-case';
 import { CreatePharmacyUseCase } from '../application/create-pharmacy.use-case';
 import { GetPharmacyUseCase } from '../application/get-pharmacy.use-case';
+import { ListPharmaciesResult, ListPharmaciesUseCase } from '../application/list-pharmacies.use-case';
 import { SuspendPharmacyUseCase } from '../application/suspend-pharmacy.use-case';
 import { UpdatePharmacyUseCase } from '../application/update-pharmacy.use-case';
 import { VerifyPharmacyUseCase } from '../application/verify-pharmacy.use-case';
@@ -14,6 +15,7 @@ import { OptionalAuth } from '../../../shared/core/auth/optional-auth.decorator'
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { CreatePharmacyBranchDto } from './dto/create-pharmacy-branch.dto';
 import { CreatePharmacyDto } from './dto/create-pharmacy.dto';
+import { ListPharmaciesQueryDto } from './dto/list-pharmacies-query.dto';
 import { UpdatePharmacyDto } from './dto/update-pharmacy.dto';
 
 @ApiTags('pharmacies')
@@ -26,7 +28,16 @@ export class PharmaciesController {
     @Inject(SuspendPharmacyUseCase) private readonly suspendPharmacy: SuspendPharmacyUseCase,
     @Inject(GetPharmacyUseCase) private readonly getPharmacy: GetPharmacyUseCase,
     @Inject(CreatePharmacyBranchUseCase) private readonly createBranch: CreatePharmacyBranchUseCase,
+    @Inject(ListPharmaciesUseCase) private readonly listPharmacies: ListPharmaciesUseCase,
   ) {}
+
+  @ApiBearerAuth()
+  @Roles(RoleContextType.ADMIN)
+  @Get()
+  @ApiOperation({ summary: 'Admin: every pharmacy regardless of status, optionally filtered, oldest-first' })
+  list(@Query() query: ListPharmaciesQueryDto): Promise<ListPharmaciesResult> {
+    return this.listPharmacies.execute(query);
+  }
 
   @OptionalAuth()
   @Get(':pharmacyId')

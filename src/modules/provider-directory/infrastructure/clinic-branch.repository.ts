@@ -26,6 +26,11 @@ export class ClinicBranchRepository {
         address_id: input.addressId,
         phone: input.phone,
         iana_timezone: input.ianaTimezone,
+        // A branch is created by the party that already owns the clinic, so there is
+        // no second party left to verify it — the schema's PENDING default would
+        // strand it: `provider-visibility.rules.ts` hides a doctor whose branch is
+        // not VERIFIED, and no branch-verification action exists any more.
+        status: 'VERIFIED',
       },
     });
   }

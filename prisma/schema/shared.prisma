@@ -95,6 +95,7 @@ enum RoleMembershipStatus {
 enum DoctorStatus {
   PENDING
   VERIFIED
+  REJECTED
   SUSPENDED
 
   @@map("doctors_status_enum")
