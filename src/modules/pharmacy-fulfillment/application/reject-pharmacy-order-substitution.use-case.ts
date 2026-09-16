@@ -13,11 +13,10 @@ export interface RejectPharmacyOrderSubstitutionResult {
 
 /**
  * File 11 Part 14 (`SUBSTITUTION_PROPOSED --> REJECTED: patient rejects`).
- * The mirror of `approve` (File 10 line 205) without any payment
- * involvement — approve is deliberately deferred to the payment-capture
- * pass, since File 10 Part 8.1 fuses it with `payment_intents` creation
- * ("the same moment, not decoupled") and building it without payment would
- * contradict that rule (File 12 Part 39).
+ * This legacy-compatible path remains for already-persisted
+ * `SUBSTITUTION_PROPOSED` orders. The current flat-quote staff console does
+ * not create substitutions, and the current pharmacy flow has no patient
+ * approval or payment transition.
  */
 @Injectable()
 export class RejectPharmacyOrderSubstitutionUseCase {

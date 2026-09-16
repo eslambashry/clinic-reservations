@@ -23,7 +23,9 @@ export function assertHasFulfillableItems(items: unknown[]): void {
 }
 
 /**
- * 2026-08-29 addition: `fulfill`/`complete` post-payment progression.
+ * `fulfill`/`complete` staff-driven progression after the pharmacy has priced
+ * the order. `PAID` and `PREPARING` are accepted only for legacy rows created
+ * before the current direct-from-pricing workflow.
  * `DELIVERED` is deliberately not a step here — `docs/PROPOSED_CONTRACT.md`
  * §2's own documented fallback is taken ("let `completeOrder()` accept
  * `OUT_FOR_DELIVERY` directly") rather than adding a schema enum value File
@@ -34,9 +36,12 @@ export function nextStatusAfterFulfill(fulfillmentType: FulfillmentType): Pharma
   return fulfillmentType === 'DELIVERY' ? 'OUT_FOR_DELIVERY' : 'READY_FOR_PICKUP';
 }
 
-export function assertOrderIsPaid(status: PharmacyOrderStatus): void {
-  if (status !== 'PAID') {
-    throw new BusinessRuleError('PHARMACY_ORDER_NOT_PAID', 'لم يتم دفع هذا الطلب بعد.');
+export function assertOrderCanBeginFulfillment(status: PharmacyOrderStatus): void {
+  if (status !== 'ACCEPTED' && status !== 'PAID' && status !== 'PREPARING') {
+    throw new BusinessRuleError(
+      'PHARMACY_ORDER_NOT_READY_FOR_FULFILLMENT',
+      'لا يمكن بدء تنفيذ هذا الطلب قبل تسعيره.',
+    );
   }
 }
 

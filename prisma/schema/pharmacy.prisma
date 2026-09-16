@@ -11,7 +11,9 @@ model PharmacyOrder {
   /// `PharmacyOrderItem` rows individually — `medsuper-pharmacy-dashboard`'s
   /// "no drug data" product decision took priority over the original
   /// item-by-item quote contract. `total_price`/`currency` are also what
-  /// `approve` captures as payment, not a derived sum.
+  /// patient sees while staff continues fulfillment. `payment_intent_id` and
+  /// `PAID` remain nullable legacy data only; new pharmacy orders do not use
+  /// the payments module.
   total_price              Decimal?                      @db.Decimal(10, 2)
   currency                 String?                       @db.Char(3)
   estimated_ready_minutes  Int?

@@ -2,13 +2,13 @@
 
 **MVP** — owns `PharmacyOrder`, `PharmacyOrderBroadcast`, `PharmacyOrderItem`, `Substitution` (see `prisma/schema/pharmacy.prisma`), per File 11 Part 03/14.
 
-**Status:** the full order lifecycle from creation through payment is implemented — order creation + broadcast fan-out, broadcast accept/decline, the pharmacist's quote (with substitution proposals), the patient's substitution reject/approve, payment capture, and order detail read. Engineering decisions are closed in `docs/FILE_12_Engineering_Decisions_And_Conventions.md` Part 39, including the branch-scoped pharmacy-staff RBAC lookup (`identity-auth`'s `GetActiveRoleMembershipUseCase`, Part 39.12), the first-accept-wins concurrency mechanics (Part 39.13), the quote contract's gaps vs. File 10 (Part 39.14-19), and payment-capture reuse (Part 39.20-23 — including why a File 10 line 375 refund scenario has no trigger in the modeled flow).
+**Status:** the staff-driven lifecycle is implemented: order creation and broadcast, branch claim during quoting, a flat price with optional note, direct staff fulfillment, patient status visibility, and terminal receipt/completion. The pharmacy path no longer has a patient approve or payment step. `ACCEPTED` means priced and ready for staff fulfillment; `PAID` remains readable only for legacy rows.
 
 Planned build order (each its own pass, per Part 39.10):
 1. ~~Order creation from an `ACCEPTED` prescription + broadcast fan-out to nearby branches.~~ Done.
 2. ~~Broadcast accept/decline, with the first-accept-wins concurrency test (File 11 line 456).~~ Done.
 3. ~~Quote/substitution: pharmacist marks item availability, proposes substitutions, patient rejects.~~ Done, then **replaced** (see below).
-4. ~~Payment-capture wiring: patient `approve` resolves any pending substitution and captures payment in one call (`SUBSTITUTION_PROPOSED`/`ACCEPTED` → `PAID`), reusing `payments`' `CapturePayAtClinicPaymentUseCase` as-is.~~ Done. (Partial refund on substitution price reduction was scoped out — no trigger point exists in the modeled single-round-before-capture flow, Part 39.23.)
+4. ~~Patient approval/payment wiring.~~ Superseded on 2026-09-16: staff starts fulfillment directly after pricing; this module no longer imports `PaymentsModule` or exposes an approve endpoint.
 5. Broadcast-timeout worker cron (also tightens Phase 6's currently-unscoped pharmacist review queue, Part 37.4, once the branch-scoping lookup used here is applied there too). Still not built.
 
 **2026-08-29 — `medsuper-pharmacy-dashboard` integration pass.** The dashboard
@@ -19,7 +19,7 @@ product decision. Resolved in the dashboard's favor — a real product-priority
 call, documented as a new decision in `docs/FILE_12_Engineering_Decisions_And_Conventions.md`
 (after Part 39), not a silent reversal:
 
-- **Quote is now flat** (`totalPrice`/`estimatedReadyMinutes`/`note` on the
+- **Quote is now flat** (`totalPrice`/`note` on the
   order itself) instead of per-`PharmacyOrderItem` pricing. `SUBSTITUTION_PROPOSED`
   is now unreachable through this console (kept in the schema, forward-compat
   only). `SubmitPharmacyOrderQuoteUseCase` also now claims an unclaimed order
@@ -32,8 +32,8 @@ call, documented as a new decision in `docs/FILE_12_Engineering_Decisions_And_Co
   unresponded broadcast, both behind `POST .../reject`, dispatched by actor
   role in the controller.
 - **New: `FulfillPharmacyOrderUseCase`/`CompletePharmacyOrderUseCase`** —
-  `PAID --> READY_FOR_PICKUP`/`OUT_FOR_DELIVERY --> FULFILLED`. This whole
-  post-payment progression didn't exist before this pass. No `DELIVERED`
+  originally `PAID --> READY_FOR_PICKUP`/`OUT_FOR_DELIVERY --> FULFILLED`;
+  since 2026-09-16, new orders progress from `ACCEPTED` directly. No `DELIVERED`
   intermediate status was added — the dashboard's own documented fallback was
   taken instead.
 - **New: `ListPharmacyOrdersUseCase`** (`GET /pharmacy-orders`) — the queue
@@ -60,8 +60,7 @@ passing). No behavior change from Part 40's contract itself.
 
 **2026-08-29 — real-Postgres production-readiness gate** (Part 42). Re-verified everything above against a real
 disposable local Postgres instead of mocks — found and fixed one real bug `.toString()`-on-a-mock had hidden
-(`GetPharmacyOrderUseCase`/`ListPharmacyOrdersUseCase`'s `quote.totalPrice` and `ApprovePharmacyOrderUseCase`'s
-`totalAmount` now use `.toFixed(2)`, not `.toString()` — real `Prisma.Decimal` strips trailing zeros in
+(`GetPharmacyOrderUseCase`/`ListPharmacyOrdersUseCase`'s `quote.totalPrice` uses `.toFixed(2)`, not `.toString()` — real `Prisma.Decimal` strips trailing zeros in
 `.toString()`, which no unit-test mock had ever modeled). New
 `infrastructure/pharmacy-order-workflow.integration.spec.ts` proves the full workflow, 5 concurrency races, and 3
 IDOR cases against real Postgres with no mocks. `identity-auth`'s `GetCurrentUserUseCase` gained `contextId` (the
@@ -77,8 +76,8 @@ gap Part 42's own browser verification confirmed was still live-mode-501-only. N
 (`PharmacyAuditController`/`ListPharmacyAuditUseCase`, `PHARMACY_STAFF` only), reading `audit_logs` through a new
 `AuditService.listByResource` — no new column or migration, since every use-case here already wrote to `audit_logs`
 on every transition; only a read path was missing. Raw actions map onto the dashboard's own `AuditAction` vocabulary
-(`fulfill` resolves to `MARKED_READY`/`HANDED_TO_COURIER` by `fulfillment_type`; broadcast accept/decline and
-`approve` are dropped, not mapped); `detail` is reconstructed from `quote`/`reject`'s existing flat columns, since
+(`fulfill` resolves to `MARKED_READY`/`HANDED_TO_COURIER` by `fulfillment_type`; broadcast accept/decline are
+dropped, not mapped); `detail` is reconstructed from `quote`/`reject`'s existing flat columns, since
 each of those transitions is terminal. `search`/`action`/pagination run in memory over the branch's full history,
 same MVP tradeoff as `ListPharmacyOrdersUseCase`'s enrichment N+1. 112/112 unit+integration tests passing; not
 re-verified against real Postgres/browser this pass (see Part 43 for what was and wasn't checked).
@@ -88,7 +87,9 @@ re-verified against real Postgres/browser this pass (see Part 43 for what was an
 know when a home delivery actually arrives — that `complete` call on an `OUT_FOR_DELIVERY` order was always a guess.
 New `POST /pharmacy-orders/{orderId}/confirm-receipt` (`ConfirmPharmacyOrderReceiptUseCase`, `PATIENT`-only,
 `OUT_FOR_DELIVERY --> FULFILLED`) lets the owning patient close their own delivery order instead. Ownership checked
-the same way `approve`/`reject`-substitution already do (404, not 403, for a non-owner). `READY_FOR_PICKUP` is
+the same way patient-owned reads and substitution rejection do (404, not 403, for a non-owner). `READY_FOR_PICKUP` is
 untouched — still staff-only via `complete`, since pickup is handed over in person. `med-super`'s pharmacy order
 detail screen wires a "تأكيد الاستلام" (confirm receipt) button to this endpoint, shown only when
 `status === 'OUT_FOR_DELIVERY'`.
+
+**2026-09-16 — staff-driven pricing and fulfillment.** `POST /pharmacy-orders/{id}/approve` and its payment capture dependency were removed. `POST /pharmacy-orders/{id}/quote` accepts `totalPrice` plus optional `note`; it writes `estimated_ready_minutes = NULL` for compatibility with existing reads. Staff may call `fulfill` from `ACCEPTED` (or legacy `PAID`/`PREPARING`) and patients only observe the quote and subsequent status updates.

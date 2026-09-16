@@ -57,8 +57,8 @@ const MAX_LIMIT = 100;
  * Raw `audit_logs.action` suffix (this module always writes
  * `pharmacy-fulfillment.<resource>.<verb>`) -> the dashboard's own audit
  * vocabulary (`AuditAction` in `medsuper-pharmacy-dashboard/src/lib/api/types.ts`).
- * Broadcast accept/decline, the patient's payment `approve`, and the
- * (practically unreachable) substitution-reject aren't part of that
+ * Broadcast accept/decline and the (practically unreachable)
+ * substitution-reject aren't part of that
  * vocabulary — filtered out below, not mapped, same "unreachable/out of
  * scope for this console" precedent as `SUBSTITUTION_PROPOSED`.
  * `pharmacy-order.fulfill` is deliberately absent here: its resolution

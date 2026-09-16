@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { PharmacyAuditController } from './api/pharmacy-audit.controller';
 import { PharmacyOrdersController } from './api/pharmacy-orders.controller';
 import { AcceptPharmacyOrderBroadcastUseCase } from './application/accept-pharmacy-order-broadcast.use-case';
-import { ApprovePharmacyOrderUseCase } from './application/approve-pharmacy-order.use-case';
 import { CompletePharmacyOrderUseCase } from './application/complete-pharmacy-order.use-case';
 import { ConfirmPharmacyOrderReceiptUseCase } from './application/confirm-pharmacy-order-receipt.use-case';
 import { CreatePharmacyOrderUseCase } from './application/create-pharmacy-order.use-case';
@@ -20,7 +19,6 @@ import { PharmacyOrderRepository } from './infrastructure/pharmacy-order.reposit
 import { SubstitutionRepository } from './infrastructure/substitution.repository';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
-import { PaymentsModule } from '../payments/payments.module';
 import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
 
@@ -37,20 +35,19 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * to resolve which branch the caller belongs to (Part 39.5/39.12). The
  * quote additionally calls `PrescriptionsModule`'s
  * `GetPrescriptionItemDrugCodesUseCase`/`GetDrugCatalogControlledStatusUseCase`.
- * Patient `approve` (this pass) reuses `PaymentsModule`'s
- * `CapturePayAtClinicPaymentUseCase` as-is (Part 39.7) — fused with
- * payment-intent creation per File 10 Part 8.1. The broadcast timeout job
- * remains a separate follow-up pass.
+ * The current staff-driven workflow deliberately has no pharmacy dependency
+ * on `PaymentsModule`: quoting is followed directly by fulfillment. The
+ * broadcast timeout job remains a separate follow-up pass.
  *
  * 2026-08-29 (`medsuper-pharmacy-dashboard` integration pass): quoting moved
- * to a flat total (`SubstitutionRepository`/item pricing are now only used
- * by order creation and the still-registered-but-practically-unreachable
- * `RejectPharmacyOrderSubstitutionUseCase`, kept for forward-compat).
+ * to a flat total (`SubstitutionRepository` now only supports the
+ * still-registered-but-practically-unreachable
+ * `RejectPharmacyOrderSubstitutionUseCase`, kept for legacy compatibility).
  * `GetPharmacyOrderUseCase`'s reshaped response additionally calls
  * `IdentityAuthModule`'s `GetUserSummaryUseCase` and `PrescriptionsModule`'s
  * `GetPrescriptionSummaryUseCase`. New: `RejectPharmacyOrderUseCase`
  * (staff-initiated whole-order reject), `FulfillPharmacyOrderUseCase`/
- * `CompletePharmacyOrderUseCase` (post-payment progression, previously
+ * `CompletePharmacyOrderUseCase` (staff-driven progression, previously
  * entirely missing), `ListPharmacyOrdersUseCase` (the queue listing File 12
  * Part 39 item 11 named but never built).
  *
@@ -63,7 +60,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * untouched by this addition, still closed by staff via `complete`.
  */
 @Module({
-  imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule, PaymentsModule],
+  imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule],
   controllers: [PharmacyOrdersController, PharmacyAuditController],
   providers: [
     // infrastructure
@@ -78,7 +75,6 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     SubmitPharmacyOrderQuoteUseCase,
     RejectPharmacyOrderUseCase,
     RejectPharmacyOrderSubstitutionUseCase,
-    ApprovePharmacyOrderUseCase,
     FulfillPharmacyOrderUseCase,
     CompletePharmacyOrderUseCase,
     ConfirmPharmacyOrderReceiptUseCase,

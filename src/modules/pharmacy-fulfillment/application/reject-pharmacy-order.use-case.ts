@@ -9,7 +9,7 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { PharmacyOrderBroadcastRepository } from '../infrastructure/pharmacy-order-broadcast.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
 
-/** UNDER_REVIEW (pre-quote) or ACCEPTED (quoted, awaiting patient payment) — matches `medsuper-pharmacy-dashboard`'s own REJECTABLE set. */
+/** UNDER_REVIEW (pre-quote) or ACCEPTED (priced, before fulfillment starts) — matches the staff dashboard's rejectable set. */
 const REJECTABLE_STATUSES: PharmacyOrderStatus[] = ['UNDER_REVIEW', 'ACCEPTED'];
 
 export interface RejectPharmacyOrderInput {
@@ -46,10 +46,9 @@ export interface RejectPharmacyOrderResult {
  *   Part 14), the flow the old item-based quote endpoint used to reach only
  *   indirectly (`422 NO_ITEMS_AVAILABLE` when every item was `UNAVAILABLE` —
  *   impossible now that quoting has no items).
- * - Already `ACCEPTED` (quoted, awaiting the patient's payment): the
- *   dashboard's own `REJECTABLE` set allows staff to pull an order back here
- *   too (e.g. the patient is unresponsive) — same `--> REJECTED` transition,
- *   just from one status later.
+ * - Already `ACCEPTED` (priced, before fulfillment starts): staff may still
+ *   pull the order back here (for example when stock changes) — same
+ *   `--> REJECTED` transition, just from one status later.
  *   Both claimed-order branches require `reason`/`note`, persisted here.
  *
  * Distinct from `RejectPharmacyOrderSubstitutionUseCase` (patient-initiated,
