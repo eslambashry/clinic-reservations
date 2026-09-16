@@ -65,7 +65,7 @@ export class ListAuditLogsUseCase {
   ) {}
 
   async execute(input: ListAuditLogsInput): Promise<ListAuditLogsResult> {
-    const limit = input.limit ?? DEFAULT_LIMIT;
+    const limit = Number(input.limit ?? DEFAULT_LIMIT);
     const cursor = decodeCursor<AuditLogCursor>(input.cursor);
     const offset = resolveOffset({ page: input.page, limit: input.limit });
 
