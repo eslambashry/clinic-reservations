@@ -27,6 +27,7 @@ describe('DoctorSearchRepository (integration)', () => {
   let branchNearId: string;
   let branchFarId: string;
   let verifiedDoctorId: string;
+  let verifiedFarDoctorId: string;
   let pendingDoctorId: string;
   const createdUserIds: string[] = [];
   const createdAddressIds: string[] = [];
@@ -73,13 +74,14 @@ describe('DoctorSearchRepository (integration)', () => {
     branchFarId = branchFar.id;
 
     verifiedDoctorId = await createDoctor({ status: 'VERIFIED', firstName: 'Verified' });
+    verifiedFarDoctorId = await createDoctor({ status: 'VERIFIED', firstName: 'Far' });
     pendingDoctorId = await createDoctor({ status: 'PENDING', firstName: 'Pending' });
 
     await prisma.doctorClinicAffiliation.create({
       data: { doctor_id: verifiedDoctorId, clinic_branch_id: branchNearId, consult_fee: '100.00', currency: 'EGP' },
     });
     await prisma.doctorClinicAffiliation.create({
-      data: { doctor_id: verifiedDoctorId, clinic_branch_id: branchFarId, consult_fee: '200.00', currency: 'EGP' },
+      data: { doctor_id: verifiedFarDoctorId, clinic_branch_id: branchFarId, consult_fee: '200.00', currency: 'EGP' },
     });
     await prisma.doctorClinicAffiliation.create({
       data: { doctor_id: pendingDoctorId, clinic_branch_id: branchNearId, consult_fee: '150.00', currency: 'EGP' },
@@ -87,8 +89,10 @@ describe('DoctorSearchRepository (integration)', () => {
   }, 30000);
 
   afterAll(async () => {
-    await prisma.doctorClinicAffiliation.deleteMany({ where: { doctor_id: { in: [verifiedDoctorId, pendingDoctorId] } } });
-    await prisma.doctor.deleteMany({ where: { id: { in: [verifiedDoctorId, pendingDoctorId] } } });
+    await prisma.doctorClinicAffiliation.deleteMany({
+      where: { doctor_id: { in: [verifiedDoctorId, verifiedFarDoctorId, pendingDoctorId] } },
+    });
+    await prisma.doctor.deleteMany({ where: { id: { in: [verifiedDoctorId, verifiedFarDoctorId, pendingDoctorId] } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.clinicBranch.deleteMany({ where: { clinic_id: clinicId } });
     await prisma.clinic.delete({ where: { id: clinicId } });

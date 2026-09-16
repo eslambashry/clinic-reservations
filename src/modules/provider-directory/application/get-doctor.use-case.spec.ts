@@ -28,6 +28,7 @@ function affiliation(overrides: Partial<any> = {}) {
     clinic_branch: {
       status: 'VERIFIED',
       iana_timezone: 'Africa/Cairo',
+      address: { line1: '10 Nile St', city: 'Cairo' },
       clinic: { status: 'VERIFIED', deleted_at: null, brand_name: 'Nile Clinic' },
     },
     ...overrides,
@@ -67,7 +68,16 @@ describe('GetDoctorUseCase', () => {
 
     expect(result.isVerified).toBe(false);
     expect(result.affiliations).toEqual([
-      { affiliationId: 'aff-paused', clinicBranchId: 'branch-1', clinicName: 'Nile Clinic', consultationFee: '150.00', currency: 'EGP', ianaTimezone: 'Africa/Cairo' },
+      {
+        affiliationId: 'aff-paused',
+        clinicBranchId: 'branch-1',
+        clinicName: 'Nile Clinic',
+        addressLine1: '10 Nile St',
+        city: 'Cairo',
+        consultationFee: '150.00',
+        currency: 'EGP',
+        ianaTimezone: 'Africa/Cairo',
+      },
     ]);
   });
 

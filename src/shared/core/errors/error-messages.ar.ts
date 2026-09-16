@@ -44,6 +44,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   FORBIDDEN: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
   ROLE_NOT_PERMITTED: 'صلاحيات حسابك لا تسمح بهذا الإجراء.',
   RESOURCE_NOT_OWNED: 'هذا العنصر غير مرتبط بحسابك.',
+  CONTEXT_NOT_AVAILABLE: 'السياق المطلوب غير متاح لهذا الحساب.',
 
   // ── OTP / rate limiting ─────────────────────────────────────────────────
   INVALID_CODE: 'رمز التحقق غير صحيح. راجع الرمز وأعد المحاولة.',
@@ -55,6 +56,12 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
+  PHARMACY_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذه الصيدلية.',
+  LAB_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذا المعمل.',
+  PHARMACY_HAS_NO_BRANCH: 'لا يمكن إنشاء حساب موظف قبل إضافة فرع للصيدلية.',
+  PHARMACY_BRANCH_REQUIRED: 'يجب تحديد فرع الصيدلية لهذا الحساب.',
+  LAB_HAS_NO_BRANCH: 'لا يمكن إنشاء حساب موظف قبل إضافة فرع للمعمل.',
+  LAB_BRANCH_REQUIRED: 'يجب تحديد فرع المعمل لهذا الحساب.',
 
   // ── Generic envelope codes ──────────────────────────────────────────────
   VALIDATION_ERROR: 'البيانات المُرسَلة غير صحيحة. راجع الحقول ثم أعد المحاولة.',
@@ -93,6 +100,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   AFFILIATION_ALREADY_EXISTS: 'هذا الطبيب مرتبط بهذا الفرع بالفعل.',
   BRANCH_HAS_BOOKINGS: 'لا يمكن حذف الفرع لأنه يحتوي على مواعيد محجوزة.',
   PROVIDER_TYPE_NOT_SUPPORTED: 'هذا النوع من مقدّمي الخدمة غير مدعوم في هذا الإجراء.',
+  DOCTOR_APPLICATION_NOT_PENDING: 'لا يمكن رفض طلب طبيب لم يعد قيد المراجعة.',
 
   // ── Payments ────────────────────────────────────────────────────────────
   PAYMENT_METHOD_NOT_SUPPORTED: 'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
@@ -103,6 +111,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PAYMENT_GATEWAY_NOT_CONFIGURED: 'بوابة الدفع الإلكتروني غير مُهيّأة حاليًا. تواصل مع الدعم.',
   WALLET_INFO_REQUIRED: 'اختر مزوّد المحفظة وأدخل رقم الهاتف المرتبط بها.',
   WEBHOOK_PAYLOAD_INVALID: 'تعذّر معالجة إشعار الدفع الوارد من بوابة الدفع.',
+  PAYOUT_EXCEEDS_OUTSTANDING_BALANCE: 'قيمة التحويل أكبر من الرصيد المستحق لمقدّم الخدمة.',
+  POLICY_TYPE_INVALID: 'نوع السياسة المطلوب غير معروف.',
+  POLICY_VALUE_INVALID: 'قيمة السياسة غير صالحة.',
 
   // ── Internal MedSuper Wallet ────────────────────────────────────────────
   INSUFFICIENT_WALLET_BALANCE: 'رصيد المحفظة غير كافٍ لإتمام هذه العملية.',
@@ -131,6 +142,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PHARMACY_ORDER_NOT_SUBSTITUTION_PROPOSED: 'لا يوجد بديل مقترح في هذا الطلب لرفضه.',
   PHARMACY_ORDER_NOT_PAID: 'لم يتم دفع هذا الطلب بعد.',
   PHARMACY_ORDER_NOT_READY_TO_COMPLETE: 'هذا الطلب غير جاهز ليُسجَّل كمكتمل.',
+  PHARMACY_ORDER_NOT_READY_FOR_FULFILLMENT: 'هذا الطلب غير جاهز لبدء التجهيز.',
+  PHARMACY_ORDER_NOT_OUT_FOR_DELIVERY: 'هذا الطلب ليس في الطريق للتوصيل حاليًا.',
   PHARMACY_ORDER_STATUS_CHANGED: 'تغيّرت حالة هذا الطلب من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   REJECTION_REASON_REQUIRED: 'اكتب سبب الرفض قبل المتابعة.',
   INVALID_TOTAL_PRICE: 'الإجمالي يجب أن يكون أكبر من صفر.',

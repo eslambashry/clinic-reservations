@@ -57,6 +57,13 @@ export class ProviderLedgerRepository {
   count(db: Prisma.TransactionClient, filter: ListLedgerEntriesFilter): Promise<number> {
     return db.providerLedgerEntry.count({ where: buildListWhere(filter) });
   }
+
+  /** Every entry for one provider, across every payment method — the raw input `computeOutstandingEarningBalance` (domain) reduces into a balance. */
+  findAllByProvider(db: Prisma.TransactionClient, params: { providerType: ProviderType; providerId: string }): Promise<ProviderLedgerEntry[]> {
+    return db.providerLedgerEntry.findMany({
+      where: { provider_type: params.providerType, provider_id: params.providerId },
+    });
+  }
 }
 
 /**

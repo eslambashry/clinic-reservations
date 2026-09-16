@@ -11,6 +11,13 @@ import { PharmacyStaffAssignment, Prisma } from '@prisma/client';
  */
 @Injectable()
 export class PharmacyStaffAssignmentRepository {
+  /** Serialize the one-active-staff-per-pharmacy check and write. */
+  async acquireProvisioningLock(db: Prisma.TransactionClient, pharmacyId: string): Promise<void> {
+    await db.$queryRaw<Array<{ lock: string }>>(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`pharmacy-staff:${pharmacyId}`}, 0))::text AS lock`,
+    );
+  }
+
   create(
     db: Prisma.TransactionClient,
     input: { userId: string; pharmacyBranchId: string; roleMembershipId: string },

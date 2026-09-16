@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FinanceController } from './api/finance.controller';
+import { ProviderPayoutsController } from './api/provider-payouts.controller';
 import { WalletController } from './api/wallet.controller';
 import { CancelOnlinePaymentIntentUseCase } from './application/cancel-online-payment-intent.use-case';
 import { CaptureInternalWalletPaymentUseCase } from './application/capture-internal-wallet-payment.use-case';
@@ -7,6 +8,7 @@ import { CaptureOnlinePaymentUseCase } from './application/capture-online-paymen
 import { CapturePayAtClinicPaymentUseCase } from './application/capture-pay-at-clinic-payment.use-case';
 import { FindPaymentByGatewayReferenceUseCase } from './application/find-payment-by-gateway-reference.use-case';
 import { GetFinanceSummaryUseCase } from './application/get-finance-summary.use-case';
+import { GetProviderOutstandingBalanceUseCase } from './application/get-provider-outstanding-balance.use-case';
 import { GetWalletUseCase } from './application/get-wallet.use-case';
 import { HandleLatePaymentAfterExpiryUseCase } from './application/handle-late-payment-after-expiry.use-case';
 import { InitiateOnlinePaymentUseCase } from './application/initiate-online-payment.use-case';
@@ -54,7 +56,8 @@ import { AuditModule } from '../audit/audit.module';
  * is audited like any other admin action.
  */
 @Module({
-  controllers: [WalletController, FinanceController],
+  imports: [AuditModule],
+  controllers: [WalletController, FinanceController, ProviderPayoutsController],
   providers: [
     PaymentIntentRepository,
     PaymentAttemptRepository,
@@ -79,6 +82,8 @@ import { AuditModule } from '../audit/audit.module';
     ListWalletTransactionsUseCase,
     GetFinanceSummaryUseCase,
     ListProviderLedgerEntriesUseCase,
+    GetProviderOutstandingBalanceUseCase,
+    RecordProviderPayoutUseCase,
   ],
   exports: [
     PAYMENT_GATEWAY,
