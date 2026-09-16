@@ -1,0 +1,1 @@
+ALTER TYPE "doctors_status_enum" ADD VALUE IF NOT EXISTS 'REJECTED';

@@ -1,16 +1,17 @@
 import { Module } from '@nestjs/common';
-import { ProviderPayoutsController } from './api/provider-payouts.controller';
+import { FinanceController } from './api/finance.controller';
 import { WalletController } from './api/wallet.controller';
 import { CancelOnlinePaymentIntentUseCase } from './application/cancel-online-payment-intent.use-case';
 import { CaptureInternalWalletPaymentUseCase } from './application/capture-internal-wallet-payment.use-case';
 import { CaptureOnlinePaymentUseCase } from './application/capture-online-payment.use-case';
 import { CapturePayAtClinicPaymentUseCase } from './application/capture-pay-at-clinic-payment.use-case';
 import { FindPaymentByGatewayReferenceUseCase } from './application/find-payment-by-gateway-reference.use-case';
-import { GetProviderOutstandingBalanceUseCase } from './application/get-provider-outstanding-balance.use-case';
+import { GetFinanceSummaryUseCase } from './application/get-finance-summary.use-case';
 import { GetWalletUseCase } from './application/get-wallet.use-case';
 import { HandleLatePaymentAfterExpiryUseCase } from './application/handle-late-payment-after-expiry.use-case';
 import { InitiateOnlinePaymentUseCase } from './application/initiate-online-payment.use-case';
 import { InitiateWalletTopUpUseCase } from './application/initiate-wallet-top-up.use-case';
+import { ListProviderLedgerEntriesUseCase } from './application/list-provider-ledger-entries.use-case';
 import { ListWalletTransactionsUseCase } from './application/list-wallet-transactions.use-case';
 import { MarkOnlinePaymentFailedUseCase } from './application/mark-online-payment-failed.use-case';
 import { PAYMENT_GATEWAY } from './application/ports/payment-gateway.port';
@@ -53,8 +54,7 @@ import { AuditModule } from '../audit/audit.module';
  * is audited like any other admin action.
  */
 @Module({
-  imports: [AuditModule],
-  controllers: [WalletController, ProviderPayoutsController],
+  controllers: [WalletController, FinanceController],
   providers: [
     PaymentIntentRepository,
     PaymentAttemptRepository,
@@ -77,8 +77,8 @@ import { AuditModule } from '../audit/audit.module';
     InitiateWalletTopUpUseCase,
     GetWalletUseCase,
     ListWalletTransactionsUseCase,
-    GetProviderOutstandingBalanceUseCase,
-    RecordProviderPayoutUseCase,
+    GetFinanceSummaryUseCase,
+    ListProviderLedgerEntriesUseCase,
   ],
   exports: [
     PAYMENT_GATEWAY,

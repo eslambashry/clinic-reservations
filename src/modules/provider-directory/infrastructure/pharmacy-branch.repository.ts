@@ -29,12 +29,23 @@ export class PharmacyBranchRepository {
         phone: input.phone,
         iana_timezone: input.ianaTimezone,
         delivery_capable: input.deliveryCapable ?? false,
+        // Admin creates the branch itself, so there is nobody left to verify it
+        // against — see the identical note in `clinic-branch.repository.ts`.
+        status: 'VERIFIED',
       },
     });
   }
 
   findById(db: Prisma.TransactionClient, id: string): Promise<PharmacyBranch | null> {
     return db.pharmacyBranch.findUnique({ where: { id } });
+  }
+
+  /** Every branch of one pharmacy, oldest-first — backs the pharmacy-staff flows, whose `RoleMembership.context_id` is a branch id, not a pharmacy id. */
+  findByPharmacyId(db: Prisma.TransactionClient, pharmacyId: string): Promise<PharmacyBranch[]> {
+    return db.pharmacyBranch.findMany({
+      where: { pharmacy_id: pharmacyId },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
   }
 
   findByIdWithRelations(db: Prisma.TransactionClient, id: string): Promise<PharmacyBranchWithRelations | null> {

@@ -6,6 +6,8 @@ export interface ListDoctorsParams {
   status?: DoctorStatus;
   cursor?: { createdAt: string; id: string };
   limit: number;
+  /** Offset mode (admin console only) — when set, the cursor branch is skipped. */
+  skip?: number;
 }
 
 export interface CreateDoctorInput {
@@ -86,7 +88,7 @@ export class DoctorRepository {
     db: Prisma.TransactionClient,
     id: string,
     currentVersion: number,
-    status: 'VERIFIED' | 'SUSPENDED',
+    status: 'VERIFIED' | 'REJECTED' | 'SUSPENDED',
   ): Promise<void> {
     await updateWithOptimisticLock(db.doctor, id, currentVersion, {
       status,
@@ -97,19 +99,36 @@ export class DoctorRepository {
   /** Admin review queue — cursor pagination on `(created_at, id)`, oldest-first, same shape as `VerificationDocumentRepository.list`. */
   list(db: Prisma.TransactionClient, params: ListDoctorsParams): Promise<DoctorWithUser[]> {
     return db.doctor.findMany({
-      where: {
-        deleted_at: null,
-        ...(params.status && { status: params.status }),
-        ...(params.cursor && {
-          OR: [
-            { created_at: { gt: new Date(params.cursor.createdAt) } },
-            { created_at: new Date(params.cursor.createdAt), id: { gt: params.cursor.id } },
-          ],
-        }),
-      },
+      where: buildListWhere(params),
       include: DOCTOR_WITH_USER,
       orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
       take: params.limit,
+      ...(params.skip !== undefined && { skip: params.skip }),
     });
   }
+
+  /** Total rows matching the same filter, ignoring pagination. */
+  count(db: Prisma.TransactionClient, params: Pick<ListDoctorsParams, 'status'>): Promise<number> {
+    return db.doctor.count({ where: buildListWhere(params) });
+  }
+}
+
+/**
+ * Shared so `list` and `count` can never drift apart — a count computed over a
+ * different filter than the page would report a wrong total page count.
+ * The cursor predicate is deliberately excluded in offset mode, where `skip`
+ * does the positioning instead.
+ */
+function buildListWhere(params: Pick<ListDoctorsParams, 'status' | 'cursor' | 'skip'>): Prisma.DoctorWhereInput {
+  return {
+    deleted_at: null,
+    ...(params.status && { status: params.status }),
+    ...(params.skip === undefined &&
+      params.cursor && {
+        OR: [
+          { created_at: { gt: new Date(params.cursor.createdAt) } },
+          { created_at: new Date(params.cursor.createdAt), id: { gt: params.cursor.id } },
+        ],
+      }),
+  };
 }

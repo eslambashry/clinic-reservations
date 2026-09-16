@@ -1,0 +1,27 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsOptional, IsString, Matches, ValidateNested } from 'class-validator';
+import { LabAddressDto } from './address.dto';
+
+/** File 10 §2.3: "E.164 format, validated by regex server-side" — restricted to Egyptian mobile numbers. */
+const EGYPT_E164_PATTERN = /^\+201[0125]\d{8}$/;
+
+export class CreateLabBranchDto {
+  @ApiProperty({ type: LabAddressDto })
+  @ValidateNested()
+  @Type(() => LabAddressDto)
+  address: LabAddressDto;
+
+  @ApiProperty({ example: '+201001234567' })
+  @Matches(EGYPT_E164_PATTERN, { message: 'phone must be a valid Egyptian mobile number, e.g. +201001234567' })
+  phone: string;
+
+  @ApiProperty({ example: 'Africa/Cairo' })
+  @IsString()
+  ianaTimezone: string;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  homeCollectionCapable?: boolean;
+}

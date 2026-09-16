@@ -8,6 +8,7 @@ import { GetMyDoctorProfileUseCase, MyDoctorProfile } from '../application/get-m
 import { ListDoctorsResult, ListDoctorsUseCase } from '../application/list-doctors.use-case';
 import { SearchDoctorsResult, SearchDoctorsUseCase } from '../application/search-doctors.use-case';
 import { SuspendDoctorUseCase } from '../application/suspend-doctor.use-case';
+import { RejectDoctorUseCase } from '../application/reject-doctor.use-case';
 import { UpdateDoctorUseCase } from '../application/update-doctor.use-case';
 import { UpdateMyDoctorProfileUseCase } from '../application/update-my-doctor-profile.use-case';
 import { VerifyDoctorUseCase } from '../application/verify-doctor.use-case';
@@ -21,6 +22,7 @@ import { DoctorSearchQueryDto } from './dto/doctor-search-query.dto';
 import { ListDoctorsQueryDto } from './dto/list-doctors-query.dto';
 import { UpdateDoctorDto } from './dto/update-doctor.dto';
 import { UpdateMyDoctorProfileDto } from './dto/update-my-doctor-profile.dto';
+import { RejectDoctorDto } from './dto/reject-doctor.dto';
 
 /**
  * File 11 05.4/05.3, File 12 Part 32: search + detail are public
@@ -36,6 +38,7 @@ export class DoctorsController {
     @Inject(UpdateDoctorUseCase) private readonly updateDoctor: UpdateDoctorUseCase,
     @Inject(VerifyDoctorUseCase) private readonly verifyDoctor: VerifyDoctorUseCase,
     @Inject(SuspendDoctorUseCase) private readonly suspendDoctor: SuspendDoctorUseCase,
+    @Inject(RejectDoctorUseCase) private readonly rejectDoctor: RejectDoctorUseCase,
     @Inject(GetDoctorUseCase) private readonly getDoctor: GetDoctorUseCase,
     @Inject(GetMyDoctorProfileUseCase) private readonly getMyDoctorProfile: GetMyDoctorProfileUseCase,
     @Inject(UpdateMyDoctorProfileUseCase) private readonly updateMyDoctorProfile: UpdateMyDoctorProfileUseCase,
@@ -125,6 +128,19 @@ export class DoctorsController {
   @ApiOperation({ summary: 'Admin: manual verification (File 11 07.3) — emits ProviderVerified' })
   async verify(@Param('doctorId', ParseUUIDPipe) doctorId: string, @CurrentUser() user: AccessTokenPayload): Promise<void> {
     await this.verifyDoctor.execute(doctorId, user);
+  }
+
+  @ApiBearerAuth()
+  @Roles(RoleContextType.ADMIN)
+  @Post(':doctorId/reject')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Admin: reject a pending doctor application with an auditable reason' })
+  async reject(
+    @Param('doctorId', ParseUUIDPipe) doctorId: string,
+    @Body() dto: RejectDoctorDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<void> {
+    await this.rejectDoctor.execute(doctorId, dto.reasonCode, user);
   }
 
   @ApiBearerAuth()

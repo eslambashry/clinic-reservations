@@ -20,4 +20,30 @@ export class RefundRepository {
       },
     });
   }
+
+  /**
+   * Only `COMPLETED` refunds count toward the finance summary — a
+   * `REQUESTED`/`PROCESSING`/`FAILED` row is money that never left the platform, so
+   * including it would overstate refunds against real commission/provider
+   * totals.
+   */
+  async sumCompleted(db: Prisma.TransactionClient, filter: { from?: Date; to?: Date }): Promise<Prisma.Decimal> {
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (filter.from) {
+      createdAt.gte = filter.from;
+    }
+    if (filter.to) {
+      createdAt.lte = filter.to;
+    }
+
+    const result = await db.refund.aggregate({
+      where: {
+        status: RefundStatus.COMPLETED,
+        ...(filter.from || filter.to ? { created_at: createdAt } : {}),
+      },
+      _sum: { amount: true },
+    });
+
+    return result._sum.amount ?? new Prisma.Decimal(0);
+  }
 }

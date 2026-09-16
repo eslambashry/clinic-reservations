@@ -6,7 +6,7 @@ import { DoctorRepository } from '../infrastructure/doctor.repository';
 
 export interface MyDoctorRegistrationStatusResult {
   doctorId: string;
-  status: 'PENDING' | 'VERIFIED' | 'SUSPENDED';
+  status: 'PENDING' | 'VERIFIED' | 'SUSPENDED' | 'REJECTED';
 }
 
 /**

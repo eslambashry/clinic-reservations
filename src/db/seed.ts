@@ -172,8 +172,8 @@ async function main() {
     adminUser = await prisma.user.create({
       data: {
         phone: '+201000000001',
-        first_name: 'Platform',
-        last_name: 'Admin',
+        first_name: 'مسؤول',
+        last_name: 'المنصة',
         password_hash: await argon2.hash(adminPassword),
       },
     });
