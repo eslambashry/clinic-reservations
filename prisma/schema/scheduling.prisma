@@ -71,6 +71,7 @@ model Appointment {
   patient_id                      String                  @db.Uuid
   doctor_clinic_affiliation_id    String                  @db.Uuid
   status                          AppointmentStatus       @default(HELD)
+  visit_status                    VisitStatus             @default(WAITING)
   payment_intent_id               String?                 @db.Uuid
   cancelled_by                    String?                 @db.Uuid
   cancelled_reason                String?
@@ -90,4 +91,12 @@ model Appointment {
 
   @@index([patient_id, status])
   @@map("appointments")
+}
+
+enum VisitStatus {
+  WAITING
+  IN_DOCTOR_ROOM
+  LEFT
+
+  @@map("appointments_visit_status_enum")
 }

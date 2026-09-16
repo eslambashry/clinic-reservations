@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { AppointmentStatus } from '@prisma/client';
+import { AppointmentStatus, VisitStatus } from '@prisma/client';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
@@ -8,6 +8,7 @@ import { AppointmentRepository, AppointmentWithSlotTimes } from '../infrastructu
 export interface AppointmentSummary {
   appointmentId: string;
   status: AppointmentStatus;
+  visitStatus: VisitStatus;
   slotId: string;
   startAt: Date;
   endAt: Date;
@@ -33,6 +34,7 @@ export function toAppointmentSummary(appointment: AppointmentWithSlotTimes): App
   return {
     appointmentId: appointment.id,
     status: appointment.status,
+    visitStatus: appointment.visit_status,
     slotId: appointment.slot_id,
     startAt: appointment.slot.start_at,
     endAt: appointment.slot.end_at,
