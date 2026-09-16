@@ -37,6 +37,8 @@ describe('Provider Assistants (e2e)', () => {
   let branchA2Id: string;
   let branchBId: string;
   let affiliationA2Id: string;
+  let visitAppointmentId: string | undefined;
+  let visitSlotId: string | undefined;
 
   const assistantPhone = `+2012${numericSuffix}0`;
   const createdUserIds: string[] = [];
@@ -126,6 +128,12 @@ describe('Provider Assistants (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { actor_user_id: { in: createdUserIds } } });
+    if (visitAppointmentId) {
+      await prisma.appointment.deleteMany({ where: { id: visitAppointmentId } });
+    }
+    if (visitSlotId) {
+      await prisma.appointmentSlot.deleteMany({ where: { id: visitSlotId } });
+    }
     const assistantUser = await prisma.user.findUnique({ where: { phone: assistantPhone } });
     if (assistantUser) {
       await prisma.refreshToken.deleteMany({ where: { user_id: assistantUser.id } });
@@ -318,6 +326,7 @@ describe('Provider Assistants (e2e)', () => {
     });
 
     let assistantToken: string;
+    let assistantUserId: string;
 
     it('the assistant logs in through the existing password-login endpoint', async () => {
       const res = await request(app.getHttpServer())
@@ -329,6 +338,7 @@ describe('Provider Assistants (e2e)', () => {
       assistantToken = res.body.data.accessToken;
 
       const decoded = jwt.decode(assistantToken) as any;
+      assistantUserId = decoded.sub;
       expect(decoded.roleCode).toBe('CLINIC_STAFF');
       expect(decoded.contextType).toBe('CLINIC_STAFF');
     });
@@ -351,6 +361,82 @@ describe('Provider Assistants (e2e)', () => {
 
       const branchIds = res.body.data.items.map((item: any) => item.clinic_branch_id ?? item.clinicBranchId);
       expect(branchIds).toEqual([branchA2Id]);
+    });
+
+    it('the assistant advances a confirmed patient visit in order and receives each updated record immediately', async () => {
+      const patient = await prisma.user.create({
+        data: { phone: `+2012${numericSuffix}4`, first_name: 'Visit', last_name: 'Patient' },
+      });
+      createdUserIds.push(patient.id);
+      await prisma.roleMembership.create({
+        data: { user_id: patient.id, role_code: 'PATIENT', context_type: 'PATIENT' },
+      });
+
+      const startAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const slot = await prisma.appointmentSlot.create({
+        data: {
+          doctor_clinic_affiliation_id: affiliationA2Id,
+          start_at: startAt,
+          end_at: new Date(startAt.getTime() + 30 * 60 * 1000),
+          status: 'BOOKED',
+        },
+      });
+      visitSlotId = slot.id;
+      const appointment = await prisma.appointment.create({
+        data: {
+          slot_id: slot.id,
+          patient_id: patient.id,
+          doctor_clinic_affiliation_id: affiliationA2Id,
+          status: 'CONFIRMED',
+        },
+      });
+      visitAppointmentId = appointment.id;
+
+      const detail = await request(app.getHttpServer())
+        .get(`/v1/doctors/me/appointments/${appointment.id}`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .expect(200);
+      expect(detail.body.data).toMatchObject({ visitStatus: 'WAITING', version: 1 });
+
+      const inRoom = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'IN_DOCTOR_ROOM', version: 1 })
+        .expect(200);
+      expect(inRoom.body.data).toMatchObject({ visitStatus: 'IN_DOCTOR_ROOM', version: 2 });
+
+      const backward = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'WAITING', version: 2 })
+        .expect(422);
+      expect(backward.body.error.code).toBe('INVALID_VISIT_STATUS_TRANSITION');
+
+      const left = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'LEFT', version: 2 })
+        .expect(200);
+      expect(left.body.data).toMatchObject({ visitStatus: 'LEFT', version: 3 });
+
+      const skippedAfterCompletion = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'LEFT', version: 3 })
+        .expect(422);
+      expect(skippedAfterCompletion.body.error.code).toBe('INVALID_VISIT_STATUS_TRANSITION');
+
+      const persisted = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(persisted.visit_status).toBe('LEFT');
+      expect(
+        await prisma.auditLog.count({
+          where: {
+            action: 'scheduling_appointments.appointment.visit_status.update',
+            resource_id: appointment.id,
+            actor_user_id: assistantUserId,
+          },
+        }),
+      ).toBe(2);
     });
 
     it('the assistant can edit operational fields of their own assigned branch (A2)', async () => {

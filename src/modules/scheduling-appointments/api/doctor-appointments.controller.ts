@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Patch, Post, Query, UseInterceptors } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RoleContextType } from '@prisma/client';
 import { CancelAppointmentResult, CancelAppointmentUseCase } from '../application/cancel-appointment.use-case';
@@ -15,6 +15,8 @@ import { CreateClinicStaffAppointmentDto } from './dto/create-clinic-staff-appoi
 import { ListDoctorAppointmentsQueryDto } from './dto/list-doctor-appointments-query.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CreateClinicStaffAppointmentResult, CreateClinicStaffAppointmentUseCase } from '../application/create-clinic-staff-appointment.use-case';
+import { UpdateAppointmentVisitStatusUseCase } from '../application/update-appointment-visit-status.use-case';
+import { UpdateVisitStatusDto } from './dto/update-visit-status.dto';
 
 /**
  * Doctor Dashboard — appointments (File 12 Part 49.7-49.9). The provider
@@ -44,6 +46,7 @@ export class DoctorAppointmentsController {
     @Inject(CancelAppointmentUseCase) private readonly cancelAppointment: CancelAppointmentUseCase,
     @Inject(RescheduleAppointmentUseCase) private readonly rescheduleAppointment: RescheduleAppointmentUseCase,
     @Inject(CreateClinicStaffAppointmentUseCase) private readonly createClinicStaffAppointment: CreateClinicStaffAppointmentUseCase,
+    @Inject(UpdateAppointmentVisitStatusUseCase) private readonly updateAppointmentVisitStatus: UpdateAppointmentVisitStatusUseCase,
   ) {}
 
   @Post('branch/:clinicBranchId/create')
@@ -74,6 +77,16 @@ export class DoctorAppointmentsController {
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<DoctorAppointmentSummary> {
     return this.getDoctorAppointment.execute(appointmentId, user);
+  }
+
+  @Patch(':appointmentId/visit-status')
+  @ApiOperation({ summary: 'Advance a confirmed appointment through WAITING, IN_DOCTOR_ROOM and LEFT' })
+  updateVisitStatus(
+    @Param('appointmentId', ParseUUIDPipe) appointmentId: string,
+    @Body() dto: UpdateVisitStatusDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<DoctorAppointmentSummary> {
+    return this.updateAppointmentVisitStatus.execute(appointmentId, dto, user);
   }
 
   @Post(':appointmentId/cancel')

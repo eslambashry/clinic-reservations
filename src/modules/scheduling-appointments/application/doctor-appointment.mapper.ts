@@ -1,4 +1,4 @@
-import { AppointmentStatus } from '@prisma/client';
+import { AppointmentStatus, VisitStatus } from '@prisma/client';
 import { AppointmentWithDoctorView } from '../infrastructure/appointment.repository';
 
 /**
@@ -18,6 +18,8 @@ import { AppointmentWithDoctorView } from '../infrastructure/appointment.reposit
 export interface DoctorAppointmentSummary {
   appointmentId: string;
   status: AppointmentStatus;
+  visitStatus: VisitStatus;
+  version: number;
   slotId: string;
   startAt: Date;
   endAt: Date;
@@ -48,6 +50,8 @@ export function toDoctorAppointmentSummary(appointment: AppointmentWithDoctorVie
   return {
     appointmentId: appointment.id,
     status: appointment.status,
+    visitStatus: appointment.visit_status,
+    version: appointment.version,
     slotId: appointment.slot_id,
     startAt: appointment.slot.start_at,
     endAt: appointment.slot.end_at,

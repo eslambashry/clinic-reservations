@@ -26,6 +26,7 @@ import { ManageMyScheduleTemplatesUseCase } from './application/manage-my-schedu
 import { RescheduleAppointmentUseCase } from './application/reschedule-appointment.use-case';
 import { ResolveAppointmentScopeUseCase } from './application/resolve-appointment-scope.use-case';
 import { UpdateScheduleTemplateUseCase } from './application/update-schedule-template.use-case';
+import { UpdateAppointmentVisitStatusUseCase } from './application/update-appointment-visit-status.use-case';
 import { AppointmentRepository } from './infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from './infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from './infrastructure/appointment-slot.repository';
@@ -82,6 +83,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     ResolveAppointmentScopeUseCase,
     ListDoctorAppointmentsUseCase,
     GetDoctorAppointmentUseCase,
+    UpdateAppointmentVisitStatusUseCase,
     ExpireHoldsUseCase,
     InitiateOnlineAppointmentPaymentUseCase,
     ProcessPaymentWebhookUseCase,

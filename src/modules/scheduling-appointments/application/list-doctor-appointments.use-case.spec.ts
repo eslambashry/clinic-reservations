@@ -13,6 +13,8 @@ describe('ListDoctorAppointmentsUseCase', () => {
     return {
       id,
       status: 'CONFIRMED',
+      visit_status: 'WAITING',
+      version: 1,
       slot_id: `slot-${id}`,
       slot: { start_at: new Date(startAt), end_at: new Date(startAt) },
       doctor_clinic_affiliation_id: 'aff-1',
@@ -95,6 +97,8 @@ describe('ListDoctorAppointmentsUseCase', () => {
       patientPhone: '+201000000009',
       clinicName: 'Nile Clinic',
       ianaTimezone: 'Africa/Cairo',
+      visitStatus: 'WAITING',
+      version: 1,
     });
     expect(result.nextCursor).not.toBeNull();
   });
