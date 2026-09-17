@@ -16,6 +16,7 @@ describe('Doctor-initiated appointment actions', () => {
     patient_id: 'patient-1',
     doctor_clinic_affiliation_id: 'aff-1',
     status: 'CONFIRMED',
+    visit_status: 'WAITING',
     version: 1,
     payment_intent_id: 'intent-1',
   };
@@ -112,6 +113,20 @@ describe('Doctor-initiated appointment actions', () => {
       expect(refund.execute).not.toHaveBeenCalled();
       expect(outbox.emit).not.toHaveBeenCalled();
     });
+
+    it("422s (APPOINTMENT_VISIT_IN_PROGRESS) once the patient is in the doctor's room — no refund, no slot release", async () => {
+      const { appointments, slots, refund, outbox, useCase } = setup();
+      appointments.findById.mockResolvedValue({ ...appointment, visit_status: 'IN_DOCTOR_ROOM' });
+
+      await expect(useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST' }, doctorActor)).rejects.toMatchObject({
+        code: 'APPOINTMENT_VISIT_IN_PROGRESS',
+        httpStatus: 422,
+      });
+      expect(appointments.cancel).not.toHaveBeenCalled();
+      expect(slots.releaseBooked).not.toHaveBeenCalled();
+      expect(refund.execute).not.toHaveBeenCalled();
+      expect(outbox.emit).not.toHaveBeenCalled();
+    });
   });
 
   describe('reschedule', () => {
@@ -151,6 +166,20 @@ describe('Doctor-initiated appointment actions', () => {
       const { useCase } = setup(foreignScope);
 
       await expect(useCase.execute('appointment-1', { newSlotId: 'new-slot' }, doctorActor)).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it("422s (APPOINTMENT_VISIT_IN_PROGRESS) once the patient is in the doctor's room — the old slot stays booked, no new appointment", async () => {
+      const { appointments, slots, holds, useCase } = setup();
+      appointments.findById.mockResolvedValue({ ...appointment, visit_status: 'IN_DOCTOR_ROOM' });
+
+      await expect(useCase.execute('appointment-1', { newSlotId: 'new-slot' }, doctorActor)).rejects.toMatchObject({
+        code: 'APPOINTMENT_VISIT_IN_PROGRESS',
+        httpStatus: 422,
+      });
+      expect(appointments.markRescheduled).not.toHaveBeenCalled();
+      expect(appointments.create).not.toHaveBeenCalled();
+      expect(slots.releaseBooked).not.toHaveBeenCalled();
+      expect(holds.create).not.toHaveBeenCalled();
     });
 
     it('404s a slot belonging to a different affiliation — a doctor cannot move a patient onto another calendar', async () => {
