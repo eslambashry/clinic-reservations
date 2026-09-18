@@ -196,6 +196,7 @@ Reference module: `src/modules/identity-auth/`.
   - Mirrored automatically by `ResponseInterceptor`/`ErrorEnvelopeFilter` — never hand-construct either shape in a controller.
 - **Status codes**: `409` conflict (double-hold, idempotency-key reuse), `422` business-rule violation on an otherwise syntactically valid request (distinct from `400` validation errors) — e.g. cancelling an already-completed appointment is `422`, not `400`.
 - All timestamps are `timestamptz`, API responses are UTC ISO-8601; local time only matters for displaying working hours (branches carry `iana_timezone`).
+- **Live visit timing (Part 49):** `PATCH /v1/doctors/me/appointments/{id}/visit-status` compares UTC instants from the appointment's current slot, accepting only the named 30-minute early-arrival period through `slot.end_at`; it returns `422 VISIT_STATUS_TOO_EARLY` before that and `422 VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW` after. This makes a rescheduled appointment's new slot authoritative.
 - Cursor pagination: shared `src/shared/core/pagination/cursor.util.ts` (opaque base64 JSON cursor) — don't build a bespoke pagination scheme per module.
 - Admin routes are **not** namespaced under `/admin` — authorization is via `@Roles(ADMIN)` on the route, not the URL path.
 
