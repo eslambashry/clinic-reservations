@@ -405,6 +405,26 @@ describe('Provider Assistants (e2e)', () => {
         .expect(200);
       expect(inRoom.body.data).toMatchObject({ visitStatus: 'IN_DOCTOR_ROOM', version: 2 });
 
+      const stale = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'LEFT', version: 1 })
+        .expect(409);
+      expect(stale.body.error.code).toBe('OPTIMISTIC_LOCK_CONFLICT');
+
+      const foreignDoctor = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
+        .set('Authorization', `Bearer ${doctorBToken}`)
+        .send({ status: 'LEFT', version: 2 })
+        .expect(404);
+      expect(foreignDoctor.body.error.code).toBe('RESOURCE_NOT_FOUND');
+
+      const unchanged = await request(app.getHttpServer())
+        .get(`/v1/doctors/me/appointments/${appointment.id}`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .expect(200);
+      expect(unchanged.body.data).toMatchObject({ visitStatus: 'IN_DOCTOR_ROOM', version: 2 });
+
       // Once the patient is in the doctor's room the booking is frozen: the
       // doctor can neither cancel nor reschedule it.
       const cancelInRoom = await request(app.getHttpServer())
