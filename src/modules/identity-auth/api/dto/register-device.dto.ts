@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 
-const PLATFORMS = ['ios', 'android'] as const;
+const PLATFORMS = ['ios', 'android', 'web'] as const;
 
 /** File 12 Part 53 `POST /v1/auth/devices`. */
 export class RegisterDeviceDto {
