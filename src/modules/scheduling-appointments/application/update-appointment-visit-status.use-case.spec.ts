@@ -39,6 +39,14 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
     },
   };
 
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-17T09:15:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   function setup(row: Record<string, unknown> = appointment) {
     const tx = {} as any;
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
@@ -123,6 +131,45 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
     await expect(useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 2 }, actor)).rejects.toBeInstanceOf(
       OptimisticLockError,
     );
+    expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+  });
+
+  it('rejects a transition before the current slot arrival window', async () => {
+    jest.setSystemTime(new Date('2026-09-17T08:29:59.999Z'));
+    const { appointments, useCase } = setup();
+
+    await expect(
+      useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor),
+    ).rejects.toMatchObject({ code: 'VISIT_STATUS_TOO_EARLY', httpStatus: 422 });
+    expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+  });
+
+  it('rejects a transition after the current slot appointment window', async () => {
+    jest.setSystemTime(new Date('2026-09-17T09:30:00.001Z'));
+    const { appointments, useCase } = setup();
+
+    await expect(
+      useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor),
+    ).rejects.toMatchObject({
+      code: 'VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW',
+      httpStatus: 422,
+    });
+    expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+  });
+
+  it('evaluates timing from the appointment current slot, not the old rescheduled time', async () => {
+    const rescheduled = {
+      ...appointment,
+      slot: {
+        start_at: new Date('2026-09-22T15:00:00.000Z'),
+        end_at: new Date('2026-09-22T15:30:00.000Z'),
+      },
+    };
+    const { appointments, useCase } = setup(rescheduled);
+
+    await expect(
+      useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor),
+    ).rejects.toMatchObject({ code: 'VISIT_STATUS_TOO_EARLY', httpStatus: 422 });
     expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
   });
 });
