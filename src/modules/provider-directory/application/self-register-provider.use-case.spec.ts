@@ -26,7 +26,7 @@ describe('SelfRegisterProviderUseCase', () => {
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const specialties = { findByCode: jest.fn().mockResolvedValue({ code: 'CARDIOLOGY' }) };
+    const specialties = { findByCode: jest.fn().mockResolvedValue({ code: 'CARDIOLOGY', name_ar: 'أمراض القلب', name_en: 'Cardiology' }) };
     const clinics = { create: jest.fn().mockResolvedValue({ id: 'clinic-1' }) };
     const addresses = { create: jest.fn().mockResolvedValue({ id: 'address-1' }) };
     const branches = { create: jest.fn().mockResolvedValue({ id: 'branch-1' }) };
@@ -142,11 +142,21 @@ describe('SelfRegisterProviderUseCase', () => {
       doctorId: 'doctor-1',
       clinicId: 'clinic-1',
       adminUserId: 'admin-1',
+      // Carried so the notification can name the applicant rather than
+      // saying only that 'a doctor applied'.
+      doctorName: null,
+      specialtyLabel: 'أمراض القلب',
+      doctorPhone: dto.phone,
     });
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewProviderRegistrationForAdmin', {
       doctorId: 'doctor-1',
       clinicId: 'clinic-1',
       adminUserId: 'admin-2',
+      // Carried so the notification can name the applicant rather than
+      // saying only that 'a doctor applied'.
+      doctorName: null,
+      specialtyLabel: 'أمراض القلب',
+      doctorPhone: dto.phone,
     });
   });
 
