@@ -96,12 +96,16 @@ export class DoctorRepository {
     });
   }
 
-  /** Admin review queue — cursor pagination on `(created_at, id)`, oldest-first, same shape as `VerificationDocumentRepository.list`. */
+  /**
+   * Admin review queue — cursor pagination on `(created_at, id)`, newest-first
+   * (matching `NotificationRepository.list`, and what the dashboards' own
+   * notification/review lists show: the most recent application at the top).
+   */
   list(db: Prisma.TransactionClient, params: ListDoctorsParams): Promise<DoctorWithUser[]> {
     return db.doctor.findMany({
       where: buildListWhere(params),
       include: DOCTOR_WITH_USER,
-      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: params.limit,
       ...(params.skip !== undefined && { skip: params.skip }),
     });
@@ -125,9 +129,12 @@ function buildListWhere(params: Pick<ListDoctorsParams, 'status' | 'cursor' | 's
     ...(params.status && { status: params.status }),
     ...(params.skip === undefined &&
       params.cursor && {
+        // `lt`, not `gt`: the list is ordered newest-first, so "after this
+        // cursor" means older than it. These comparisons must always mirror
+        // `list`'s `orderBy` or the second page silently returns the wrong rows.
         OR: [
-          { created_at: { gt: new Date(params.cursor.createdAt) } },
-          { created_at: new Date(params.cursor.createdAt), id: { gt: params.cursor.id } },
+          { created_at: { lt: new Date(params.cursor.createdAt) } },
+          { created_at: new Date(params.cursor.createdAt), id: { lt: params.cursor.id } },
         ],
       }),
   };
