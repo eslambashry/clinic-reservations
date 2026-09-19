@@ -38,7 +38,7 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
 
       const invalidTokens: string[] = [];
       response.responses.forEach((result, index) => {
-        if (!result.success) {
+        if (!result.success && FcmPushNotificationAdapter.isUnrecoverableTokenError(result.error?.code)) {
           invalidTokens.push(tokens[index]);
         }
       });
@@ -47,6 +47,17 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
       this.logger.error({ err: error }, 'FCM send failed');
       throw new ExternalProviderError('Firebase', 502, error);
     }
+  }
+
+  /**
+   * Only these two FCM error codes mean the token itself is permanently
+   * dead and should be pruned. Everything else (`messaging/internal-error`,
+   * quota, transient network failures) is a retryable send failure against
+   * a token that is still perfectly valid — treating those as "invalid"
+   * would delete live devices on every FCM hiccup.
+   */
+  private static isUnrecoverableTokenError(code: string | undefined): boolean {
+    return code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token';
   }
 
   /** FCM's `data` payload requires every value to be a string. */

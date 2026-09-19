@@ -27,6 +27,16 @@ export class DeviceRepository {
     });
   }
 
+  /**
+   * Deletes device rows whose FCM token the provider reported as permanently
+   * dead. Not scoped to a user: the same token can only ever belong to one
+   * physical device, and once FCM says it is unregistered it is dead for
+   * whoever holds it.
+   */
+  deleteByTokens(db: Prisma.TransactionClient, fcmTokens: string[]): Promise<Prisma.BatchPayload> {
+    return db.device.deleteMany({ where: { fcm_token: { in: fcmTokens } } });
+  }
+
   /** File 12 Part 53: the only read Notifications needs — every currently-known `fcm_token` for a user, across however many devices they're logged into. */
   listTokensForUser(db: Prisma.TransactionClient, userId: string): Promise<string[]> {
     return db.device

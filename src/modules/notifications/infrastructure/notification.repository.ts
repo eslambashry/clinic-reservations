@@ -46,7 +46,15 @@ export class NotificationRepository {
   /** `NotificationRetryJob`'s candidate query — File 11 Part 19: retried up to `maxAttempts`, then left permanently `FAILED`. */
   findRetryable(db: Prisma.TransactionClient, maxAttempts: number, limit: number): Promise<Notification[]> {
     return db.notification.findMany({
-      where: { status: 'FAILED', attempts: { lt: maxAttempts } },
+      where: {
+        attempts: { lt: maxAttempts },
+        // `FAILED` is a send that was attempted and errored. `PENDING` is a
+        // row `DispatchNotificationUseCase` created but deliberately did not
+        // hand to the sender because quiet hours were in force — without it
+        // here, a quiet-hours notification is never delivered at all, since
+        // dispatch only ever runs once per event.
+        status: { in: ['FAILED', 'PENDING'] },
+      },
       orderBy: { created_at: 'asc' },
       take: limit,
     });

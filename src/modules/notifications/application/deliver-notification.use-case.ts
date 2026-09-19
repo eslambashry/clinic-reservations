@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { GetUserContactInfoUseCase } from '../../identity-auth/application/get-user-contact-info.use-case';
 import { ListUserDeviceTokensUseCase } from '../../identity-auth/application/list-user-device-tokens.use-case';
+import { PruneDeviceTokensUseCase } from '../../identity-auth/application/prune-device-tokens.use-case';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { PUSH_NOTIFICATION_SENDER, PushNotificationPort } from './ports/push-notification.port';
 import { SMS_SENDER, SmsSenderPort } from './ports/sms-sender.port';
@@ -42,6 +43,7 @@ export class DeliverNotificationUseCase {
     @Inject(PUSH_NOTIFICATION_SENDER) private readonly push: PushNotificationPort,
     @Inject(SMS_SENDER) private readonly sms: SmsSenderPort,
     @Inject(ListUserDeviceTokensUseCase) private readonly listUserDeviceTokens: ListUserDeviceTokensUseCase,
+    @Inject(PruneDeviceTokensUseCase) private readonly pruneDeviceTokens: PruneDeviceTokensUseCase,
     @Inject(GetUserContactInfoUseCase) private readonly getUserContactInfo: GetUserContactInfoUseCase,
   ) {}
 
@@ -52,11 +54,32 @@ export class DeliverNotificationUseCase {
         if (tokens.length === 0) {
           throw new Error('No registered device tokens for this user');
         }
-        await this.push.send(tokens, {
+        const result = await this.push.send(tokens, {
           title: notification.title,
           body: notification.body,
           data: { ...(notification.data ?? {}), templateCode: notification.templateCode },
         });
+
+        // Prune tokens FCM reported as permanently dead, so they stop being
+        // paid for on every subsequent send. Best-effort: a failed cleanup
+        // must never turn an otherwise-delivered notification into a FAILED
+        // row, so it is caught here rather than falling into the outer catch.
+        if (result.invalidTokens.length > 0) {
+          try {
+            const pruned = await this.pruneDeviceTokens.execute(result.invalidTokens);
+            this.logger.log(`Pruned ${pruned} dead device token(s) after notification ${notification.id}`);
+          } catch (pruneError) {
+            this.logger.warn(
+              `Failed to prune dead device tokens: ${pruneError instanceof Error ? pruneError.message : String(pruneError)}`,
+            );
+          }
+        }
+
+        // Every token was rejected as dead — nothing actually reached the
+        // user, so this is a failed delivery, not a successful one.
+        if (result.invalidTokens.length === tokens.length) {
+          throw new Error('All registered device tokens were rejected by FCM');
+        }
       } else if (notification.channel === 'SMS') {
         const contact = await this.getUserContactInfo.execute(notification.userId);
         if (!contact) {
