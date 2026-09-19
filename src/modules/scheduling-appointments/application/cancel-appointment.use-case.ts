@@ -11,6 +11,7 @@ import { REGION_CONSTANTS } from '../../../shared/config/constants';
 import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
+import { canChangeBooking } from '../domain/visit-status.rules';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
 
@@ -89,6 +90,11 @@ export class CancelAppointmentUseCase {
       if (appointment.status !== 'CONFIRMED') {
         throw new BusinessRuleError('APPOINTMENT_NOT_CANCELLABLE', 'لا يمكن إلغاء هذا الموعد إلا وهو مؤكّد.', {
           status: appointment.status,
+        });
+      }
+      if (!canChangeBooking(appointment.visit_status)) {
+        throw new BusinessRuleError('APPOINTMENT_VISIT_IN_PROGRESS', 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.', {
+          visitStatus: appointment.visit_status,
         });
       }
 

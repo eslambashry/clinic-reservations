@@ -425,6 +425,27 @@ describe('Provider Assistants (e2e)', () => {
         .expect(200);
       expect(unchanged.body.data).toMatchObject({ visitStatus: 'IN_DOCTOR_ROOM', version: 2 });
 
+      // Once the patient is in the doctor's room the booking is frozen: the
+      // doctor can neither cancel nor reschedule it.
+      const cancelInRoom = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${appointment.id}/cancel`)
+        .set('Authorization', `Bearer ${doctorAToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({})
+        .expect(422);
+      expect(cancelInRoom.body.error.code).toBe('APPOINTMENT_VISIT_IN_PROGRESS');
+
+      const rescheduleInRoom = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${appointment.id}/reschedule`)
+        .set('Authorization', `Bearer ${doctorAToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({ newSlotId: randomUUID() })
+        .expect(422);
+      expect(rescheduleInRoom.body.error.code).toBe('APPOINTMENT_VISIT_IN_PROGRESS');
+
+      const stillConfirmed = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(stillConfirmed).toMatchObject({ status: 'CONFIRMED', visit_status: 'IN_DOCTOR_ROOM', version: 2 });
+
       const backward = await request(app.getHttpServer())
         .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
         .set('Authorization', `Bearer ${assistantToken}`)

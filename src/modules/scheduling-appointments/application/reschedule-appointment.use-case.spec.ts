@@ -18,6 +18,7 @@ describe('RescheduleAppointmentUseCase', () => {
     patient_id: 'patient-1',
     doctor_clinic_affiliation_id: 'aff-1',
     status: 'CONFIRMED',
+    visit_status: 'WAITING',
     version: 1,
   };
   const newSlot = { id: 'new-slot', doctor_clinic_affiliation_id: 'aff-1', status: 'OPEN' };
@@ -56,6 +57,19 @@ describe('RescheduleAppointmentUseCase', () => {
     appointments.findById.mockResolvedValue({ ...appointment, status: 'CANCELLED' });
 
     await expect(useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_RESCHEDULABLE', httpStatus: 422 });
+  });
+
+  it.each(['IN_DOCTOR_ROOM', 'LEFT'])('422s (APPOINTMENT_VISIT_IN_PROGRESS) without touching slots once the visit is %s', async (visitStatus) => {
+    const { appointments, slots, holds, audit, outbox, useCase } = setup();
+    appointments.findById.mockResolvedValue({ ...appointment, visit_status: visitStatus });
+
+    await expect(useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_VISIT_IN_PROGRESS', httpStatus: 422 });
+    expect(appointments.markRescheduled).not.toHaveBeenCalled();
+    expect(slots.releaseBooked).not.toHaveBeenCalled();
+    expect(slots.markHeld).not.toHaveBeenCalled();
+    expect(holds.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(outbox.emit).not.toHaveBeenCalled();
   });
 
   it('404s when the new slot belongs to a different affiliation (Part 35.11)', async () => {
