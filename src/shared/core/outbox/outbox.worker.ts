@@ -33,6 +33,26 @@ export class OutboxWorker {
   /** Called from a consuming module's `onModuleInit` — see the interface doc. */
   registerHandler(handler: OutboxEventHandler): void {
     this.handlers.set(handler.eventName, handler);
+
+    // Anything skipped for want of this exact handler can now be delivered.
+    // Without this, events that arrived before the consuming module existed
+    // would stay SKIPPED forever even once it does — the handler is only ever
+    // registered at boot, so this is the one moment that can recover them.
+    void this.prisma.outboxEvent
+      .updateMany({
+        where: { event_name: handler.eventName, status: 'SKIPPED' },
+        data: { status: 'PENDING' },
+      })
+      .then(({ count }) => {
+        if (count > 0) {
+          this.logger.log(`Re-queued ${count} previously skipped "${handler.eventName}" event(s) now that a handler exists.`);
+        }
+      })
+      .catch((error: unknown) => {
+        // Never fail module init over this — the events stay SKIPPED and can
+        // still be re-queued by hand.
+        this.logger.warn(`Could not re-queue skipped "${handler.eventName}" events: ${error instanceof Error ? error.message : String(error)}`);
+      });
   }
 
   @Interval(OUTBOX_CONSTANTS.POLL_INTERVAL_MS)
@@ -82,17 +102,29 @@ export class OutboxWorker {
     if (!handler) {
       // No consumer wired up yet for this event — expected during
       // incremental build-out (e.g. Identity emits `UserRegistered` well
-      // before Notifications/Phase 8 exists to consume it). `claimBatch`
-      // already flipped this row to PROCESSING; revert it to PENDING
-      // (without touching `attempts`) so it's retried once a handler
-      // registers — this is not a failure, so it must not count toward
-      // `MAX_ATTEMPTS` or reach FAILED.
+      // before Notifications/Phase 8 exists to consume it).
+      //
+      // This must NOT go back to PENDING. `claimBatch` takes the oldest
+      // `BATCH_SIZE` PENDING rows, so once that many consumer-less events
+      // accumulate they refill the batch on every poll and no newer event is
+      // ever claimed again — the queue stalls silently and completely.
+      // Observed live: ~21 such rows had stalled the queue for a full day,
+      // holding back real notifications behind them.
+      //
+      // SKIPPED keeps the row (nothing is lost, and it can be flipped back to
+      // PENDING once a consumer exists) while taking it out of the claim set.
+      // It is not a failure, so `attempts` is untouched and it never reaches
+      // FAILED.
       await this.prisma.outboxEvent.update({
         where: { id: event.id },
-        data: { status: 'PENDING' },
+        data: { status: 'SKIPPED' },
       });
-      this.logger.debug(
-        `No handler registered yet for outbox event "${event.event_name}" (${event.id}) — reverted to PENDING.`,
+      // `warn`, not `debug`: a permanently unconsumed event is a wiring gap
+      // someone needs to see, and the previous `debug` hid exactly the
+      // condition that stalled the queue.
+      this.logger.warn(
+        `No handler registered for outbox event "${event.event_name}" (${event.id}) — marked SKIPPED. ` +
+          `Re-queue with: UPDATE outbox_events SET status='PENDING' WHERE event_name='${event.event_name}' AND status='SKIPPED';`,
       );
       return;
     }
