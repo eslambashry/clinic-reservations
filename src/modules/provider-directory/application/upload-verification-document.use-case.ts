@@ -6,6 +6,7 @@ import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { canBypassVisibility } from '../domain/provider-visibility.rules';
 import { ClinicRepository } from '../infrastructure/clinic.repository';
 import { DoctorRepository } from '../infrastructure/doctor.repository';
 import { PharmacyRepository } from '../infrastructure/pharmacy.repository';
@@ -23,9 +24,12 @@ export interface UploadVerificationDocumentInput {
  * private (`isPrivate: true`), since a medical license/syndicate ID/
  * commercial registration is exactly the kind of sensitive document File
  * 11's PHI table demands "restricted IAM" for, not a publicly guessable
- * link. Admin may upload for any provider. A DOCTOR-context actor may only
+ * link. Admin may upload for any provider. Every other caller may only
  * upload for `providerType: 'DOCTOR'` and their own doctor id (resolved via
- * `DoctorRepository.findByUserId`) — enforced in `assertOwnershipForDoctor`.
+ * `DoctorRepository.findByUserId`) — enforced in `assertOwnershipForDoctor`,
+ * which is what secures this, not the caller's role. That matters because a
+ * self-registered doctor is PATIENT-context until verified, and must still be
+ * able to submit the documents the verification depends on.
  */
 @Injectable()
 export class UploadVerificationDocumentUseCase {
@@ -46,8 +50,20 @@ export class UploadVerificationDocumentUseCase {
     // Checked before uploading — an invalid providerId should fail fast, not consume an ImageKit upload for a file that will never be persisted.
     await this.assertProviderExists(this.prisma, input.providerType, input.providerId);
 
-    // Self-service: a DOCTOR-context actor may only attach documents to their own doctor record.
-    if (actor.contextType === 'DOCTOR') {
+    // Self-service: any non-ADMIN actor may only attach documents to their own
+    // doctor record.
+    //
+    // This deliberately covers more than the DOCTOR context. A self-registered
+    // doctor is still PATIENT-context while PENDING — the DOCTOR role is only
+    // granted on verification — so gating on `contextType === 'DOCTOR'` alone
+    // created a deadlock: the applicant could not upload the documents until
+    // verified, and the admin could not verify without seeing them. The result
+    // was zero documents in the entire system.
+    //
+    // Ownership is what actually secures this, not the role: the check below
+    // resolves the caller's own doctor record and rejects any other
+    // `providerId`, so a PATIENT with no doctor record is refused outright.
+    if (!canBypassVisibility(actor.contextType)) {
       await this.assertOwnershipForDoctor(this.prisma, input.providerType, input.providerId, actor.sub);
     }
 
