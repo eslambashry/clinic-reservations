@@ -12,6 +12,8 @@ export interface PaymentLookupResult {
   intentStatus: PaymentIntentStatus;
   method: PaymentMethod;
   amount: string;
+  /** Full price `amount` is a partial payment toward, when the intent was created that way; `null` = `amount` is the whole price. */
+  fullAmount: string | null;
   currency: string;
 }
 
@@ -48,6 +50,7 @@ export class FindPaymentByGatewayReferenceUseCase {
       intentStatus: intent.status,
       method: intent.method,
       amount: intent.amount.toString(),
+      fullAmount: intent.full_amount ? intent.full_amount.toFixed(2) : null,
       currency: intent.currency,
     };
   }

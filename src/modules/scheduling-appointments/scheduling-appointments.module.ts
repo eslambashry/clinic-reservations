@@ -35,6 +35,7 @@ import { ScheduleTemplateRepository } from './infrastructure/schedule-template.r
 import { SlotGenerationJob } from './infrastructure/slot-generation.job';
 import { AuditModule } from '../audit/audit.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { ResolveAppointmentPaymentAmountUseCase } from './application/resolve-appointment-payment-amount.use-case';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 
@@ -85,6 +86,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetDoctorAppointmentUseCase,
     UpdateAppointmentVisitStatusUseCase,
     ExpireHoldsUseCase,
+    ResolveAppointmentPaymentAmountUseCase,
     InitiateOnlineAppointmentPaymentUseCase,
     ProcessPaymentWebhookUseCase,
   ],

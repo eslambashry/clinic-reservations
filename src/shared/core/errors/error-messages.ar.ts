@@ -106,6 +106,11 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
   // ── Payments ────────────────────────────────────────────────────────────
   PAYMENT_METHOD_NOT_SUPPORTED: 'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
+  PAYMENT_AMOUNT_BELOW_MINIMUM: 'المبلغ أقل من الحد الأدنى المسموح به للدفع.',
+  PAYMENT_AMOUNT_EXCEEDS_FEE: 'المبلغ أكبر من قيمة الكشف.',
+  PAYMENT_AMOUNT_INVALID: 'مبلغ الدفع غير صالح.',
+  PAYMENT_AMOUNT_NOT_SUPPORTED: 'الدفع الجزئي غير متاح مع الدفع في العيادة.',
+  MIN_APPOINTMENT_PAYMENT_NOT_CONFIGURED: 'الحد الأدنى للدفع غير مُهيّأ لهذه المنطقة. تواصل مع الدعم.',
   PAYMENT_INTENT_NOT_REFUNDABLE: 'لا يمكن استرداد مبلغ لم يتم تحصيله.',
   PAYMENT_INTENT_STATE_CHANGED: 'تم تعديل عملية الدفع من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   PAYMENT_CAPTURE_FAILED: 'تعذّر تحصيل الدفعة. أعد المحاولة.',

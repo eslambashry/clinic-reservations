@@ -192,6 +192,8 @@ export class RescheduleAppointmentUseCase {
           // appointment — the money trail is the chain of
           // `rescheduled_from_appointment_id` links, not a re-pointed FK.
           paymentIntentId: appointment.payment_intent_id ?? undefined,
+          // Same reasoning: the unpaid part of the fee travels with the intent it belongs to.
+          remainingBalance: appointment.remaining_balance?.toFixed(2),
         });
 
         await this.audit.record(tx, {

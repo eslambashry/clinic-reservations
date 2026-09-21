@@ -10,6 +10,8 @@ export interface NewPaymentIntent {
   idempotencyKey: string;
   /** File 12 Part 50: defaults to `PAY_AT_CLINIC` — every pre-existing call site is unaffected. */
   method?: PaymentMethod;
+  /** Only for a partial-payment-capable payable (an appointment): the full price `amount` is a (possibly partial) payment toward. */
+  fullAmount?: string;
 }
 
 @Injectable()
@@ -24,6 +26,7 @@ export class PaymentIntentRepository {
         currency: input.currency,
         idempotency_key: input.idempotencyKey,
         method: input.method ?? 'PAY_AT_CLINIC',
+        full_amount: input.fullAmount,
         status: 'CREATED',
       },
     });

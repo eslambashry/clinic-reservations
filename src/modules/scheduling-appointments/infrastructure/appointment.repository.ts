@@ -12,6 +12,8 @@ export interface NewAppointment {
   rescheduledFromAppointmentId?: string;
   /** File 12 Part 36: set once pay-at-clinic capture succeeds in the same transaction. */
   paymentIntentId?: string;
+  /** Consult fee minus what was paid online; omitted for pay-at-clinic. Tracking only. */
+  remainingBalance?: string;
 }
 
 const WITH_SLOT_TIMES = {
@@ -126,6 +128,7 @@ export class AppointmentRepository {
         status: 'CONFIRMED',
         rescheduled_from_appointment_id: input.rescheduledFromAppointmentId,
         payment_intent_id: input.paymentIntentId,
+        remaining_balance: input.remainingBalance,
       },
     });
   }

@@ -6,6 +6,14 @@ model PaymentIntent {
   amount                  Decimal               @db.Decimal(10, 2)
   currency                String                @db.Char(3)
   tax_amount              Decimal?              @db.Decimal(10, 2)
+  /// The full price this intent is a (possibly partial) payment toward — set
+  /// only for an `APPOINTMENT` online/wallet payment, where `amount` may be
+  /// less than the doctor's consult fee. Snapshotted at initiate time because
+  /// the `Appointment` doesn't exist until the payment webhook fires, and the
+  /// remaining balance must reflect the fee the patient was validated
+  /// against, not whatever the fee is by then. `null` = `amount` IS the full
+  /// price (every pre-existing row, and `PAY_AT_CLINIC`).
+  full_amount             Decimal?              @db.Decimal(10, 2)
   status                  PaymentIntentStatus   @default(CREATED)
   /// File 12 Part 50: defaults to the pre-existing pay-at-clinic behavior for
   /// every call site that predates this column; every new call site sets it

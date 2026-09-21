@@ -43,7 +43,12 @@ export class InitiateWalletTopUpUseCase {
       throw new DomainError(400, 'INVALID_AMOUNT', 'قيمة الشحن يجب أن تكون أكبر من صفر.');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    // The gateway call (`callGateway` below) is a live network round trip —
+    // even the CARD-only flow this use-case uses is several sequential HTTP
+    // calls — that must never run inside a `$transaction` (it can exceed
+    // Prisma's ~5s interactive-transaction timeout). Prepare/persist first,
+    // call the gateway with no transaction open, then persist the outcome.
+    const { walletTransactionId, prepared } = await this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallets.getOrCreate(tx, input.userId, 'EGP');
       const walletTransactionId = randomUUID();
       // File 12 Part 51: computed once, reused for both the gateway call
@@ -51,7 +56,7 @@ export class InitiateWalletTopUpUseCase {
       // top-up attempt) would be the same deadline that decision reads.
       const expiresAt = new Date(Date.now() + PAYMENT_CONSTANTS.WALLET_TOPUP_WINDOW_MINUTES * 60 * 1000);
 
-      const initiated = await this.initiateOnlinePayment.execute(tx, {
+      const prepared = await this.initiateOnlinePayment.prepare(tx, {
         payerUserId: input.userId,
         payableType: 'WALLET_TOPUP',
         payableId: walletTransactionId,
@@ -69,11 +74,23 @@ export class InitiateWalletTopUpUseCase {
         type: 'TOP_UP',
         status: 'PENDING',
         amount: input.amount,
-        paymentIntentId: initiated.paymentIntentId,
+        paymentIntentId: prepared.paymentIntentId,
         idempotencyKey: `topup:${walletTransactionId}`,
       });
 
-      return { walletTransactionId, paymentIntentId: initiated.paymentIntentId, redirectUrl: initiated.redirectUrl as string };
+      return { walletTransactionId, prepared };
     });
+
+    let gatewayResult;
+    try {
+      gatewayResult = await this.initiateOnlinePayment.callGateway(prepared);
+    } catch (error) {
+      await this.prisma.$transaction((tx) => this.initiateOnlinePayment.completeFailure(tx, prepared.paymentAttemptId));
+      throw error;
+    }
+
+    await this.prisma.$transaction((tx) => this.initiateOnlinePayment.completeSuccess(tx, prepared.paymentAttemptId, gatewayResult.metadata));
+
+    return { walletTransactionId, paymentIntentId: prepared.paymentIntentId, redirectUrl: gatewayResult.redirectUrl as string };
   }
 }

@@ -20,6 +20,12 @@ export interface ExpireHoldsResult {
  * SAME transaction as the hold/slot release — this is what makes the
  * late-webhook race (Part 50.6) detectable: a webhook arriving after this
  * runs finds a `CANCELLED`, not `CREATED`, intent.
+ *
+ * Direct-Fawry addition: `CancelOnlinePaymentIntentUseCase.notifyGatewayIfNeeded`
+ * runs AFTER the transaction commits (never inside it — live network I/O),
+ * telling FawryPay to cancel the still-unpaid order upstream so its
+ * reference number stops being payable at any outlet. Best-effort — see
+ * that use-case's own doc comment.
  */
 @Injectable()
 export class ExpireHoldsUseCase {
@@ -39,16 +45,18 @@ export class ExpireHoldsUseCase {
     let expired = 0;
     for (const hold of candidates) {
       try {
+        let cancelledIntent: Awaited<ReturnType<CancelOnlinePaymentIntentUseCase['execute']>> = null;
         await this.prisma.$transaction(async (tx) => {
           const flipped = await this.holds.markExpired(tx, hold.id, now);
           if (flipped) {
             await this.slots.markOpen(tx, hold.slot_id);
             if (hold.payment_intent_id) {
-              await this.cancelOnlinePayment.execute(tx, hold.payment_intent_id);
+              cancelledIntent = await this.cancelOnlinePayment.execute(tx, hold.payment_intent_id);
             }
             expired += 1;
           }
         });
+        await this.cancelOnlinePayment.notifyGatewayIfNeeded(cancelledIntent);
       } catch (error) {
         this.logger.error(`Failed to expire hold ${hold.id}`, error instanceof Error ? error.stack : error);
       }

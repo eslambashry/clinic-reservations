@@ -4,8 +4,8 @@ export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
  * File 12 Part 50 / DEC-001 (File 10 Part 10: gateway = Paymob, recommended,
  * not yet contracted). Mirrors the `OtpSenderPort` shape (File 12 Part 04) —
  * use-cases depend on this interface only, so the concrete gateway can be
- * swapped (or, for CARD/FAWRY/MOBILE_WALLET specifically, actually wired up
- * once Paymob credentials exist) with zero use-case changes. Unlike
+ * swapped (or, for CARD/MOBILE_WALLET specifically, actually wired up once
+ * Paymob credentials exist) with zero use-case changes. Unlike
  * `OtpSenderPort`'s `LoggingOtpSender` placeholder, the bound implementation
  * here (`PaymobPaymentGatewayAdapter`) is a real integration against
  * Paymob's documented Accept API — it only fails at call time, with a clear
@@ -15,6 +15,15 @@ export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
  * Never build a separate direct integration per telecom wallet (Vodafone
  * Cash/Etisalat Cash/Orange Cash) — `initiateMobileWalletPayment` passes the
  * chosen `walletProvider` through to the one aggregator integration.
+ *
+ * `FAWRY` is deliberately NOT part of this port — Paymob's current
+ * documentation/Postman collection no longer show Fawry as a supported
+ * method (verified directly against developers.paymob.com and
+ * github.com/PaymobAccept/API-Postman-Collections), so it moved to a direct
+ * FawryPay integration (`FawryGatewayPort`, `fawry-gateway.port.ts`) instead
+ * of staying behind this Paymob-specific interface. `PaymentIntent.method`
+ * is the routing discriminator both `InitiateOnlinePaymentUseCase` and
+ * `ProcessPaymentWebhookUseCase` use to pick which port to call.
  */
 export interface PaymentCustomerInfo {
   firstName: string;
@@ -66,12 +75,6 @@ export interface InitiatedCardPayment {
   redirectUrl: string;
 }
 
-export interface InitiatedFawryPayment {
-  gatewayReference: string;
-  /** The code the patient takes to any Fawry outlet/kiosk to pay. */
-  referenceCode: string;
-}
-
 export interface InitiatedMobileWalletPayment {
   gatewayReference: string;
   /** Where the client sends the patient to approve the payment (USSD prompt / telecom app deep link, gateway-hosted). */
@@ -89,7 +92,6 @@ export interface ParsedWebhookEvent {
 
 export interface PaymentGatewayPort {
   initiateCardPayment(input: InitiatePaymentInput): Promise<InitiatedCardPayment>;
-  initiateFawryPayment(input: InitiatePaymentInput): Promise<InitiatedFawryPayment>;
   initiateMobileWalletPayment(input: InitiateMobileWalletPaymentInput): Promise<InitiatedMobileWalletPayment>;
 
   /**

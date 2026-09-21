@@ -17,6 +17,12 @@ export class InitiateOnlineAppointmentPaymentDto {
   @Type(() => PaymentCustomerInfoDto)
   customer: PaymentCustomerInfoDto;
 
+  @ApiPropertyOptional({ example: '50.00', description: 'Optional partial amount, from the configured minimum (50 EGP) up to the consult fee. Omit to pay in full. Validated server-side; the client never sends the fee or the remaining balance.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  paymentAmount?: string;
+
   @ApiPropertyOptional({ enum: WALLET_PROVIDERS, description: 'Required when method=MOBILE_WALLET' })
   @IsOptional()
   @IsIn(WALLET_PROVIDERS)

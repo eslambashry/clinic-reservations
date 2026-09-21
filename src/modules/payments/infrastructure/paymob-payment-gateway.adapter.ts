@@ -6,7 +6,6 @@ import { AppConfig } from '../../../shared/config/configuration';
 import {
   InitiateMobileWalletPaymentInput,
   InitiatedCardPayment,
-  InitiatedFawryPayment,
   InitiatedMobileWalletPayment,
   InitiatePaymentInput,
   ParsedWebhookEvent,
@@ -59,6 +58,11 @@ const PAYMOB_BASE_URL = 'https://accept.paymob.com';
  * (Vodafone Cash/Etisalat Cash/Orange Cash) — no separate per-telecom
  * integration exists here, by design (File 12 Part 50).
  *
+ * No longer handles Fawry: Paymob's current docs/Postman collection don't
+ * show Fawry as a supported method anymore (verified directly against
+ * developers.paymob.com) — it moved to a direct FawryPay integration
+ * (`FawryPaymentGatewayAdapter`) instead of this class.
+ *
  * Every call throws `PAYMENT_GATEWAY_NOT_CONFIGURED` (not a silent no-op)
  * when the required `PAYMOB_*` env vars are unset — DEC-001 is still `Open`
  * (File 10 Part 10), so this adapter is real code that simply cannot run
@@ -82,26 +86,6 @@ export class PaymobPaymentGatewayAdapter implements PaymentGatewayPort {
       gatewayReference: input.merchantReference,
       redirectUrl: `${PAYMOB_BASE_URL}/api/acceptance/iframes/${iframeId}?payment_token=${paymentKey}`,
     };
-  }
-
-  async initiateFawryPayment(input: InitiatePaymentInput): Promise<InitiatedFawryPayment> {
-    const integrationId = this.requireConfig('integrationIdFawry', 'PAYMOB_INTEGRATION_ID_FAWRY');
-    const paymentKey = await this.requestPaymentKey(input, integrationId);
-
-    const pay = await this.request<{ data?: { merchant_order_id?: string; bill_reference?: string; ref_no?: string } }>(
-      '/api/acceptance/payments/pay',
-      {
-        source: { identifier: 'FAWRY', subtype: 'AGGREGATOR' },
-        payment_token: paymentKey,
-      },
-    );
-
-    const referenceCode = pay.data?.bill_reference ?? pay.data?.ref_no;
-    if (!referenceCode) {
-      throw new ExternalProviderError('Paymob', 502, new Error('Fawry pay response missing bill_reference/ref_no'));
-    }
-
-    return { gatewayReference: input.merchantReference, referenceCode };
   }
 
   async initiateMobileWalletPayment(input: InitiateMobileWalletPaymentInput): Promise<InitiatedMobileWalletPayment> {

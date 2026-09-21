@@ -97,10 +97,6 @@ class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
-  PAYMOB_INTEGRATION_ID_FAWRY?: string;
-
-  @IsString()
-  @IsOptional()
   PAYMOB_INTEGRATION_ID_WALLET?: string;
 
   /** Hosted card iframe id (Paymob dashboard) — builds the `redirectUrl` returned for `CARD` payments. */
@@ -112,6 +108,26 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   PAYMOB_HMAC_SECRET?: string;
+
+  /**
+   * FawryPay direct integration (`FawryPaymentGatewayAdapter`) — optional,
+   * same reasoning as `PAYMOB_*`: fails clearly at call time with
+   * `PAYMENT_GATEWAY_NOT_CONFIGURED` rather than pretending to succeed.
+   * Merchant code from FawryPay account setup.
+   */
+  @IsString()
+  @IsOptional()
+  FAWRY_MERCHANT_CODE?: string;
+
+  /** FawryPay secure key — used server-side only to compute request/webhook signatures, never sent to any client. */
+  @IsString()
+  @IsOptional()
+  FAWRY_SECURE_KEY?: string;
+
+  /** Defaults to FawryPay's staging host (`atfawry.fawrystaging.com`) when unset — set explicitly for production. */
+  @IsString()
+  @IsOptional()
+  FAWRY_BASE_URL?: string;
 
   /**
    * Firebase (File 12 Part 53) — all optional, same reasoning as `PAYMOB_*`:
