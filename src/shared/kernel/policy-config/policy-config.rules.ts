@@ -14,7 +14,15 @@ export interface NotificationQuietHoursValue {
   endHour: number;
 }
 
-export type PolicyConfigValue = CommissionRateValue | CancellationTierValue | NotificationQuietHoursValue;
+export interface MinAppointmentPaymentValue {
+  minAmount: string;
+}
+
+export type PolicyConfigValue =
+  | CommissionRateValue
+  | CancellationTierValue
+  | NotificationQuietHoursValue
+  | MinAppointmentPaymentValue;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -80,6 +88,15 @@ export function validatePolicyValue(policyType: PolicyType, rawValue: unknown): 
         startHour: requireNumberInRange(value, 'startHour', 0, 23, true),
         endHour: requireNumberInRange(value, 'endHour', 0, 23, true),
       };
+    case 'MIN_APPOINTMENT_PAYMENT': {
+      requireExactKeys(value, ['minAmount']);
+      const minAmount = value.minAmount;
+      // A decimal string (money is never a JS number here), > 0 — a 0 minimum would allow free bookings.
+      if (typeof minAmount !== 'string' || !/^\d+(\.\d{1,2})?$/.test(minAmount) || Number(minAmount) <= 0) {
+        throw new BusinessRuleError('POLICY_VALUE_INVALID', 'الحقل "minAmount" يجب أن يكون مبلغًا موجبًا بصيغة عشرية (مثل 50.00).');
+      }
+      return { minAmount };
+    }
   }
 }
 

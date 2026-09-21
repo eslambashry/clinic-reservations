@@ -5,8 +5,10 @@ import { CaptureOnlinePaymentUseCase } from '../../payments/application/capture-
 import { FindPaymentByGatewayReferenceUseCase } from '../../payments/application/find-payment-by-gateway-reference.use-case';
 import { HandleLatePaymentAfterExpiryUseCase } from '../../payments/application/handle-late-payment-after-expiry.use-case';
 import { MarkOnlinePaymentFailedUseCase } from '../../payments/application/mark-online-payment-failed.use-case';
+import { FAWRY_GATEWAY, FawryGatewayPort } from '../../payments/application/ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY, PaymentGatewayPort } from '../../payments/application/ports/payment-gateway.port';
 import { ProcessWalletTopUpUseCase } from '../../payments/application/process-wallet-top-up.use-case';
+import { computeRemainingBalance } from '../../payments/domain/payment-money.rules';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { WebhookEventRepository } from '../../../shared/core/webhooks/webhook-event.repository';
@@ -48,6 +50,13 @@ export interface ProcessPaymentWebhookResult {
  * before any side effect, and a mid-processing failure rolls the insert
  * back too, so a genuinely-failed delivery is correctly retryable by the
  * gateway rather than permanently swallowed.
+ *
+ * `provider` (the route's own `:provider` segment — `paymob` or `fawry`)
+ * selects which gateway's `verifyWebhookSignature`/`parseWebhookEvent` runs
+ * (`resolveGateway`, below). Everything downstream of `event` is already
+ * gateway-agnostic — keyed by OUR OWN `gatewayReference`, never the
+ * gateway's own id — so nothing else in this use-case branches on
+ * `provider` at all.
  */
 @Injectable()
 export class ProcessPaymentWebhookUseCase {
@@ -56,7 +65,8 @@ export class ProcessPaymentWebhookUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(WebhookEventRepository) private readonly webhookEvents: WebhookEventRepository,
-    @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
+    @Inject(PAYMENT_GATEWAY) private readonly paymobGateway: PaymentGatewayPort,
+    @Inject(FAWRY_GATEWAY) private readonly fawryGateway: FawryGatewayPort,
     @Inject(FindPaymentByGatewayReferenceUseCase) private readonly findPayment: FindPaymentByGatewayReferenceUseCase,
     @Inject(CaptureOnlinePaymentUseCase) private readonly captureOnlinePayment: CaptureOnlinePaymentUseCase,
     @Inject(MarkOnlinePaymentFailedUseCase) private readonly markFailed: MarkOnlinePaymentFailedUseCase,
@@ -71,16 +81,22 @@ export class ProcessPaymentWebhookUseCase {
   ) {}
 
   async execute(input: ProcessPaymentWebhookInput): Promise<ProcessPaymentWebhookResult> {
+    const gateway = this.resolveGateway(input.provider);
+    if (!gateway) {
+      this.logger.warn({ provider: input.provider }, 'Payment webhook for an unknown provider');
+      return { handled: false };
+    }
+
     // Signature verification happens before the transaction opens — an
     // unverified webhook must never even be recorded as "seen," let alone
     // acted on (File 11 Part 06 / this task's explicit "never trust a
     // frontend/unverified success flag" requirement).
-    if (!this.gateway.verifyWebhookSignature(input.rawBody, input.hmac)) {
+    if (!gateway.verifyWebhookSignature(input.rawBody, input.hmac)) {
       this.logger.warn({ provider: input.provider }, 'Rejected a payment webhook with an invalid/missing signature');
       return { handled: false };
     }
 
-    const event = this.gateway.parseWebhookEvent(input.rawBody);
+    const event = gateway.parseWebhookEvent(input.rawBody);
 
     return this.prisma.$transaction(async (tx) => {
       const isFirstDelivery = await this.webhookEvents.tryRecordFirstDelivery(tx, {
@@ -191,6 +207,9 @@ export class ProcessPaymentWebhookUseCase {
         doctorClinicAffiliationId: slot.doctor_clinic_affiliation_id,
         rescheduledFromAppointmentId: hold.rescheduled_from_appointment_id ?? undefined,
         paymentIntentId: payment.paymentIntentId,
+        // From the intent stored at initiate time (validated then) — never
+        // the client, never today's fee. `null` full_amount = paid in full.
+        remainingBalance: payment.fullAmount ? computeRemainingBalance(payment.fullAmount, payment.amount) : undefined,
       });
 
       await this.audit.record(tx, {
@@ -208,5 +227,15 @@ export class ProcessPaymentWebhookUseCase {
 
       return { handled: true };
     });
+  }
+
+  private resolveGateway(provider: string): PaymentGatewayPort | FawryGatewayPort | null {
+    if (provider === 'paymob') {
+      return this.paymobGateway;
+    }
+    if (provider === 'fawry') {
+      return this.fawryGateway;
+    }
+    return null;
   }
 }

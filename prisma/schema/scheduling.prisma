@@ -73,6 +73,10 @@ model Appointment {
   status                          AppointmentStatus       @default(HELD)
   visit_status                    VisitStatus             @default(WAITING)
   payment_intent_id               String?                 @db.Uuid
+  /// Consult fee minus what the patient paid online — tracking only, nothing
+  /// collects it yet. `null` for pay-at-clinic and pre-existing rows; kept
+  /// as history (not zeroed) when the appointment is cancelled.
+  remaining_balance               Decimal?                @db.Decimal(10, 2)
   cancelled_by                    String?                 @db.Uuid
   cancelled_reason                String?
   rescheduled_from_appointment_id String?                 @db.Uuid

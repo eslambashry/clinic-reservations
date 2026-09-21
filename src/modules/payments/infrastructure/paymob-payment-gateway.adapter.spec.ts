@@ -3,7 +3,6 @@ import { PaymobPaymentGatewayAdapter } from './paymob-payment-gateway.adapter';
 const CONFIG = {
   apiKey: 'test-api-key',
   integrationIdCard: 'card-int-1',
-  integrationIdFawry: 'fawry-int-1',
   integrationIdWallet: 'wallet-int-1',
   iframeId: 'iframe-1',
   hmacSecret: 'test-hmac-secret',
@@ -32,17 +31,16 @@ describe('PaymobPaymentGatewayAdapter', () => {
     jest.restoreAllMocks();
   });
 
-  it('sends the caller-computed expiresAt (as remaining seconds) on the payment_keys request for Fawry — never a fixed constant (File 12 Part 51)', async () => {
+  it('sends the caller-computed expiresAt (as remaining seconds) on the payment_keys request — never a fixed constant (File 12 Part 51)', async () => {
     const adapter = buildAdapter();
-    const expiresAt = new Date(Date.now() + 15 * 60_000); // Fawry's 15-minute window
+    const expiresAt = new Date(Date.now() + 15 * 60_000);
     const calls = mockFetchSequence([
       { token: 'auth-token' }, // /api/auth/tokens
       { id: 555 }, // /api/ecommerce/orders
       { token: 'payment-key' }, // /api/acceptance/payment_keys
-      { data: { bill_reference: '999888777' } }, // /api/acceptance/payments/pay
     ]);
 
-    await adapter.initiateFawryPayment({ merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt });
+    await adapter.initiateCardPayment({ merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt });
 
     const paymentKeysCall = calls.find((c) => c.url.includes('/api/acceptance/payment_keys'));
     expect(paymentKeysCall).toBeDefined();
@@ -67,24 +65,26 @@ describe('PaymobPaymentGatewayAdapter', () => {
     expect(paymentKeysCall!.body.expiration).toBe(60);
   });
 
-  it('uses the Fawry integration id (not card/wallet) when requesting the payment key for a Fawry payment', async () => {
+  it('uses the wallet integration id (not card) when requesting the payment key for a mobile wallet payment', async () => {
     const adapter = buildAdapter();
     const calls = mockFetchSequence([
       { token: 'auth-token' },
       { id: 555 },
       { token: 'payment-key' },
-      { data: { bill_reference: '999888777' } },
+      { redirect_url: 'https://accept.paymob.com/redirect/abc' },
     ]);
 
-    await adapter.initiateFawryPayment({
+    await adapter.initiateMobileWalletPayment({
       merchantReference: 'attempt-1',
       amount: '200.00',
       currency: 'EGP',
       customer,
       expiresAt: new Date(Date.now() + 15 * 60_000),
+      walletProvider: 'VODAFONE_CASH',
+      walletMobileNumber: '+201000000000',
     });
 
     const paymentKeysCall = calls.find((c) => c.url.includes('/api/acceptance/payment_keys'));
-    expect(paymentKeysCall!.body.integration_id).toBe('fawry-int-1');
+    expect(paymentKeysCall!.body.integration_id).toBe('wallet-int-1');
   });
 });

@@ -1,4 +1,6 @@
 import {
+  computeRemainingBalance,
+  findPartialPaymentViolation,
   computeCancellationFeeSplit,
   computeCommissionSplit,
   computeOutstandingEarningBalance,
@@ -121,5 +123,43 @@ describe('computeOutstandingEarningBalance', () => {
 
   it('returns 0.00 for an empty ledger', () => {
     expect(computeOutstandingEarningBalance([])).toBe('0.00');
+  });
+});
+
+describe('findPartialPaymentViolation', () => {
+  const base = { fullAmount: '300.00', minAmount: '50.00' };
+
+  it.each(['50', '50.00', '100', '299.99', '300', '300.00'])('accepts %s', (requestedAmount) => {
+    expect(findPartialPaymentViolation({ ...base, requestedAmount })).toBeNull();
+  });
+
+  it('rejects below the minimum', () => {
+    expect(findPartialPaymentViolation({ ...base, requestedAmount: '49.99' })).toBe('BELOW_MINIMUM');
+  });
+
+  it.each(['0', '0.00', '-1', '-50.00', '', 'abc', '5e1', '50.005', ' '])('rejects %p as invalid', (requestedAmount) => {
+    expect(findPartialPaymentViolation({ ...base, requestedAmount })).toBe('INVALID');
+  });
+
+  it('rejects above the full amount', () => {
+    expect(findPartialPaymentViolation({ ...base, requestedAmount: '300.01' })).toBe('EXCEEDS_FULL_AMOUNT');
+    expect(findPartialPaymentViolation({ ...base, requestedAmount: '301' })).toBe('EXCEEDS_FULL_AMOUNT');
+  });
+
+  it('caps the minimum at the fee: a 40 EGP fee can be paid as 40, but not 39.99', () => {
+    const cheap = { fullAmount: '40.00', minAmount: '50.00' };
+    expect(findPartialPaymentViolation({ ...cheap, requestedAmount: '40' })).toBeNull();
+    expect(findPartialPaymentViolation({ ...cheap, requestedAmount: '39.99' })).toBe('BELOW_MINIMUM');
+  });
+});
+
+describe('computeRemainingBalance', () => {
+  it.each([
+    ['300.00', '50.00', '250.00'],
+    ['300.00', '150.00', '150.00'],
+    ['300.00', '299.99', '0.01'],
+    ['300.00', '300.00', '0.00'],
+  ])('fee %s, paid %s -> %s (commission never enters the calculation)', (full, paid, expected) => {
+    expect(computeRemainingBalance(full, paid)).toBe(expected);
   });
 });

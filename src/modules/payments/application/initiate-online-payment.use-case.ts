@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { PayableType, PaymentMethod, Prisma } from '@prisma/client';
 import { BusinessRuleError, DomainError } from '../../../shared/core/errors/domain-errors';
+import { FAWRY_GATEWAY, FawryGatewayPort } from './ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY, PaymentCustomerInfo, PaymentGatewayPort } from './ports/payment-gateway.port';
 import { PaymentAttemptRepository } from '../infrastructure/payment-attempt.repository';
 import { PaymentIntentRepository } from '../infrastructure/payment-intent.repository';
@@ -28,6 +29,8 @@ export interface InitiateOnlinePaymentInput {
    * is/isn't confirmed to do upstream.
    */
   expiresAt: Date;
+  /** Full price when `amount` is a partial payment toward it (appointments) — stored on the intent as `full_amount`. */
+  fullAmount?: string;
   /**
    * File 11 Part 13: "a FAILED attempt does not fail the intent — the
    * client may create a new attempt against the same intent, not a new
@@ -37,10 +40,23 @@ export interface InitiateOnlinePaymentInput {
   existingPaymentIntentId?: string;
 }
 
-export interface InitiateOnlinePaymentResult {
+export interface PreparedOnlinePayment {
   paymentIntentId: string;
   paymentAttemptId: string;
   method: OnlinePaymentMethod;
+  gatewayInput: {
+    merchantReference: string;
+    amount: string;
+    currency: string;
+    customer: PaymentCustomerInfo;
+    expiresAt: Date;
+    walletProvider?: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
+    walletMobileNumber?: string;
+  };
+}
+
+export interface CompletedOnlinePayment {
+  metadata: Prisma.InputJsonValue;
   redirectUrl?: string;
   referenceCode?: string;
 }
@@ -53,10 +69,23 @@ export interface InitiateOnlinePaymentResult {
  * reference / wallet redirect. Deliberately payable-type-agnostic (works
  * identically for an `APPOINTMENT` online payment and a `WALLET_TOPUP`) —
  * the caller supplies `payableType`/`payableId`, this use-case never
- * branches on them. Takes `tx` explicitly for the same reason as its
- * pay-at-clinic sibling: the caller (scheduling-appointments, for the
- * appointment case) needs this to commit atomically with its own hold-side
- * writes.
+ * branches on them.
+ *
+ * Split into `prepare` (DB writes, takes the caller's `tx` so it can commit
+ * atomically with the caller's own hold-side writes) / `callGateway` (the
+ * live network call — deliberately NOT given a `tx`, and never call it from
+ * inside one) / `completeSuccess`/`completeFailure` (the follow-up DB write,
+ * its own short transaction) — a real gateway round trip (Paymob's
+ * card/wallet flow is auth-token → order → payment-key → pay, four
+ * sequential HTTP calls) can exceed Prisma's ~5s interactive-transaction
+ * timeout, and a DB transaction must never sit open across live third-party
+ * network I/O regardless of timeout tuning. See callers
+ * (`InitiateOnlineAppointmentPaymentUseCase`, `InitiateWalletTopUpUseCase`)
+ * for the two-transaction pattern this implies.
+ *
+ * `FAWRY` routes to `FawryGatewayPort` (direct FawryPay integration, a
+ * single charge call), never `PaymentGatewayPort` (Paymob) — see
+ * `PaymentGatewayPort`'s own doc comment for why Fawry moved off Paymob.
  */
 @Injectable()
 export class InitiateOnlinePaymentUseCase {
@@ -64,9 +93,10 @@ export class InitiateOnlinePaymentUseCase {
     @Inject(PaymentIntentRepository) private readonly paymentIntents: PaymentIntentRepository,
     @Inject(PaymentAttemptRepository) private readonly paymentAttempts: PaymentAttemptRepository,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
+    @Inject(FAWRY_GATEWAY) private readonly fawryGateway: FawryGatewayPort,
   ) {}
 
-  async execute(tx: Prisma.TransactionClient, input: InitiateOnlinePaymentInput): Promise<InitiateOnlinePaymentResult> {
+  async prepare(tx: Prisma.TransactionClient, input: InitiateOnlinePaymentInput): Promise<PreparedOnlinePayment> {
     const intent = input.existingPaymentIntentId
       ? await this.loadRetryableIntent(tx, input.existingPaymentIntentId)
       : await this.paymentIntents.create(tx, {
@@ -77,6 +107,7 @@ export class InitiateOnlinePaymentUseCase {
           currency: input.currency,
           idempotencyKey: input.idempotencyKey,
           method: input.method,
+          fullAmount: input.fullAmount,
         });
 
     const attemptId = randomUUID();
@@ -87,44 +118,61 @@ export class InitiateOnlinePaymentUseCase {
     // assigns its own transaction id.
     await this.paymentAttempts.create(tx, { id: attemptId, paymentIntentId: intent.id, gatewayReference: attemptId });
 
-    const gatewayInput = {
-      merchantReference: attemptId,
-      amount: input.amount,
-      currency: input.currency,
-      customer: input.customer,
-      expiresAt: input.expiresAt,
-    };
-
-    try {
-      if (input.method === 'CARD') {
-        const result = await this.gateway.initiateCardPayment(gatewayInput);
-        await this.paymentAttempts.updateStatus(tx, attemptId, 'INITIATED', { metadata: result as unknown as Prisma.InputJsonValue });
-        return { paymentIntentId: intent.id, paymentAttemptId: attemptId, method: input.method, redirectUrl: result.redirectUrl };
-      }
-
-      if (input.method === 'FAWRY') {
-        const result = await this.gateway.initiateFawryPayment(gatewayInput);
-        await this.paymentAttempts.updateStatus(tx, attemptId, 'INITIATED', { metadata: result as unknown as Prisma.InputJsonValue });
-        return { paymentIntentId: intent.id, paymentAttemptId: attemptId, method: input.method, referenceCode: result.referenceCode };
-      }
-
-      if (!input.walletProvider || !input.walletMobileNumber) {
-        throw new DomainError(400, 'WALLET_INFO_REQUIRED', 'اختر مزوّد المحفظة وأدخل رقم الهاتف المرتبط بها.');
-      }
-      const result = await this.gateway.initiateMobileWalletPayment({
-        ...gatewayInput,
+    return {
+      paymentIntentId: intent.id,
+      paymentAttemptId: attemptId,
+      method: input.method,
+      gatewayInput: {
+        merchantReference: attemptId,
+        // On a retry the intent's already-stored amount is authoritative — a
+        // different amount sent the second time must never reach the gateway.
+        amount: input.existingPaymentIntentId ? (intent.amount?.toFixed(2) ?? input.amount) : input.amount,
+        currency: input.currency,
+        customer: input.customer,
+        expiresAt: input.expiresAt,
         walletProvider: input.walletProvider,
         walletMobileNumber: input.walletMobileNumber,
-      });
-      await this.paymentAttempts.updateStatus(tx, attemptId, 'INITIATED', { metadata: result as unknown as Prisma.InputJsonValue });
-      return { paymentIntentId: intent.id, paymentAttemptId: attemptId, method: input.method, redirectUrl: result.redirectUrl };
-    } catch (error) {
-      // File 11 Part 13: a failed attempt doesn't fail the intent — leave it
-      // `CREATED` so the client can retry (`existingPaymentIntentId`) until
-      // the hold expires.
-      await this.paymentAttempts.updateStatus(tx, attemptId, 'FAILED', { failureCode: 'GATEWAY_INITIATE_FAILED' });
-      throw error;
+      },
+    };
+  }
+
+  /**
+   * The live network call — no `tx` parameter on purpose. Call this AFTER
+   * the `prepare()` transaction has committed and BEFORE the
+   * `completeSuccess`/`completeFailure` transaction, never from inside
+   * either.
+   */
+  async callGateway(prepared: PreparedOnlinePayment): Promise<CompletedOnlinePayment> {
+    const { method, gatewayInput } = prepared;
+
+    if (method === 'CARD') {
+      const result = await this.gateway.initiateCardPayment(gatewayInput);
+      return { metadata: result as unknown as Prisma.InputJsonValue, redirectUrl: result.redirectUrl };
     }
+
+    if (method === 'FAWRY') {
+      const result = await this.fawryGateway.initiatePayment(gatewayInput);
+      return { metadata: result as unknown as Prisma.InputJsonValue, referenceCode: result.referenceCode };
+    }
+
+    if (!gatewayInput.walletProvider || !gatewayInput.walletMobileNumber) {
+      throw new DomainError(400, 'WALLET_INFO_REQUIRED', 'اختر مزوّد المحفظة وأدخل رقم الهاتف المرتبط بها.');
+    }
+    const result = await this.gateway.initiateMobileWalletPayment({
+      ...gatewayInput,
+      walletProvider: gatewayInput.walletProvider,
+      walletMobileNumber: gatewayInput.walletMobileNumber,
+    });
+    return { metadata: result as unknown as Prisma.InputJsonValue, redirectUrl: result.redirectUrl };
+  }
+
+  async completeSuccess(tx: Prisma.TransactionClient, paymentAttemptId: string, metadata: Prisma.InputJsonValue): Promise<void> {
+    await this.paymentAttempts.updateStatus(tx, paymentAttemptId, 'INITIATED', { metadata });
+  }
+
+  /** File 11 Part 13: a failed attempt doesn't fail the intent — leave it `CREATED` so the client can retry (`existingPaymentIntentId`) until the hold expires. */
+  async completeFailure(tx: Prisma.TransactionClient, paymentAttemptId: string): Promise<void> {
+    await this.paymentAttempts.updateStatus(tx, paymentAttemptId, 'FAILED', { failureCode: 'GATEWAY_INITIATE_FAILED' });
   }
 
   private async loadRetryableIntent(tx: Prisma.TransactionClient, paymentIntentId: string) {

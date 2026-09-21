@@ -35,10 +35,23 @@ export interface AppConfig {
   paymob: {
     apiKey: string | null;
     integrationIdCard: string | null;
-    integrationIdFawry: string | null;
     integrationIdWallet: string | null;
     iframeId: string | null;
     hmacSecret: string | null;
+  };
+  /**
+   * FawryPay direct integration ("PayAtFawry" reference-number API) —
+   * `merchantCode`/`secureKey` are optional the same way `paymob.*` is:
+   * `FawryPaymentGatewayAdapter` throws `PAYMENT_GATEWAY_NOT_CONFIGURED` at
+   * call time, never a fake success, until real credentials exist.
+   * `baseUrl` defaults to FawryPay's documented staging host
+   * (`atfawry.fawrystaging.com`) when unset — only production needs it set
+   * explicitly.
+   */
+  fawry: {
+    merchantCode: string | null;
+    secureKey: string | null;
+    baseUrl: string | null;
   };
   /** File 12 Part 53: `devices.fcm_token` already commits this codebase to Firebase — optional because a fresh environment won't have a service account yet; `FcmPushNotificationAdapter` fails clearly at call time, not at boot. */
   firebase: {
@@ -77,10 +90,14 @@ export default (): AppConfig => ({
   paymob: {
     apiKey: process.env.PAYMOB_API_KEY ?? null,
     integrationIdCard: process.env.PAYMOB_INTEGRATION_ID_CARD ?? null,
-    integrationIdFawry: process.env.PAYMOB_INTEGRATION_ID_FAWRY ?? null,
     integrationIdWallet: process.env.PAYMOB_INTEGRATION_ID_WALLET ?? null,
     iframeId: process.env.PAYMOB_IFRAME_ID ?? null,
     hmacSecret: process.env.PAYMOB_HMAC_SECRET ?? null,
+  },
+  fawry: {
+    merchantCode: process.env.FAWRY_MERCHANT_CODE ?? null,
+    secureKey: process.env.FAWRY_SECURE_KEY ?? null,
+    baseUrl: process.env.FAWRY_BASE_URL ?? null,
   },
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID ?? null,

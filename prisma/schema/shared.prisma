@@ -405,6 +405,9 @@ enum PolicyType {
   COMMISSION_RATE
   CANCELLATION_TIER
   NOTIFICATION_QUIET_HOURS
+  /// `{ "minAmount": "50.00" }` — smallest online appointment payment
+  /// allowed (capped at the consult fee itself for cheaper doctors).
+  MIN_APPOINTMENT_PAYMENT
 
   @@map("policy_configs_policy_type_enum")
 }

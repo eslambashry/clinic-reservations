@@ -26,9 +26,9 @@ describe('RescheduleAppointmentUseCase', () => {
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const appointments = { findById: jest.fn(), markRescheduled: jest.fn() };
-    const slots = { findById: jest.fn(), releaseBooked: jest.fn(), markHeld: jest.fn() };
-    const holds = { create: jest.fn() };
+    const appointments = { findById: jest.fn(), markRescheduled: jest.fn(), create: jest.fn() };
+    const slots = { findById: jest.fn(), releaseBooked: jest.fn(), markHeld: jest.fn(), markBooked: jest.fn() };
+    const holds = { create: jest.fn(), markConverted: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
     const appointmentScope = { execute: jest.fn().mockResolvedValue({ kind: 'PATIENT', patientUserId: 'patient-1' }) };
@@ -119,5 +119,51 @@ describe('RescheduleAppointmentUseCase', () => {
       expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment.reschedule', resourceId: 'appointment-1' }),
     );
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentHeld', expect.objectContaining({ holdId: 'hold-2', rescheduledFromAppointmentId: 'appointment-1' }));
+  });
+
+  describe('provider reschedule — the replacement appointment keeps the payment trail', () => {
+    const doctorActor = { sub: 'doctor-user-1', roleMembershipId: 'membership-2', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+
+    function arrange(paid: { payment_intent_id: string | null; remaining_balance: { toFixed: (d: number) => string } | null }) {
+      const s = setup();
+      s.appointmentScope.execute.mockResolvedValue({ kind: 'DOCTOR', doctorId: 'doctor-1', affiliationIds: ['aff-1'] });
+      s.appointments.findById.mockResolvedValue({ ...appointment, ...paid });
+      s.slots.findById.mockResolvedValue(newSlot);
+      s.appointments.markRescheduled.mockResolvedValue(true);
+      s.slots.markHeld.mockResolvedValue(true);
+      s.slots.markBooked.mockResolvedValue(true);
+      s.holds.create.mockResolvedValue({ id: 'hold-2', version: 1 });
+      s.holds.markConverted.mockResolvedValue(undefined);
+      s.appointments.create.mockResolvedValue({ id: 'appointment-2' });
+      return s;
+    }
+
+    it('500 fee / 50 paid / 450 remaining: the replacement still has remaining_balance 450 and the same intent', async () => {
+      const { tx, appointments, useCase } = arrange({ payment_intent_id: 'intent-1', remaining_balance: { toFixed: () => '450.00' } });
+
+      const result = await useCase.execute('appointment-1', input, doctorActor);
+
+      expect(result).toMatchObject({ status: 'CONFIRMED', appointmentId: 'appointment-2', previousAppointmentId: 'appointment-1' });
+      expect(appointments.create).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({ paymentIntentId: 'intent-1', remainingBalance: '450.00', rescheduledFromAppointmentId: 'appointment-1' }),
+      );
+    });
+
+    it('keeps a fully-paid appointment at 0.00', async () => {
+      const { tx, appointments, useCase } = arrange({ payment_intent_id: 'intent-1', remaining_balance: { toFixed: () => '0.00' } });
+
+      await useCase.execute('appointment-1', input, doctorActor);
+
+      expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: '0.00' }));
+    });
+
+    it('leaves it unset for a pay-at-clinic / legacy appointment (NULL stays NULL)', async () => {
+      const { tx, appointments, useCase } = arrange({ payment_intent_id: 'intent-1', remaining_balance: null });
+
+      await useCase.execute('appointment-1', input, doctorActor);
+
+      expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: undefined }));
+    });
   });
 });

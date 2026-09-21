@@ -113,6 +113,25 @@ async function main() {
     );
   }
 
+  // Smallest online appointment payment (business rule: 50 EGP; capped at the
+  // consult fee itself for cheaper doctors — see `assertValidPartialPaymentAmount`).
+  const existingMinPaymentPolicy = await prisma.policyConfig.findFirst({
+    where: { region_code: DEFAULT_REGION, policy_type: 'MIN_APPOINTMENT_PAYMENT' },
+  });
+
+  if (!existingMinPaymentPolicy) {
+    const createdMinPayment = await prisma.policyConfig.create({
+      data: {
+        region_code: DEFAULT_REGION,
+        policy_type: 'MIN_APPOINTMENT_PAYMENT',
+        value: { minAmount: '50.00' },
+      },
+    });
+    console.log(
+      `✅ Seeded policy config: ${createdMinPayment.policy_type} (${createdMinPayment.region_code}) = ${JSON.stringify(createdMinPayment.value)}`,
+    );
+  }
+
   // Seed baseline + demo-data specialties (File 10 §3.3: specialties are
   // static reference data). The original four are the load-bearing baseline
   // the test doctor below depends on; the rest exist so the doctor roster

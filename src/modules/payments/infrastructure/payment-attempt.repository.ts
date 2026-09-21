@@ -26,6 +26,18 @@ export class PaymentAttemptRepository {
     return db.paymentAttempt.findFirst({ where: { gateway_reference: gatewayReference }, orderBy: { created_at: 'desc' } });
   }
 
+  /**
+   * Used to resolve a Fawry-specific `referenceNumber` back out of
+   * `PaymentAttempt.metadata` (stored there at charge time by
+   * `InitiateOnlinePaymentUseCase.completeSuccess`) — needed by
+   * `CancelOnlinePaymentIntentUseCase`/`HandleLatePaymentAfterExpiryUseCase`
+   * before calling FawryPay's cancel/refund endpoints, which key off Fawry's
+   * own reference, never our `gateway_reference`.
+   */
+  findLatestByPaymentIntentId(db: Prisma.TransactionClient, paymentIntentId: string): Promise<PaymentAttempt | null> {
+    return db.paymentAttempt.findFirst({ where: { payment_intent_id: paymentIntentId }, orderBy: { created_at: 'desc' } });
+  }
+
   async updateStatus(
     db: Prisma.TransactionClient,
     id: string,
