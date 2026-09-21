@@ -57,7 +57,7 @@ export class DoctorsController {
   @ApiBearerAuth()
   @Roles(RoleContextType.ADMIN)
   @Get()
-  @ApiOperation({ summary: 'Admin: review queue — every doctor regardless of status, optionally filtered, oldest-first' })
+  @ApiOperation({ summary: 'Admin: review queue — every doctor regardless of status, optionally filtered, newest-first' })
   list(@Query() query: ListDoctorsQueryDto): Promise<ListDoctorsResult> {
     return this.listDoctors.execute(query);
   }

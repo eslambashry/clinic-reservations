@@ -8,6 +8,19 @@ availability, and the appointment queue including cancel and reschedule.
 Patients and notifications are **not** covered; no backend module exists for
 either yet, and the client still mocks them.
 
+## Live visit timing policy
+
+`PATCH /v1/doctors/me/appointments/{id}/visit-status` is evaluated against
+the `start_at`/`end_at` of the slot attached to the appointment being updated;
+timestamps remain UTC instants and are never compared as a device-local date.
+The only fixed policy is a 30-minute early-arrival period: changes are accepted
+from `start_at - 30 minutes` through `end_at`, rejected before it with
+`VISIT_STATUS_TOO_EARLY`, and rejected afterwards with
+`VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW`. A rescheduled appointment is a new
+appointment row with its new slot, so no old scheduled time can grant visit
+access. Cancel/reschedule remain blocked once status is `IN_DOCTOR_ROOM` or
+`LEFT` (`APPOINTMENT_VISIT_IN_PROGRESS`).
+
 ---
 
 ## 1. End-to-end topology

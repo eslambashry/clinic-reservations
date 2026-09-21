@@ -285,10 +285,26 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],
     extractUserId: (p) => p.adminUserId,
-    render: (p) => ({
-      title: 'طلب تسجيل مقدّم خدمة جديد',
-      body: 'قدّم طبيب جديد طلب تسجيل وهو الآن في انتظار المراجعة.',
-      data: { doctorId: p.doctorId, clinicId: p.clinicId },
-    }),
+    render: (p) => {
+      // Falls back to the generic wording only when the applicant gave no
+      // name — `full_name` is optional on the registration DTO.
+      const name = typeof p.doctorName === 'string' && p.doctorName.trim() !== '' ? p.doctorName.trim() : null;
+      const specialty = typeof p.specialtyLabel === 'string' ? p.specialtyLabel : null;
+      return {
+        title: 'طلب توثيق طبيب جديد',
+        body: name
+          ? `تقدّم ${name} بطلب انضمام${specialty ? ` في تخصص ${specialty}` : ''}، وبانتظار مراجعتك.`
+          : 'قدّم طبيب جديد طلب تسجيل وهو الآن في انتظار المراجعة.',
+        data: {
+          doctorId: p.doctorId,
+          clinicId: p.clinicId,
+          // Lets the bell render the same detail line the old
+          // `/doctors?status=PENDING` lookup used to supply.
+          doctorName: name,
+          specialtyLabel: specialty,
+          doctorPhone: p.doctorPhone ?? null,
+        },
+      };
+    },
   },
 };

@@ -42,6 +42,23 @@ export interface DoctorDetail {
   currency: string | null;
   ianaTimezone: string | null;
   affiliations: DoctorAffiliationSummary[];
+  /**
+   * Admin-only review fields — the licence number and contact phone are
+   * exactly what an admin verifies an application against, and `status` and
+   * `submittedAt` say what is being decided and when it was filed. Withheld
+   * from public callers: this endpoint also serves patients browsing a
+   * VERIFIED doctor, who have no business seeing a provider's personal phone
+   * or licence number. Absent (not null) for non-admin callers.
+   *
+   * `specialtyAr` is the Arabic label; `specialty` stays English so existing
+   * consumers are unaffected.
+   */
+  specialtyAr?: string;
+  licenseNumber?: string;
+  phone?: string;
+  regionCode?: string | null;
+  status?: string;
+  submittedAt?: string;
 }
 
 /**
@@ -97,6 +114,14 @@ export class GetDoctorUseCase {
       currency: primary?.currency ?? null,
       ianaTimezone: primary?.ianaTimezone ?? null,
       affiliations,
+      ...(isAdmin && {
+        specialtyAr: doctor.specialty.name_ar ?? doctor.specialty.name_en,
+        licenseNumber: doctor.license_number,
+        phone: doctor.user.phone,
+        regionCode: doctor.region_code,
+        status: doctor.status,
+        submittedAt: doctor.created_at.toISOString(),
+      }),
     };
   }
 }

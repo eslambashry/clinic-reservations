@@ -195,6 +195,13 @@ export class SelfRegisterProviderUseCase {
           doctorId: doctor.id,
           clinicId: clinic.id,
           adminUserId,
+          // Carried on the event so the notification can name the applicant.
+          // A notification row stores its rendered text, so anything not
+          // captured here is unrecoverable at read time — and "a doctor
+          // applied" alone tells an admin nothing about which one.
+          doctorName: dto.full_name ?? null,
+          specialtyLabel: specialty.name_ar ?? specialty.name_en,
+          doctorPhone: dto.phone,
         });
       }
 

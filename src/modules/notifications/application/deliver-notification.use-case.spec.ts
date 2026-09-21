@@ -20,6 +20,7 @@ describe('DeliverNotificationUseCase', () => {
     const push = { send: jest.fn() };
     const sms = { send: jest.fn() };
     const listUserDeviceTokens = { execute: jest.fn() };
+    const pruneDeviceTokens = { execute: jest.fn().mockResolvedValue(0) };
     const getUserContactInfo = { execute: jest.fn() };
     const useCase = new DeliverNotificationUseCase(
       prisma as any,
@@ -27,9 +28,10 @@ describe('DeliverNotificationUseCase', () => {
       push as any,
       sms as any,
       listUserDeviceTokens as any,
+      pruneDeviceTokens as any,
       getUserContactInfo as any,
     );
-    return { prisma, notifications, push, sms, listUserDeviceTokens, getUserContactInfo, useCase };
+    return { prisma, notifications, push, sms, listUserDeviceTokens, pruneDeviceTokens, getUserContactInfo, useCase };
   }
 
   it('sends via PUSH when the user has registered device tokens, then marks sent', async () => {
@@ -93,5 +95,40 @@ describe('DeliverNotificationUseCase', () => {
 
     await expect(useCase.execute({ ...base, channel: 'PUSH' })).resolves.toBeUndefined();
     expect(notifications.markFailed).toHaveBeenCalled();
+  });
+it('prunes tokens FCM rejected as dead while still marking the send successful', async () => {
+    const { prisma, notifications, push, listUserDeviceTokens, pruneDeviceTokens, useCase } = setup();
+    listUserDeviceTokens.execute.mockResolvedValue(['live-token', 'dead-token']);
+    push.send.mockResolvedValue({ invalidTokens: ['dead-token'] });
+
+    await useCase.execute({ ...base, channel: 'PUSH' });
+
+    expect(pruneDeviceTokens.execute).toHaveBeenCalledWith(['dead-token']);
+    expect(notifications.markSent).toHaveBeenCalledWith(prisma, 'notif-1');
+    expect(notifications.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('marks FAILED when every token was rejected as dead', async () => {
+    const { prisma, notifications, push, listUserDeviceTokens, pruneDeviceTokens, useCase } = setup();
+    listUserDeviceTokens.execute.mockResolvedValue(['dead-1', 'dead-2']);
+    push.send.mockResolvedValue({ invalidTokens: ['dead-1', 'dead-2'] });
+
+    await useCase.execute({ ...base, channel: 'PUSH' });
+
+    expect(pruneDeviceTokens.execute).toHaveBeenCalledWith(['dead-1', 'dead-2']);
+    expect(notifications.markSent).not.toHaveBeenCalled();
+    expect(notifications.markFailed).toHaveBeenCalledWith(prisma, 'notif-1');
+  });
+
+  it('still marks sent when pruning itself fails', async () => {
+    const { prisma, notifications, push, listUserDeviceTokens, pruneDeviceTokens, useCase } = setup();
+    listUserDeviceTokens.execute.mockResolvedValue(['live-token', 'dead-token']);
+    push.send.mockResolvedValue({ invalidTokens: ['dead-token'] });
+    pruneDeviceTokens.execute.mockRejectedValue(new Error('db down'));
+
+    await useCase.execute({ ...base, channel: 'PUSH' });
+
+    expect(notifications.markSent).toHaveBeenCalledWith(prisma, 'notif-1');
+    expect(notifications.markFailed).not.toHaveBeenCalled();
   });
 });

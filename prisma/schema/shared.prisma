@@ -417,6 +417,13 @@ enum OutboxEventStatus {
   PROCESSING
   PROCESSED
   FAILED
+  /// Drained while no module had registered a handler for its `event_name`.
+  /// A terminal state only in the sense that the worker stops re-reading it:
+  /// nothing is lost, and once a consumer exists these rows can be flipped
+  /// back to PENDING to be delivered. Keeping them PENDING instead is what
+  /// let ~21 consumer-less events permanently fill the `LIMIT`-bounded claim
+  /// batch and stall the whole queue.
+  SKIPPED
 
   @@map("outbox_events_status_enum")
 }
