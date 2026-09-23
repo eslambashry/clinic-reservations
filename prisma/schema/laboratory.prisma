@@ -94,6 +94,25 @@ model LabOrder {
   /// `PharmacyOrder.prescription_id`). Direct catalog-code selection needs
   /// no prescription at all.
   prescription_id       String?             @db.Uuid
+  /// File 12 Part 51 — provider clinical requests. The ordering/authorizing
+  /// physician; null for patient-originated orders. Provider-origin is
+  /// derived as `doctor_id IS NOT NULL` rather than a separate enum — this
+  /// model has no `PrescriptionSource`-style column to mirror. References
+  /// `User.id`, matching `Prescription.doctor_id` (not `Doctor.id`, which is
+  /// what the postponed `Encounter.doctor_id` uses — an existing
+  /// inconsistency in this codebase, not one introduced here).
+  doctor_id             String?             @db.Uuid
+  /// Who actually submitted the order: the doctor themself, or the
+  /// `CLINIC_STAFF` assistant acting on their behalf. Null for
+  /// patient-originated orders (the patient is already `patient_id`).
+  created_by_user_id    String?             @db.Uuid
+  /// Optional link to the visit this was ordered during (`Appointment`, not
+  /// the postponed `Encounter`).
+  appointment_id        String?             @db.Uuid
+  /// File 12 Part 51.11 — optional grouping metadata for an atomic provider
+  /// batch. A batch never represents a shared lab request: every selected
+  /// patient has an independent LabOrder and its own branch-queue lifecycle.
+  batch_id              String?             @db.Uuid
   status                LabOrderStatus      @default(REQUESTED)
   collection_type       CollectionType      @default(VISIT)
   /// Flat quote fields (dashboard `LabQuote`) — one total for the whole
@@ -128,6 +147,9 @@ model LabOrder {
   patient                User               @relation(fields: [patient_id], references: [id])
   lab_branch             LabBranch          @relation(fields: [lab_branch_id], references: [id])
   prescription           Prescription?      @relation(fields: [prescription_id], references: [id])
+  doctor                 User?              @relation("LabOrderDoctor", fields: [doctor_id], references: [id])
+  created_by             User?              @relation("LabOrderCreatedBy", fields: [created_by_user_id], references: [id])
+  appointment            Appointment?       @relation(fields: [appointment_id], references: [id])
   items                  LabOrderItem[]
   results                LabResultDocument[]
   notes                  LabOrderNote[]
@@ -137,6 +159,10 @@ model LabOrder {
   /// Backs `LabOrderRepository.findForBranch` (branch queue) and
   /// `findAllForBranch` (the audit trail's unpaginated branch-history read).
   @@index([lab_branch_id, status])
+  /// Backs the ordering doctor's "my provider-originated lab orders" query
+  /// (File 12 Part 51).
+  @@index([doctor_id, status])
+  @@index([batch_id])
   @@map("lab_orders")
 }
 

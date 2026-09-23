@@ -35,6 +35,7 @@ export interface LabOrderDetail {
   createdAt: string;
   updatedAt: string;
   branchId: string;
+  origin: 'PATIENT' | 'PROVIDER';
   patient: { id: string; firstName: string | null; lastName: string | null; phoneMasked: string };
   items: LabOrderItemDetail[];
   quote: {
@@ -94,6 +95,7 @@ export function buildLabOrderDetail(
     createdAt: order.created_at.toISOString(),
     updatedAt: order.updated_at.toISOString(),
     branchId: order.lab_branch_id,
+    origin: order.doctor_id ? 'PROVIDER' : 'PATIENT',
     patient: { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, phoneMasked: patient.phoneMasked },
     items: items.map((item) => ({
       id: item.id,

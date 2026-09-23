@@ -4,6 +4,7 @@ import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { assertStatus } from '../domain/lab-order.rules';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
@@ -47,6 +48,7 @@ export class SubmitLabQuoteUseCase {
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(labOrderId: string, input: SubmitLabQuoteInput, actor: AccessTokenPayload): Promise<SubmitLabQuoteResult> {
@@ -104,6 +106,19 @@ export class SubmitLabQuoteUseCase {
         resourceId: labOrderId,
         reasonCode: `#${input.queueNumber}`,
       });
+
+      await this.outbox.emit(tx, 'LabOrderStatusChanged', {
+        labOrderId,
+        status: 'QUOTED',
+        recipientUserId: order.patient_id,
+      });
+      if (order.doctor_id) {
+        await this.outbox.emit(tx, 'LabOrderStatusChanged', {
+          labOrderId,
+          status: 'QUOTED',
+          recipientUserId: order.created_by_user_id ?? order.doctor_id,
+        });
+      }
 
       return { labOrderId, status: 'QUOTED' as const };
     });

@@ -185,6 +185,14 @@ enum PrescriptionStatus {
   ACCEPTED
   REJECTED
   CANCELLED
+  /// Provider clinical requests (File 12 Part 51): an assistant
+  /// (`CLINIC_STAFF`)-prepared, doctor-issued prescription draft that has not
+  /// yet been signed off by the supervising doctor. Deliberately excluded
+  /// from every existing `ACCEPTED`/`QUALITY_CHECK_PASSED` read site
+  /// (`GetAcceptedPrescriptionForOrderUseCase`, the pharmacy-staff review
+  /// queue) so it fails closed everywhere by construction, not by an added
+  /// check — see `docs/FILE_12_...md` Part 51 for the full reasoning.
+  PENDING_DOCTOR_APPROVAL
 
   @@map("prescriptions_status_enum")
 }

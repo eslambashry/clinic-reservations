@@ -1624,3 +1624,290 @@ and the two pre-existing `prescriptions`/`pharmacy-fulfillment` failures
 Part 49 already flagged — confirmed pre-existing here via `git stash`, not
 introduced by this pass). Migration applied and verified against the real
 local Docker Postgres (`docker-compose.yml`), not hand-waved.
+
+---
+
+## PART 51 — Provider Clinical Requests: Prescriptions + Lab Orders, Phase 1 Domain Foundation (2026-09-19)
+
+A prior discovery pass (outside this repo's own history — no File 10/11 line
+ever specified this feature) established the target shape: `DOCTOR`/
+`CLINIC_STAFF` (a doctor's assistant) originating a `Prescription` or
+`LabOrder` on behalf of a patient, reusing the existing `Prescription -->
+PharmacyOrder` and `LabOrder` pipelines verbatim — never a second
+pharmacy/lab entity, queue, or state machine. This Part records what Phase 1
+(domain/backend foundation only — no controllers, no Flutter) actually
+built, and why each call landed where it did. Branch:
+`feat/provider-clinical-requests` off `main` (`b8d560d`).
+
+### 51.1 — Schema: additive only, no new state machine
+
+`Prescription` (`prisma/schema/prescriptions.prisma`) gains, all nullable:
+`created_by_user_id`, `created_by_role` (`RoleContextType`), `appointment_id`
+(→ `Appointment`, **not** the postponed `Encounter` — see 51.3),
+`decided_by_user_id`, `approved_at`, `rejected_at`, `rejection_reason`. No
+new `origin`/`source`-style enum: `PrescriptionSource.DOCTOR_ISSUED` already
+distinguishes provider- from patient-originated; DOCTOR vs. `CLINIC_STAFF`
+is fully captured by `created_by_role`/`created_by_user_id` next to the
+existing prescriber `doctor_id`, without duplicating a fact the schema
+already tracks.
+
+`PrescriptionStatus` gains one native-enum value: `PENDING_DOCTOR_APPROVAL`,
+for a `CLINIC_STAFF`-prepared, unsigned draft. Deliberately **not** a
+separate boolean/side-column: `GetAcceptedPrescriptionForOrderUseCase` (the
+sole gate into `PharmacyOrder` creation) and the pharmacy-staff review queue
+both filter on `status IN (ACCEPTED, QUALITY_CHECK_PASSED)` /
+`status = QUALITY_CHECK_PASSED` — putting the new state in that same column
+means it fails closed at every existing read site by construction, with zero
+new checks added to those use-cases. A side column would have been a silent
+leak vector for exactly the row the prompt said a patient must never see as
+active.
+
+`LabOrder` (`prisma/schema/laboratory.prisma`) gains, all nullable:
+`doctor_id` (→ `User.id` — see 51.2 on the FK inconsistency this
+deliberately matches), `created_by_user_id`, `appointment_id`. No `origin`
+column either: `LabOrder` never had a `source`-style enum to mirror, so
+provider-origin is derived as `doctor_id IS NOT NULL` — one less column, one
+less place for the two facts to drift apart.
+
+Both models get one new index each backing the doctor's own "my requests /
+pending my approval" query: `Prescription.@@index([doctor_id, status])`,
+`Prescription.@@index([created_by_user_id])` (an assistant's own drafts),
+`LabOrder.@@index([doctor_id, status])`. Migrations:
+`20260919111831_provider_clinical_requests_foundation` (the additive columns
++ enum value + indexes + FKs, all `ON DELETE SET NULL`, zero backfill needed
+— every new column is nullable and every existing row is unaffected),
+`20260919112826_rename_prescription_approved_by_to_decided_by` +
+`20260919112846_rename_prescription_decided_by_fkey` (a same-session rename,
+`approved_by_user_id` → `decided_by_user_id`, done before any row ever used
+it: one column records the doctor's decision on **either** outcome —
+approve or reject — never both `approved_at` and `rejected_at` set
+together, and "approved by" was the wrong name for a rejection).
+
+### 51.2 — `Prescription.doctor_id`/`LabOrder.doctor_id` reference `User.id`, not `Doctor.id`
+
+`ResolveDoctorScopeUseCase` (`provider-directory`) — the codebase's one
+doctor-scoped ownership primitive, already reused by
+`scheduling-appointments`/`CreateClinicStaffAppointmentUseCase` — returns
+`doctorId` as `Doctor.id`. Neither `Prescription.doctor_id` nor the new
+`LabOrder.doctor_id` uses that; both are `User.id`, matching
+`Prescription.doctor_id`'s own pre-existing convention (a `User` FK, not a
+`Doctor` FK — confirmed by reading its existing `@relation("DoctorPrescriptions", ..., references: [id])`
+against `users`). `DoctorScope` gained a new `doctorUserId` field
+(`doctor.user_id`, resolved once, for both the `DOCTOR`-direct and
+`CLINIC_STAFF`-provisioning-doctor paths) specifically so every provider
+clinical-requests call site writes the right FK without re-deriving it.
+Note for whoever touches this next: the postponed `Encounter.doctor_id`
+uses `Doctor.id` instead — an existing inconsistency in this codebase, not
+one introduced or resolved here.
+
+### 51.3 — `appointment_id`, not `encounter_id`
+
+Both new models link to `Appointment` (File 11 05.5's MVP model, carrying
+`visit_status`), never to `Encounter` — `encounter-emr` remains POSTPONE
+with a dead FK (`Prescription.encounter_id` has always pointed at a table
+nothing populates). Linking is optional and, when supplied, is validated by
+reusing `scheduling-appointments`' existing `GetDoctorAppointmentUseCase`
+(same doctor-scope + patient ownership check the Doctor Dashboard's own
+appointment detail route uses) rather than a new appointment-ownership
+check — the only new piece needed was exporting that use-case (previously
+controller-only) from `SchedulingAppointmentsModule`.
+
+### 51.4 — The doctor↔patient relationship check
+
+There is no dedicated relationship table. `AssertPatientInDoctorScopeUseCase`
+(new, `scheduling-appointments/application/`) defines it once: the patient
+must have ≥1 `Appointment` under one of the caller's own `affiliationIds`
+(server-resolved from the JWT via `ResolveDoctorScopeUseCase`, never
+client-supplied). A non-relationship 404s (`NotFoundError('Patient', ...)`),
+hiding existence from a doctor/assistant probing an arbitrary patient id —
+the same convention `ResolveDoctorScopeUseCase`/
+`CreateClinicStaffAppointmentUseCase` already use for cross-tenant ids.
+`AR_RESOURCE_NAMES` gained a `Patient: 'المريض'` entry, previously missing
+even though `CreateClinicStaffAppointmentUseCase` already threw this
+exact `NotFoundError` (a pre-existing, harmless gap — it degraded to the
+generic "العنصر المطلوب غير موجود" noun — fixed in passing, not scope creep,
+since this Part's own new throw sites made the gap visible).
+
+### 51.5 — Two flows, deliberately different shapes
+
+**Prescriptions** (`create-provider-prescription.use-case.ts`): `DOCTOR`
+creates and signs in one step — `status: ACCEPTED` immediately, same value
+`GetAcceptedPrescriptionForOrderUseCase` already reads, so the row is
+already compatible with the existing patient-initiated `PharmacyOrder` path
+with zero pharmacy-side code changes (the **patient** still creates the
+`PharmacyOrder` itself, picking their own branch — a doctor has no
+`pharmacyBranchId`/`lat`/`lng` to supply, and inventing a default would be
+exactly the invention the brief forbade). `CLINIC_STAFF`, gated by the new
+role-wide `prescriptions:create:assistant` permission, can only ever
+*prepare* — `status: PENDING_DOCTOR_APPROVAL` — via
+`ApproveProviderPrescriptionUseCase`/`RejectProviderPrescriptionUseCase`
+(`DOCTOR`-only, must be the named `doctor_id` on the draft, 404 otherwise —
+an assistant can never self-sign, and a wrong doctor cannot even confirm the
+draft exists).
+
+Items are written via the *existing*
+`PrescriptionItemRepository.createManySuggested` (its OCR-suggestion writer)
+— same DB shape (`drug_name_free_text`/dose/frequency/duration/quantity,
+`drug_code` always null), reused as-is rather than duplicated, because a
+doctor-typed item and an OCR-suggested item are the same kind of row for
+this trigger's purposes. **Known DB-level friction, documented not
+worked around**: the `prescription_items` trigger (File 10 §7.3) rejects
+any `drug_code` write without a prior `prescription_reviews` row, and a
+doctor-typed prescription never gets one (that review kind is
+pharmacist-specific) — so a provider-issued item can never carry a real
+`drug_code`, only free text. Exempting `source = DOCTOR_ISSUED` from the
+trigger is the semantically cleaner fix but modifies an existing DB object;
+left as a flagged follow-up, not done silently in this pass.
+
+**Lab orders** (`create-provider-lab-order.use-case.ts`): no sign-off gate
+at all — both `DOCTOR` and an authorized `CLINIC_STAFF`
+(`lab-orders:create:assistant`) create straight into `REQUESTED`, per the
+prompt's own conservative rule (prescribing needs a stronger gate than
+ordering a test). `LabOrder.lab_branch_id` is `NOT NULL` — unlike pharmacy's
+broadcast-to-several-branches model, a provider caller must name one
+`VERIFIED` branch directly, exactly like the existing patient-facing
+`CreateLabOrderUseCase`. No default/nearest-branch invention.
+
+Both use-cases reuse `ListStaffByContextUseCase` for the same
+one-event-per-recipient `LAB_STAFF`/audit fan-out their patient-facing
+siblings already use, and the laboratory module's own closed
+`CustodyEventType` vocabulary (`encodeCustodyAction('REQUEST_RECEIVED')`,
+`custody-action.util.ts`) rather than inventing a new audit action string —
+who created the order is on the row and on `audit_logs.actor_user_id`, not
+encoded into the action name.
+
+### 51.6 — Permissions: role-wide, with a named limitation
+
+`@Permissions()`/`role_permissions` existed as pure scaffolding before this
+pass — zero rows, zero call sites anywhere in this codebase. Two new
+role-wide codes (`prescriptions:create:assistant`,
+`lab-orders:create:assistant`, module/action-named per the decorator's own
+`prescriptions:review`-style convention) are seeded onto `CLINIC_STAFF` in
+`src/db/seed.ts`, the same idempotent-upsert pattern `rolesData` already
+uses. **Named limitation, not silently assumed away**: permissions are
+resolved once at token issuance (`TokenService`, from `role_code`) and
+embedded in the JWT (File 12 Part 07) — every `CLINIC_STAFF` membership
+gets the same capability (there is no per-assistant grant/revoke table),
+and a grant/revoke would not take effect for an already-issued token until
+its next refresh. A per-assistant flag on `ClinicStaffAssignment` would fix
+both, but is a new product decision (which assistants get which clinical
+powers, independent of which branches they're assigned to) that this pass
+does not make unilaterally.
+
+Authorization is layered, not permission-only: the permission code is a
+capability gate; `ResolveDoctorScopeUseCase` (identity + branch scope) and
+`AssertPatientInDoctorScopeUseCase` (the relationship check) are what
+actually stop horizontal access (cross-doctor, cross-clinic, unrelated
+patient) — tested against those, never against `actor.permissions` alone.
+
+### 51.7 — A cross-module coupling cost, and how it was resolved
+
+`PrescriptionsModule`/`LaboratoryModule` now import
+`SchedulingAppointmentsModule` (for `AssertPatientInDoctorScopeUseCase`/
+`GetDoctorAppointmentUseCase`) in addition to their pre-existing
+`ProviderDirectoryModule` import — the same "import the whole module for a
+couple of exported services" shape already used everywhere else in this
+codebase (e.g. `LaboratoryModule` already imports all of `PrescriptionsModule`
+for one summary use-case). No new circular-import risk: neither module
+imports `PrescriptionsModule`/`LaboratoryModule` back.
+
+The real cost surfaced in
+`pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts`
+— a hand-assembled `Test.createTestingModule` that imports
+`PharmacyFulfillmentModule` (→ `PrescriptionsModule`, pre-existing) but not
+the full `AppModule`. Because `PrescriptionsModule` now also pulls in
+`SchedulingAppointmentsModule`, Nest tried to instantiate
+`ProcessPaymentWebhookUseCase`, which needs the `@Global()`
+`WebhookEventRepository` (`shared/core/webhooks/webhook-event.module.ts`) —
+global only within a compiled graph that actually imports its module
+somewhere, which this narrow test never did. Fixed by adding
+`WebhookEventModule` to that test's `imports` array, the same "list every
+transitively-needed infra module by hand" pattern the test file already
+uses for `RedisModule`/`MediaStorageModule`/etc. — not a workaround, a real
+missing dependency made visible by a real new one. Confirmed via a
+disposable `git worktree` of `main`: every other integration/e2e spec in
+this repo either bootstraps the full `AppModule` (unaffected) or never
+transitively reaches `SchedulingAppointmentsModule` (unaffected); this was
+the only one.
+
+### 51.8 — Verification
+
+`npx prisma validate` ✅, migrations applied to the real local Postgres
+(`prisma migrate deploy`, `prisma migrate status` → up to date), `npx tsc
+--noEmit` ✅, `npm run build` ✅, `npm run lint` ✅ (0 errors, 3 pre-existing
+warnings in files this pass never touched). `jest --runInBand`: **145/145
+suites, 736/736 tests**, including the real-Postgres
+`pharmacy-order-workflow.integration.spec.ts` (17/17 — full pharmacy
+lifecycle, concurrency races, and IDOR checks, unchanged) and
+`prescription-drug-code-trigger.integration.spec.ts` (unchanged, still
+enforces the trigger from 51.5). New coverage: `create-provider-prescription`,
+`approve-provider-prescription`, `reject-provider-prescription`,
+`create-provider-lab-order`, `assert-patient-in-doctor-scope` use-case specs
+(mock-based, following the `create-clinic-staff-appointment.use-case.spec.ts`
+pattern), plus two new cases on `resolve-doctor-scope.use-case.spec.ts`
+covering `doctorUserId`. `error-messages.ar.spec.ts`'s source-tree scan also
+caught (and this pass fixed) two **pre-existing** unmapped codes from the
+2026-09-18 visit-status-window merge (`VISIT_STATUS_TOO_EARLY`,
+`VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW`) alongside this pass's own two
+(`PRESCRIPTION_NEEDS_ITEMS`, `APPOINTMENT_PATIENT_MISMATCH`) — left unmapped
+would have been a real (if narrow) gate-9 regression to ship alongside this
+work, however unrelated in origin.
+
+`npm run test:e2e --runInBand`: 2 pre-existing failures, confirmed via a
+disposable `git worktree` of `main` (`E:/.tmp-main-verify`, deleted after
+use) reproducing byte-for-byte identically with zero code from this pass
+present — both are `Date.now() + 24h`-scheduled appointment fixtures hitting
+the 2026-09-18 visit-status-timing-window gate (`VISIT_STATUS_TOO_EARLY`)
+that the fixtures were never updated for; `doctor-dashboard.e2e-spec.ts`'s
+"unrelated branch" 404-vs-400 has the same root shape. Not introduced,
+not fixed, by this pass — flagged here rather than silently left
+unmentioned.
+
+### 51.9 — What Phase 1 deliberately does not include
+
+No controllers, no DTOs, no `@Roles()`/`@Permissions()`-decorated HTTP
+routes (Phase 2). No batch/multi-patient creation (Phase 2). No Pharmacy/
+Laboratory Admin display changes (Phases 3–4). No Flutter (Phase 5). No
+notification wiring beyond emitting outbox events in the same shape every
+other module already uses (`ProviderPrescriptionCreated`,
+`ProviderPrescriptionPendingApproval`, `ProviderPrescriptionApproved`,
+`ProviderPrescriptionRejected`, `ProviderLabOrderCreated` — all currently
+unconsumed, same "quiet backlog until a handler registers" state
+`UserRegistered`/`UserLoggedIn` have been in since Phase 1 of identity-auth).
+
+### 51.10 — Follow-up implementation status (2026-09-23)
+
+This section supersedes the Phase-1-only status statements in 51.5, 51.8, and 51.9; those sections remain as the rationale for the original foundation, not current completion claims.
+
+- Added provider prescription create/list/detail and supervising-doctor approve/reject APIs. Assistant-prepared prescriptions remain `PENDING_DOCTOR_APPROVAL`; patient-facing prescription reads now hide that state. Approval/rejection require the expected version and remain scoped to the supervising doctor. Provider-scoped detail/list responses expose `decidedByUserId` alongside the existing decision timestamps/reason for attributable approval history.
+- Added `POST /v1/pharmacy-orders/provider`, which accepts only the approved provider prescription and creates the existing `PharmacyOrder` + item rows + branch broadcasts. It does not add a pharmacy queue or staff action model. Medication requests are a two-step provider flow (prescription first, pharmacy submission after sign-off).
+- Added provider lab create/list/detail through the existing `LabOrder`/branch queue, plus `GET /v1/lab-orders/catalog`. The catalog endpoint reads values already upserted by `src/db/seed.ts`; branch selection reuses `/v1/lab-branches/search`. The staff detail response now includes a patient/provider origin marker.
+- Added transactional outbox templates for provider prescription events, provider lab creation and lab quote/rejection status, and provider-pharmacy creation/fulfillment status. Existing outbox delivery remains asynchronous; notification delivery failure cannot roll back the order transaction. Not every intermediate laboratory custody action emits a notification; only meaningful quote/reject/result events are targeted.
+- Assistant permissions remain role-wide seeded permissions (`prescriptions:create:assistant`, `pharmacy-orders:create:assistant`, `lab-orders:create:assistant`) embedded in the existing auth token model. Do not describe them as per-assistant configurable.
+- Verification in this continuation: backend TypeScript build passed; lint passed with 3 existing warnings; 12 focused backend suites passed, 89/89 tests; all non-integration unit suites passed, 139 suites/716 tests. The real-Postgres pharmacy workflow integration suite passed 17/17, including status transitions, duplicate/stale writes, and branch IDOR checks. The lab dashboard lint had 0 errors/6 existing warnings and production build passed after restoring its already-declared Firebase dependency to `node_modules`; Flutter focused tests passed 4/4, targeted analysis had no issues, `git diff --check` and AR/EN JSON parse checks passed.
+- **Local database routing note:** host port 5432 belongs to the separate DARB Postgres service; the MedSuper Compose container was not published to the host. To avoid touching DARB, the MedSuper container was temporarily exposed at `127.0.0.1:5433` using its existing named volume. Its role password was aligned to the value already declared in MedSuper `.env` and `docker-compose.yml`. The additive `20260923120000_provider_pharmacy_order_origin` migration then applied successfully, and Prisma reports all 31 migrations up to date. No MedSuper data was reset or deleted.
+- Remaining gates: Flutter currently covers one patient per operation; no multi-patient selection/batch workflow is implemented. The real-backend provider-specific create→dashboard→status smoke scenarios are not yet demonstrated; the existing pharmacy operational lifecycle was verified separately. Push notification delivery to active patient/provider devices, SMS/email, and deployment are not claimed. Restore the regular MedSuper Compose container state and remove the temporary compose file after final checks.
+
+### 51.11 — Provider multi-patient batches (2026-09-23)
+
+`POST /v1/prescriptions/provider/batch` and `POST /v1/lab-orders/provider/batch`
+accept 1–50 patient-specific requests under the same existing provider RBAC
+and idempotency middleware as their single-patient counterparts. An
+`Idempotency-Key` header is mandatory for every provider clinical write:
+single and batch prescription/lab creation, assistant-prescription approval
+or rejection, and provider submission into the pharmacy queue. The server
+first resolves the provider scope once, then independently validates every
+patient relationship (and each optional appointment/prescription/branch/test
+reference) before opening a single transaction. Any invalid or unauthorized
+selection fails the whole submission before it writes a clinical request.
+
+Inside that transaction, each selected patient gets an independent
+`Prescription` or `LabOrder`, item rows, audit log, and transactional-outbox
+events. A generated `batch_id` is stored only as nullable grouping metadata
+and returned alongside one result per patient; it is not a shared clinical
+request, a fulfillment unit, an authorization scope, or a visibility key.
+Duplicate patient selections are rejected. Assistant-created medication rows
+remain independently `PENDING_DOCTOR_APPROVAL`, so every prescription in the
+batch must be signed by its supervising doctor before it can be submitted to
+the existing pharmacy queue. Lab rows preserve their existing direct
+`REQUESTED` transition and enter their individually chosen branch queues.

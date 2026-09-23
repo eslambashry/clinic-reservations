@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
@@ -31,6 +32,7 @@ export class GetPharmacyOrderUseCase {
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
   ) {}
 
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<PharmacyOrderDetail> {
@@ -45,7 +47,14 @@ export class GetPharmacyOrderUseCase {
       const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
       isAssignedStaff = membership?.contextId !== null && membership?.contextId === order.pharmacy_branch_id;
     }
-    if (!isOwner && !isAssignedStaff) {
+    let isOriginatingProvider = false;
+    if (!isOwner && !isAssignedStaff && (actor.contextType === 'DOCTOR' || actor.contextType === 'CLINIC_STAFF')) {
+      const prescription = await this.getPrescriptionSummary.execute(this.prisma, order.prescription_id);
+      const scope = await this.resolveDoctorScope.execute(actor);
+      isOriginatingProvider = prescription?.doctorId === scope.doctorUserId &&
+        (actor.contextType === 'DOCTOR' || order.created_by_user_id === actor.sub);
+    }
+    if (!isOwner && !isAssignedStaff && !isOriginatingProvider) {
       throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
     }
 

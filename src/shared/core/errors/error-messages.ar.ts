@@ -69,6 +69,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   UNIQUE_CONSTRAINT_VIOLATION: 'هذا الإجراء يتعارض مع سجل موجود بالفعل.',
   OPTIMISTIC_LOCK_CONFLICT: 'تم تعديل هذا السجل من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   IDEMPOTENCY_KEY_REUSE: 'هناك طلب مطابق قيد التنفيذ بالفعل. انتظر حتى ينتهي قبل إعادة المحاولة.',
+  IDEMPOTENCY_KEY_REQUIRED: 'أرسل مفتاح عدم التكرار قبل تنفيذ هذا الإجراء.',
   GATEWAY_UNAVAILABLE: 'الخدمة غير متاحة مؤقتًا. أعد المحاولة بعد قليل.',
   INTERNAL_ERROR: 'حدث خطأ غير متوقع. أعد المحاولة، وإن استمرت المشكلة تواصل مع الدعم.',
 
@@ -92,6 +93,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
   VISIT_STATUS_TOO_EARLY: 'لا يمكن تغيير حالة الزيارة قبل موعد المريض المسموح به.',
   VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW: 'تغيير حالة الزيارة متاح فقط خلال وقت الموعد المحدد.',
+  APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
   SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
   INVALID_DATE_RANGE: 'النطاق الزمني المطلوب غير صحيح.',
@@ -141,6 +143,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',
   CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED:
     'تحتوي الروشتة على دواء خاضع للرقابة. يلزم تأكيد صريح من الصيدلي قبل المتابعة.',
+  PRESCRIPTION_NEEDS_ITEMS: 'أضف دواءً واحدًا على الأقل لإصدار الروشتة.',
+  DUPLICATE_BATCH_PATIENT: 'لا يمكن إضافة المريض نفسه أكثر من مرة في نفس الدفعة.',
+  BATCH_NEEDS_REQUESTS: 'أضف طلب مريض واحد على الأقل إلى الدفعة.',
 
   // ── Pharmacy fulfillment ────────────────────────────────────────────────
   PHARMACY_ORDER_ALREADY_EXISTS: 'يوجد طلب صيدلية نشِط لهذه الروشتة بالفعل.',
@@ -209,6 +214,7 @@ export const AR_RESOURCE_NAMES: Readonly<Record<string, string>> = {
   LabOrderItem: 'التحليل المطلوب',
   LabResultDocument: 'ملف نتيجة التحليل',
   Notification: 'الإشعار',
+  Patient: 'المريض',
   PaymentIntent: 'عملية الدفع',
   Pharmacy: 'الصيدلية',
   PharmacyBranch: 'فرع الصيدلية',

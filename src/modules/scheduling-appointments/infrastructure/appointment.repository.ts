@@ -218,6 +218,26 @@ export class AppointmentRepository {
     return result.count === 1;
   }
 
+  /**
+   * File 12 Part 51 — the only doctor↔patient relationship this codebase can
+   * currently prove: has this patient ever had an `Appointment` under one of
+   * the caller's own `affiliationIds`? Backs the provider clinical-requests
+   * authorization check (a doctor/assistant may only write a prescription or
+   * lab order for a patient they've actually seen). `affiliationIds` is
+   * always server-resolved from the caller's JWT via
+   * `ResolveDoctorScopeUseCase`, never client-supplied.
+   */
+  async existsForPatientAndAffiliations(db: Prisma.TransactionClient, patientId: string, affiliationIds: string[]): Promise<boolean> {
+    if (affiliationIds.length === 0) {
+      return false;
+    }
+    const match = await db.appointment.findFirst({
+      where: { patient_id: patientId, doctor_clinic_affiliation_id: { in: affiliationIds } },
+      select: { id: true },
+    });
+    return match !== null;
+  }
+
   /** Version-guarded live clinic-flow update; transition policy stays in the application/domain layers. */
   async updateVisitStatus(
     db: Prisma.TransactionClient,

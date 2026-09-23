@@ -34,6 +34,14 @@ export interface DoctorAffiliationScope {
 
 export interface DoctorScope {
   doctorId: string;
+  /**
+   * `Doctor.user_id` — the prescriber's own `User.id`, distinct from
+   * `doctorId` (`Doctor.id`). Needed by File 12 Part 51's provider
+   * clinical-requests flows, which write `Prescription.doctor_id`/
+   * `LabOrder.doctor_id` as `User.id` FKs (matching `Prescription`'s existing
+   * convention, not `Doctor.id`).
+   */
+  doctorUserId: string;
   affiliations: DoctorAffiliationScope[];
   /** Membership set every doctor-scoped ownership check is decided against. */
   affiliationIds: string[];
@@ -119,6 +127,7 @@ export class ResolveDoctorScopeUseCase {
 
     return {
       doctorId: doctor.id,
+      doctorUserId: doctor.user_id,
       affiliations,
       affiliationIds: affiliations.map((affiliation) => affiliation.affiliationId),
       clinicBranchIds: affiliations.map((affiliation) => affiliation.clinicBranchId),

@@ -4,10 +4,12 @@ import { ListStaffByContextUseCase } from '../../identity-auth/application/list-
 import { GetAcceptedPrescriptionForOrderUseCase } from '../../prescriptions/application/get-accepted-prescription-for-order.use-case';
 import { GetPharmacyBranchUseCase } from '../../provider-directory/application/get-pharmacy-branch.use-case';
 import { SearchPharmacyBranchesUseCase } from '../../provider-directory/application/search-pharmacy-branches.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
+import { AssertPatientInDoctorScopeUseCase } from '../../scheduling-appointments/application/assert-patient-in-doctor-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PHARMACY_CONSTANTS } from '../../../shared/config/constants';
-import { BusinessRuleError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { assertHasFulfillableItems, assertNoActiveOrderExists } from '../domain/pharmacy-order.rules';
@@ -27,6 +29,10 @@ export interface CreatePharmacyOrderResult {
   pharmacyOrderId: string;
   status: string;
   broadcastedBranchIds: string[];
+}
+
+export interface CreateProviderPharmacyOrderInput extends CreatePharmacyOrderInput {
+  patientId: string;
 }
 
 /**
@@ -65,9 +71,32 @@ export class CreatePharmacyOrderUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ListStaffByContextUseCase) private readonly listStaffByContext: ListStaffByContextUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
+    @Inject(AssertPatientInDoctorScopeUseCase) private readonly assertPatientInScope: AssertPatientInDoctorScopeUseCase,
   ) {}
 
   async execute(input: CreatePharmacyOrderInput, actor: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
+    return this.create(input, actor, actor.sub);
+  }
+
+  async executeForProvider(input: CreateProviderPharmacyOrderInput, actor: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
+    if (actor.contextType !== RoleContextType.DOCTOR && actor.contextType !== RoleContextType.CLINIC_STAFF) {
+      throw new ForbiddenError();
+    }
+    if (actor.contextType === RoleContextType.CLINIC_STAFF && !actor.permissions.includes('pharmacy-orders:create:assistant')) {
+      throw new ForbiddenError('ROLE_NOT_PERMITTED', 'ليس لديك صلاحية إرسال روشتة معتمدة إلى الصيدلية.');
+    }
+    const scope = await this.resolveDoctorScope.execute(actor);
+    await this.assertPatientInScope.execute(input.patientId, scope.affiliationIds);
+    return this.create(input, actor, input.patientId, scope.doctorUserId);
+  }
+
+  private async create(
+    input: CreatePharmacyOrderInput,
+    actor: AccessTokenPayload,
+    patientId: string,
+    providerDoctorUserId?: string,
+  ): Promise<CreatePharmacyOrderResult> {
     let branchIds: string[];
     if (input.pharmacyBranchId) {
       branchIds = [await this.resolveChosenBranch(input.pharmacyBranchId, input.fulfillmentType)];
@@ -85,13 +114,17 @@ export class CreatePharmacyOrderUseCase {
       const latestOrder = await this.pharmacyOrders.findLatestByPrescriptionId(tx, input.prescriptionId);
       assertNoActiveOrderExists(latestOrder);
 
-      const prescription = await this.getAcceptedPrescription.execute(tx, input.prescriptionId, actor.sub);
+      const prescription = providerDoctorUserId
+        ? await this.getAcceptedPrescription.executeForProvider(tx, input.prescriptionId, patientId, providerDoctorUserId)
+        : await this.getAcceptedPrescription.execute(tx, input.prescriptionId, patientId);
       assertHasFulfillableItems(prescription.items);
 
       const order = await this.pharmacyOrders.create(tx, {
         prescriptionId: input.prescriptionId,
-        patientId: actor.sub,
+        patientId,
         fulfillmentType: input.fulfillmentType,
+        createdByUserId: providerDoctorUserId ? actor.sub : undefined,
+        createdByRole: providerDoctorUserId ? actor.contextType : undefined,
       });
 
       await this.pharmacyOrderItems.createMany(
@@ -107,14 +140,22 @@ export class CreatePharmacyOrderUseCase {
         action: 'pharmacy-fulfillment.pharmacy-order.create',
         resourceType: 'pharmacy_order',
         resourceId: order.id,
+        subjectPatientId: patientId,
       });
 
       await this.outbox.emit(tx, 'PharmacyOrderCreated', {
         pharmacyOrderId: order.id,
         prescriptionId: input.prescriptionId,
-        patientId: actor.sub,
+        patientId,
         broadcastBranchIds: branchIds,
       });
+      if (providerDoctorUserId) {
+        await this.outbox.emit(tx, 'ProviderPharmacyOrderCreated', {
+          pharmacyOrderId: order.id,
+          prescriptionId: input.prescriptionId,
+          patientId,
+        });
+      }
 
       // One event per PHARMACY_STAFF member at each broadcast branch — same
       // one-event-per-recipient fan-out `ConfirmAppointmentUseCase` uses for

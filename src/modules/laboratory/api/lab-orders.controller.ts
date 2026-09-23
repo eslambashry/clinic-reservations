@@ -10,6 +10,7 @@ import { AddOperationalNoteUseCase } from '../application/add-operational-note.u
 import { CollectSampleUseCase } from '../application/collect-sample.use-case';
 import { ConfirmLabBookingUseCase } from '../application/confirm-lab-booking.use-case';
 import { CreateLabOrderUseCase } from '../application/create-lab-order.use-case';
+import { CreateProviderLabOrderUseCase } from '../application/create-provider-lab-order.use-case';
 import { DispatchCourierUseCase } from '../application/dispatch-courier.use-case';
 import { GetLabOrderUseCase, LabOrderDetail } from '../application/get-lab-order.use-case';
 import { ListLabOrdersResult, ListLabOrdersUseCase } from '../application/list-lab-orders.use-case';
@@ -23,12 +24,15 @@ import { RescheduleVisitUseCase } from '../application/reschedule-visit.use-case
 import { SetCriticalFlagUseCase } from '../application/set-critical-flag.use-case';
 import { StartAnalysisUseCase } from '../application/start-analysis.use-case';
 import { SubmitLabQuoteUseCase } from '../application/submit-lab-quote.use-case';
+import { ListTestCatalogUseCase } from '../application/list-test-catalog.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { IdempotencyInterceptor } from '../../../shared/core/idempotency/idempotency-key.interceptor';
+import { RequireIdempotencyKey } from '../../../shared/core/idempotency/require-idempotency-key.decorator';
 import { AddNoteDto } from './dto/add-note.dto';
 import { CreateLabOrderDto } from './dto/create-lab-order.dto';
+import { CreateProviderLabOrderBatchDto, CreateProviderLabOrderDto } from './dto/create-provider-lab-order.dto';
 import { LifecycleNoteDto } from './dto/lifecycle-note.dto';
 import { ListLabOrdersQueryDto } from './dto/list-lab-orders-query.dto';
 import { RecordResultDeliveryDto } from './dto/record-result-delivery.dto';
@@ -56,6 +60,7 @@ import { SubmitLabQuoteDto } from './dto/submit-lab-quote.dto';
 export class LabOrdersController {
   constructor(
     @Inject(CreateLabOrderUseCase) private readonly createLabOrder: CreateLabOrderUseCase,
+    @Inject(CreateProviderLabOrderUseCase) private readonly createProviderLabOrder: CreateProviderLabOrderUseCase,
     @Inject(ListLabOrdersUseCase) private readonly listLabOrders: ListLabOrdersUseCase,
     @Inject(GetLabOrderUseCase) private readonly getLabOrder: GetLabOrderUseCase,
     @Inject(SubmitLabQuoteUseCase) private readonly submitQuote: SubmitLabQuoteUseCase,
@@ -72,13 +77,21 @@ export class LabOrdersController {
     @Inject(RejectLabOrderUseCase) private readonly rejectLabOrder: RejectLabOrderUseCase,
     @Inject(AddOperationalNoteUseCase) private readonly addOperationalNote: AddOperationalNoteUseCase,
     @Inject(RecordResultDeliveryUseCase) private readonly recordResultDelivery: RecordResultDeliveryUseCase,
+    @Inject(ListTestCatalogUseCase) private readonly listTestCatalog: ListTestCatalogUseCase,
   ) {}
 
-  @Roles(RoleContextType.PATIENT, RoleContextType.LAB_STAFF)
+  @Roles(RoleContextType.PATIENT, RoleContextType.LAB_STAFF, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get()
   @ApiOperation({ summary: "The caller's own orders (PATIENT) or their branch's full queue (LAB_STAFF)" })
   list(@Query() query: ListLabOrdersQueryDto, @CurrentUser() user: AccessTokenPayload): Promise<ListLabOrdersResult> {
     return this.listLabOrders.execute(query, user);
+  }
+
+  @Roles(RoleContextType.PATIENT, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @Get('catalog')
+  @ApiOperation({ summary: 'Enabled laboratory test catalog for patient/provider request creation' })
+  listCatalog(@Query('search') search?: string) {
+    return this.listTestCatalog.execute(search);
   }
 
   @Roles(RoleContextType.PATIENT)
@@ -89,7 +102,25 @@ export class LabOrdersController {
     return this.createLabOrder.execute(dto, user);
   }
 
-  @Roles(RoleContextType.PATIENT, RoleContextType.LAB_STAFF)
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @Post('provider')
+  @UseInterceptors(IdempotencyInterceptor)
+  @RequireIdempotencyKey()
+  @ApiOperation({ summary: 'Create a patient-specific lab request from the doctor/authorized assistant context; enters the existing branch queue' })
+  createForPatient(@Body() dto: CreateProviderLabOrderDto, @CurrentUser() user: AccessTokenPayload) {
+    return this.createProviderLabOrder.execute(dto, user);
+  }
+
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @Post('provider/batch')
+  @UseInterceptors(IdempotencyInterceptor)
+  @RequireIdempotencyKey()
+  @ApiOperation({ summary: 'Atomically create independent lab requests for multiple authorized patients in the existing branch queues' })
+  createBatchForPatients(@Body() dto: CreateProviderLabOrderBatchDto, @CurrentUser() user: AccessTokenPayload) {
+    return this.createProviderLabOrder.executeBatch(dto.requests, user);
+  }
+
+  @Roles(RoleContextType.PATIENT, RoleContextType.LAB_STAFF, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get(':labOrderId')
   @ApiOperation({ summary: 'Order detail — owning patient or the assigned lab branch staff' })
   get(@Param('labOrderId', ParseUUIDPipe) labOrderId: string, @CurrentUser() user: AccessTokenPayload): Promise<LabOrderDetail> {

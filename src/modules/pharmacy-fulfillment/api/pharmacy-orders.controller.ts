@@ -16,7 +16,9 @@ import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { IdempotencyInterceptor } from '../../../shared/core/idempotency/idempotency-key.interceptor';
+import { RequireIdempotencyKey } from '../../../shared/core/idempotency/require-idempotency-key.decorator';
 import { CreatePharmacyOrderDto } from './dto/create-pharmacy-order.dto';
+import { CreateProviderPharmacyOrderDto } from './dto/create-provider-pharmacy-order.dto';
 import { LifecycleTransitionDto } from './dto/lifecycle-transition.dto';
 import { ListPharmacyOrdersQueryDto } from './dto/list-pharmacy-orders-query.dto';
 import { RejectPharmacyOrderDto } from './dto/reject-pharmacy-order.dto';
@@ -63,7 +65,7 @@ export class PharmacyOrdersController {
     @Inject(GetPharmacyOrderUseCase) private readonly getPharmacyOrder: GetPharmacyOrderUseCase,
   ) {}
 
-  @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF)
+  @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get()
   @ApiOperation({ summary: "The caller's own orders (PATIENT) or their branch's queue — claimed orders plus incoming, unanswered broadcasts (PHARMACY_STAFF)" })
   list(@Query() query: ListPharmacyOrdersQueryDto, @CurrentUser() user: AccessTokenPayload): Promise<ListPharmacyOrdersResult> {
@@ -76,6 +78,15 @@ export class PharmacyOrdersController {
   @ApiOperation({ summary: 'Create a pharmacy order from an ACCEPTED prescription and broadcast it to nearby verified branches (File 12 Part 39)' })
   create(@Body() dto: CreatePharmacyOrderDto, @CurrentUser() user: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
     return this.createPharmacyOrder.execute(dto, user);
+  }
+
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @Post('provider')
+  @UseInterceptors(IdempotencyInterceptor)
+  @RequireIdempotencyKey()
+  @ApiOperation({ summary: 'Submit a signed provider prescription to the existing pharmacy broadcast/branch queue' })
+  createForProvider(@Body() dto: CreateProviderPharmacyOrderDto, @CurrentUser() user: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
+    return this.createPharmacyOrder.executeForProvider(dto, user);
   }
 
   @Roles(RoleContextType.PHARMACY_STAFF)
@@ -168,7 +179,7 @@ export class PharmacyOrdersController {
     return this.confirmPharmacyOrderReceipt.execute(pharmacyOrderId, user);
   }
 
-  @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF)
+  @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get(':pharmacyOrderId')
   @ApiOperation({ summary: 'Order detail — owning patient or the assigned pharmacy branch staff (File 11 05.8)' })
   get(@Param('pharmacyOrderId', ParseUUIDPipe) pharmacyOrderId: string, @CurrentUser() user: AccessTokenPayload): Promise<PharmacyOrderDetail> {

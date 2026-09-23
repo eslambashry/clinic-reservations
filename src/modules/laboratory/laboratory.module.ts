@@ -9,6 +9,7 @@ import { CollectSampleUseCase } from './application/collect-sample.use-case';
 import { ConfirmLabBookingUseCase } from './application/confirm-lab-booking.use-case';
 import { CreateLabBranchUseCase } from './application/create-lab-branch.use-case';
 import { CreateLabOrderUseCase } from './application/create-lab-order.use-case';
+import { CreateProviderLabOrderUseCase } from './application/create-provider-lab-order.use-case';
 import { CreateLabStaffUseCase } from './application/create-lab-staff.use-case';
 import { CreateLaboratoryUseCase } from './application/create-laboratory.use-case';
 import { DeleteLabStaffUseCase } from './application/delete-lab-staff.use-case';
@@ -47,10 +48,12 @@ import { LabOrderNoteRepository } from './infrastructure/lab-order-note.reposito
 import { LabOrderRepository } from './infrastructure/lab-order.repository';
 import { LabResultRepository } from './infrastructure/lab-result.repository';
 import { TestCatalogRepository } from './infrastructure/test-catalog.repository';
+import { ListTestCatalogUseCase } from './application/list-test-catalog.use-case';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
+import { SchedulingAppointmentsModule } from '../scheduling-appointments/scheduling-appointments.module';
 
 /**
  * Laboratory module (File 12 Part 47, 2026-09-02) — un-postponed at the
@@ -87,7 +90,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * that module does own.
  */
 @Module({
-  imports: [AuditModule, IdentityAuthModule, PrescriptionsModule, ProviderDirectoryModule],
+  imports: [AuditModule, IdentityAuthModule, PrescriptionsModule, ProviderDirectoryModule, SchedulingAppointmentsModule],
   controllers: [LabOrdersController, LabAuditController, LabBranchesController, LaboratoriesController, LabStaffController],
   providers: [
     // infrastructure
@@ -100,11 +103,13 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     LaboratoryRepository,
     LabStaffAssignmentRepository,
     TestCatalogRepository,
+    ListTestCatalogUseCase,
     // application
     GetCustodyEventsUseCase,
     GetLabBranchUseCase,
     SearchLabBranchesUseCase,
     CreateLabOrderUseCase,
+    CreateProviderLabOrderUseCase,
     ListLabOrdersUseCase,
     GetLabOrderUseCase,
     SubmitLabQuoteUseCase,

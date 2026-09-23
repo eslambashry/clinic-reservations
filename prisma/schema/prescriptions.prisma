@@ -26,6 +26,31 @@ model Prescription {
   /// this column. Surfaced back out via `PrescriptionSummary`/
   /// `PrescriptionDetail` and `PharmacyOrderDetail.patientNote`.
   notes           String?
+  /// File 12 Part 51 — provider clinical requests. Who actually typed this
+  /// row: the prescribing `doctor_id` themself (DOCTOR-direct create) or a
+  /// `CLINIC_STAFF` assistant preparing it on the doctor's behalf. Null for
+  /// `PATIENT_UPLOADED` prescriptions (the patient is already `patient_id`).
+  created_by_user_id  String?              @db.Uuid
+  /// The caller's `role_memberships.context_type` at creation time
+  /// (DOCTOR or CLINIC_STAFF) — denormalized so "assistant-prepared, pending"
+  /// queries don't need a `role_memberships` join. Null for patient uploads.
+  created_by_role     RoleContextType?
+  /// Optional link to the visit this was written during (File 11 05.5's
+  /// `Appointment`, not the postponed `Encounter` — see `encounter_id`
+  /// above, which stays unused/dead: `encounter-emr` is still POSTPONE).
+  appointment_id      String?              @db.Uuid
+  /// File 12 Part 51.11 — optional grouping metadata for an atomic provider
+  /// batch. Each row remains a complete, patient-specific prescription; this
+  /// value never changes authorization, visibility, or fulfillment behavior.
+  batch_id            String?              @db.Uuid
+  /// The doctor who decided a CLINIC_STAFF-prepared `PENDING_DOCTOR_APPROVAL`
+  /// draft, set on either outcome (approve or reject) — never both `approved_at`
+  /// and `rejected_at` on the same row. A DOCTOR-direct create signs and
+  /// activates in the same step, so these stay null for it.
+  decided_by_user_id String?              @db.Uuid
+  approved_at         DateTime?            @db.Timestamptz(6)
+  rejected_at         DateTime?            @db.Timestamptz(6)
+  rejection_reason    String?
   expires_at      DateTime?            @db.Timestamptz(6)
   created_at      DateTime             @default(now()) @db.Timestamptz(6)
   updated_at      DateTime             @updatedAt @db.Timestamptz(6)
@@ -38,7 +63,16 @@ model Prescription {
   doctor          User?                @relation("DoctorPrescriptions", fields: [doctor_id], references: [id])
   encounter       Encounter?           @relation(fields: [encounter_id], references: [id])
   patient         User                 @relation("PatientPrescriptions", fields: [patient_id], references: [id])
+  created_by      User?                @relation("PrescriptionCreatedBy", fields: [created_by_user_id], references: [id])
+  decided_by      User?                @relation("PrescriptionApprovedBy", fields: [decided_by_user_id], references: [id])
+  appointment     Appointment?         @relation(fields: [appointment_id], references: [id])
 
+  /// Backs the doctor's "pending my approval" / "my provider-issued
+  /// prescriptions" queries (File 12 Part 51).
+  @@index([doctor_id, status])
+  /// Backs an assistant's "my prepared drafts" query.
+  @@index([created_by_user_id])
+  @@index([batch_id])
   @@map("prescriptions")
 }
 

@@ -4,7 +4,8 @@ import { Observable, from, of } from 'rxjs';
 import { catchError, switchMap, tap } from 'rxjs/operators';
 import { RedisService } from '../../kernel/redis/redis.service';
 import { AccessTokenPayload } from '../auth/jwt-payload.interface';
-import { ConflictError } from '../errors/domain-errors';
+import { ConflictError, DomainError } from '../errors/domain-errors';
+import { REQUIRE_IDEMPOTENCY_KEY } from './require-idempotency-key.decorator';
 
 const HEADER = 'idempotency-key';
 /** How long a *successful* response is cached and replayed to a retry with the same key. */
@@ -49,6 +50,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request & { user?: AccessTokenPayload }>();
     const key = request.header(HEADER);
+
+    if (!key && Reflect.getMetadata(REQUIRE_IDEMPOTENCY_KEY, context.getHandler()) === true) {
+      throw new DomainError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'أرسل مفتاح عدم التكرار قبل تنفيذ هذا الإجراء.');
+    }
 
     if (!key) {
       return next.handle();

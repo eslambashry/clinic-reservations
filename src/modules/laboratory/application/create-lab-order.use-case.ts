@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { RoleContextType } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { ListStaffByContextUseCase } from '../../identity-auth/application/list-staff-by-context.use-case';
+import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
@@ -50,6 +51,7 @@ export class CreateLabOrderUseCase {
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(LabBranchRepository) private readonly labBranches: LabBranchRepository,
     @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
+    @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ListStaffByContextUseCase) private readonly listStaffByContext: ListStaffByContextUseCase,
@@ -67,6 +69,13 @@ export class CreateLabOrderUseCase {
     }
     if (input.collectionType === 'HOME_COLLECTION' && !branch.home_collection_capable) {
       throw new BusinessRuleError('LAB_BRANCH_NOT_HOME_COLLECTION_CAPABLE', 'فرع المعمل المختار لا يوفّر سحب العيّنة من المنزل.');
+    }
+
+    if (input.prescriptionId) {
+      const prescription = await this.getPrescriptionSummary.execute(this.prisma, input.prescriptionId);
+      if (!prescription || prescription.patientId !== actor.sub) {
+        throw new NotFoundError('Prescription', input.prescriptionId);
+      }
     }
 
     if (testCodes.length > 0) {

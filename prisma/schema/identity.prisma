@@ -39,6 +39,11 @@ model User {
   prescription_reviews            PrescriptionReview[]
   prescriptions_authored          Prescription[]                 @relation("DoctorPrescriptions")
   prescriptions                   Prescription[]                 @relation("PatientPrescriptions")
+  prescriptions_created           Prescription[]                 @relation("PrescriptionCreatedBy")
+  prescriptions_decided           Prescription[]                 @relation("PrescriptionApprovedBy")
+  lab_orders_ordered              LabOrder[]                      @relation("LabOrderDoctor")
+  lab_orders_created              LabOrder[]                      @relation("LabOrderCreatedBy")
+  pharmacy_orders_created          PharmacyOrder[]                  @relation("PharmacyOrderCreatedBy")
   provider_verifications_reviewed ProviderVerificationDocument[] @relation("ReviewedByAdmin")
   reviews                         Review[]
   substitutions_proposed          Substitution[]

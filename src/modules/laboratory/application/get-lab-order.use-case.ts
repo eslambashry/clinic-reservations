@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
@@ -32,6 +33,7 @@ export class GetLabOrderUseCase {
     @Inject(LabOrderNoteRepository) private readonly labOrderNotes: LabOrderNoteRepository,
     @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(GetCustodyEventsUseCase) private readonly getCustodyEvents: GetCustodyEventsUseCase,
@@ -46,11 +48,17 @@ export class GetLabOrderUseCase {
 
     const isOwner = order.patient_id === actor.sub;
     let isAssignedStaff = false;
+    let isOriginatingProvider = false;
     if (!isOwner && actor.contextType === 'LAB_STAFF') {
       const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
       isAssignedStaff = membership?.contextId !== null && membership?.contextId === order.lab_branch_id;
     }
-    if (!isOwner && !isAssignedStaff) {
+    if (!isOwner && !isAssignedStaff && (actor.contextType === 'DOCTOR' || actor.contextType === 'CLINIC_STAFF')) {
+      const scope = await this.resolveDoctorScope.execute(actor);
+      isOriginatingProvider = order.doctor_id === scope.doctorUserId &&
+        (actor.contextType === 'DOCTOR' || order.created_by_user_id === actor.sub);
+    }
+    if (!isOwner && !isAssignedStaff && !isOriginatingProvider) {
       throw new NotFoundError('LabOrder', labOrderId);
     }
 
