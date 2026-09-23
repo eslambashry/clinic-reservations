@@ -16,7 +16,10 @@ import { RoleContextType, Specialty } from '@prisma/client';
 import { CreateSpecialtyUseCase } from '../application/create-specialty.use-case';
 import { DeleteSpecialtyUseCase } from '../application/delete-specialty.use-case';
 import { GetSpecialtyForAdminUseCase } from '../application/get-specialty-for-admin.use-case';
-import { ListSpecialtiesForAdminUseCase } from '../application/list-specialties-for-admin.use-case';
+import {
+  ListSpecialtiesForAdminResult,
+  ListSpecialtiesForAdminUseCase,
+} from '../application/list-specialties-for-admin.use-case';
 import { ListSpecialtiesUseCase } from '../application/list-specialties.use-case';
 import { UpdateSpecialtyUseCase } from '../application/update-specialty.use-case';
 import { SpecialtyWithCounts } from '../infrastructure/specialty.repository';
@@ -58,8 +61,8 @@ export class SpecialtiesController {
   @Roles(RoleContextType.ADMIN)
   @Get('admin')
   @ApiOperation({ summary: 'Admin: list specialties with doctor and child counts' })
-  listAdmin(@Query() query: ListSpecialtiesQueryDto): Promise<SpecialtyWithCounts[]> {
-    return this.listForAdmin.execute(query.q);
+  listAdmin(@Query() query: ListSpecialtiesQueryDto): Promise<ListSpecialtiesForAdminResult> {
+    return this.listForAdmin.execute(query);
   }
 
   @ApiBearerAuth()

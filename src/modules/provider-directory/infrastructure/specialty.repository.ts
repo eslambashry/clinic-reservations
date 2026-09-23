@@ -42,17 +42,25 @@ export class SpecialtyRepository {
     return db.specialty.findUnique({ where: { code } });
   }
 
-  /** Admin list: optional `name_ar`/`code` search, each row carrying its counts. */
-  async findAllWithCounts(search?: string): Promise<SpecialtyWithCounts[]> {
-    // `code` is a UUID, so it supports no substring match — the admin search
-    // is over `name_ar`, which is what the console actually types.
-    const where: Prisma.SpecialtyWhereInput | undefined = search
-      ? { name_ar: { contains: search, mode: 'insensitive' } }
-      : undefined;
+  /**
+   * `code` is a UUID, so it supports no substring match — the admin search is
+   * over `name_ar`, which is what the console actually types.
+   */
+  private searchWhere(search?: string): Prisma.SpecialtyWhereInput | undefined {
+    return search ? { name_ar: { contains: search, mode: 'insensitive' } } : undefined;
+  }
 
+  /** Admin list: one page of specialties, each row carrying its counts. */
+  async findPageWithCounts(params: {
+    search?: string;
+    skip: number;
+    take: number;
+  }): Promise<SpecialtyWithCounts[]> {
     const rows = await this.prisma.specialty.findMany({
-      where,
+      where: this.searchWhere(params.search),
       orderBy: { name_ar: 'asc' },
+      skip: params.skip,
+      take: params.take,
       include: { _count: { select: { doctors: true, children: true } } },
     });
 
@@ -61,6 +69,25 @@ export class SpecialtyRepository {
       doctorCount: _count.doctors,
       childCount: _count.children,
     }));
+  }
+
+  countAll(search?: string): Promise<number> {
+    return this.prisma.specialty.count({ where: this.searchWhere(search) });
+  }
+
+  /**
+   * Every specialty's code and name, unpaginated.
+   *
+   * The admin screen needs the whole catalog regardless of which page it is
+   * showing: the parent column resolves a parent that may sit on another page,
+   * and the form's parent picker lists them all. Two narrow columns over a
+   * reference table, so this stays cheap.
+   */
+  findAllNames(): Promise<{ code: string; name_ar: string }[]> {
+    return this.prisma.specialty.findMany({
+      orderBy: { name_ar: 'asc' },
+      select: { code: true, name_ar: true },
+    });
   }
 
   async findByCodeWithCounts(code: string): Promise<SpecialtyWithCounts | null> {
