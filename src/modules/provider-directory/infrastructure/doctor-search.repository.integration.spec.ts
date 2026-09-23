@@ -49,7 +49,7 @@ describe('DoctorSearchRepository (integration)', () => {
   }
 
   beforeAll(async () => {
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'Test Specialty', name_ar: 'تخصص اختبار' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص اختبار' } });
 
     const clinic = await prisma.clinic.create({
       data: { legal_name: `Test Clinic ${suffix}`, brand_name: `Test Clinic ${suffix}`, status: 'VERIFIED' },

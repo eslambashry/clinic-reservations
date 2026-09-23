@@ -60,7 +60,7 @@ export class GetMyDoctorProfileUseCase {
       displayName: [doctor.user.first_name, doctor.user.last_name].filter(Boolean).join(' ') || null,
       email: doctor.user.email,
       phone: doctor.user.phone,
-      specialty: doctor.specialty.name_en,
+      specialty: doctor.specialty.name_ar,
       specialtyKey: doctor.specialty.code,
       licenseNumber: doctor.license_number,
       bio: doctor.bio,

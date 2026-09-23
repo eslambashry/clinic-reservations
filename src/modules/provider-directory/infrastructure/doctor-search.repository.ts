@@ -26,7 +26,7 @@ export interface DoctorSearchRow {
   last_name: string | null;
   photo_url: string | null;
   specialty_code: string;
-  specialty_name_en: string;
+  specialty_name_ar: string;
   clinic_branch_id: string;
   clinic_name: string;
   consult_fee: Prisma.Decimal;
@@ -72,7 +72,6 @@ export class DoctorSearchRepository {
     if (params.q) {
       whereParts.push(Prisma.sql`(
         similarity(coalesce(u.first_name, '') || ' ' || coalesce(u.last_name, ''), ${params.q}) > 0.2
-        OR similarity(s.name_en, ${params.q}) > 0.2
         OR similarity(s.name_ar, ${params.q}) > 0.2
       )`);
     }
@@ -134,7 +133,7 @@ export class DoctorSearchRepository {
         u.last_name,
         d.photo_url,
         d.specialty_code,
-        s.name_en AS specialty_name_en,
+        s.name_ar AS specialty_name_ar,
         cb.id AS clinic_branch_id,
         c.brand_name AS clinic_name,
         a.consult_fee,

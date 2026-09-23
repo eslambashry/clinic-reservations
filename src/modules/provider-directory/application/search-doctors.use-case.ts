@@ -100,7 +100,7 @@ function toSearchItem(row: DoctorSearchRow): SearchDoctorItem {
   return {
     doctorId: row.doctor_id,
     name,
-    specialty: row.specialty_name_en,
+    specialty: row.specialty_name_ar,
     clinicBranchId: row.clinic_branch_id,
     clinicName: row.clinic_name,
     distanceKm: row.distance_km === null ? null : Number(row.distance_km),

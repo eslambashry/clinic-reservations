@@ -85,7 +85,7 @@ describe('Provider Directory (e2e)', () => {
       permissions: [],
     });
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'E2E Specialty', name_ar: 'تخصص' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص' } });
 
     const clinic = await prisma.clinic.create({
       data: { legal_name: `E2E Clinic ${suffix}`, brand_name: `E2E Clinic ${suffix}`, status: 'VERIFIED' },

@@ -26,7 +26,7 @@ describe('SelfRegisterProviderUseCase', () => {
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const specialties = { findByCode: jest.fn().mockResolvedValue({ code: 'CARDIOLOGY', name_ar: 'أمراض القلب', name_en: 'Cardiology' }) };
+    const specialties = { findByCode: jest.fn().mockResolvedValue({ code: 'CARDIOLOGY', name_ar: 'أمراض القلب' }) };
     const clinics = { create: jest.fn().mockResolvedValue({ id: 'clinic-1' }) };
     const addresses = { create: jest.fn().mockResolvedValue({ id: 'address-1' }) };
     const branches = { create: jest.fn().mockResolvedValue({ id: 'branch-1' }) };

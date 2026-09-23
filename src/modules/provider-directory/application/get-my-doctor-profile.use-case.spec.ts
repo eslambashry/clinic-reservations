@@ -28,7 +28,7 @@ describe('GetMyDoctorProfileUseCase', () => {
       experience_years: 10,
       photo_url: null,
       status: 'VERIFIED',
-      specialty: { name_en: 'Cardiology', code: 'CARDIOLOGY' },
+      specialty: { name_ar: 'أمراض القلب', code: 'CARDIOLOGY' },
       user: { first_name: 'Amr', last_name: 'Adel', email: 'amr@example.com', phone: '+201001234567' },
     });
 
@@ -41,7 +41,7 @@ describe('GetMyDoctorProfileUseCase', () => {
       displayName: 'Amr Adel',
       email: 'amr@example.com',
       phone: '+201001234567',
-      specialty: 'Cardiology',
+      specialty: 'أمراض القلب',
       specialtyKey: 'CARDIOLOGY',
       licenseNumber: 'LIC-123',
       bio: 'Cardiologist',
@@ -64,7 +64,7 @@ describe('GetMyDoctorProfileUseCase', () => {
       experience_years: null,
       photo_url: null,
       status: 'VERIFIED',
-      specialty: { name_en: 'Dermatology', code: 'DERMATOLOGY' },
+      specialty: { name_ar: 'أمراض الجلدية', code: 'DERMATOLOGY' },
       user: { first_name: 'Mahmoud', last_name: 'Taha', email: null, phone: '+201000000000' },
     });
 

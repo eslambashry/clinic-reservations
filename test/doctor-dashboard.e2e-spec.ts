@@ -95,7 +95,7 @@ describe('Doctor Dashboard (e2e)', () => {
     prisma = app.get(PrismaService);
     jwt = app.get(JwtService);
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'E2E Dashboard Specialty', name_ar: 'تخصص' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص' } });
 
     // --- Clinic A / Doctor A ---
     const clinicA = await prisma.clinic.create({

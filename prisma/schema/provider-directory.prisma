@@ -1,6 +1,5 @@
 model Specialty {
   code        String      @id
-  name_en     String
   name_ar     String
   parent_code String?
   created_at  DateTime    @default(now()) @db.Timestamptz(6)

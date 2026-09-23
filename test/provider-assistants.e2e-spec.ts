@@ -53,7 +53,7 @@ describe('Provider Assistants (e2e)', () => {
     prisma = app.get(PrismaService);
     jwt = app.get(JwtService);
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'E2E Assistant Specialty', name_ar: 'تخصص' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص' } });
 
     const doctorAUser = await prisma.user.create({ data: { phone: `+2012${numericSuffix}1`, first_name: 'Doctor', last_name: 'A' } });
     doctorAUserId = doctorAUser.id;

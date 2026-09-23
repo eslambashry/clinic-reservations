@@ -107,7 +107,7 @@ function toListItem(row: DoctorWithUser): DoctorListItem {
     name,
     phone: row.user.phone,
     specialtyCode: row.specialty_code,
-    specialty: row.specialty.name_en,
+    specialty: row.specialty.name_ar,
     licenseNumber: row.license_number,
     regionCode: row.region_code,
     status: row.status,

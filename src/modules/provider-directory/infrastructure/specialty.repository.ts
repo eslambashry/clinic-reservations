@@ -11,7 +11,7 @@ export class SpecialtyRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   findAll(): Promise<Specialty[]> {
-    return this.prisma.specialty.findMany({ orderBy: { name_en: 'asc' } });
+    return this.prisma.specialty.findMany({ orderBy: { name_ar: 'asc' } });
   }
 
   findByCode(db: Prisma.TransactionClient, code: string): Promise<Specialty | null> {
