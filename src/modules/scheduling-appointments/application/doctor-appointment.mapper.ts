@@ -1,5 +1,25 @@
-import { AppointmentStatus, VisitStatus } from '@prisma/client';
+import { AppointmentStatus, PaymentMethod, VisitStatus } from '@prisma/client';
+import { computeRemainingBalance } from '../../payments/domain/payment-money.rules';
 import { AppointmentWithDoctorView } from '../infrastructure/appointment.repository';
+
+/**
+ * What the patient paid before the visit and what is left to collect at the
+ * clinic. Money values are decimal strings (`"450.00"`), like every other
+ * amount on this API.
+ *
+ * - `PAY_AT_CLINIC` (patient app or clinic-staff walk-in): nothing paid yet,
+ *   the whole fee is due at the clinic.
+ * - `INTERNAL_WALLET` / `CARD` / `FAWRY` / `MOBILE_WALLET`: `paidAmount` was
+ *   captured online, possibly a partial amount (policy
+ *   `MIN_APPOINTMENT_PAYMENT`); `remainingBalance` is the rest of the fee.
+ */
+export interface DoctorAppointmentPayment {
+  method: PaymentMethod;
+  currency: string;
+  fullAmount: string;
+  paidAmount: string;
+  remainingBalance: string;
+}
 
 /**
  * The Doctor Dashboard's appointment shape (File 12 Part 49.7).
@@ -38,11 +58,35 @@ export interface DoctorAppointmentSummary {
   cancelledReason: string | null;
   cancelledBy: string | null;
   rescheduledFromAppointmentId: string | null;
+  /** `null` only when the appointment has no payment intent on record. */
+  payment: DoctorAppointmentPayment | null;
   createdAt: Date;
 }
 
 function fullName(user: { first_name: string | null; last_name: string | null }): string {
   return [user.first_name, user.last_name].filter((part): part is string => !!part).join(' ');
+}
+
+function toDoctorAppointmentPayment(appointment: AppointmentWithDoctorView): DoctorAppointmentPayment | null {
+  const intent = appointment.payment_intent;
+  if (!intent) return null;
+
+  if (intent.method === 'PAY_AT_CLINIC') {
+    const fullAmount = intent.amount.toFixed(2);
+    return { method: intent.method, currency: intent.currency, fullAmount, paidAmount: '0.00', remainingBalance: fullAmount };
+  }
+
+  const paidAmount = intent.amount.toFixed(2);
+  // `full_amount` is null on intents created before partial payments existed,
+  // where `amount` was always the whole fee.
+  const fullAmount = (intent.full_amount ?? intent.amount).toFixed(2);
+  return {
+    method: intent.method,
+    currency: intent.currency,
+    fullAmount,
+    paidAmount,
+    remainingBalance: appointment.remaining_balance?.toFixed(2) ?? computeRemainingBalance(fullAmount, paidAmount),
+  };
 }
 
 export function toDoctorAppointmentSummary(appointment: AppointmentWithDoctorView): DoctorAppointmentSummary {
@@ -69,6 +113,7 @@ export function toDoctorAppointmentSummary(appointment: AppointmentWithDoctorVie
     cancelledReason: appointment.cancelled_reason,
     cancelledBy: appointment.cancelled_by,
     rescheduledFromAppointmentId: appointment.rescheduled_from_appointment_id,
+    payment: toDoctorAppointmentPayment(appointment),
     createdAt: appointment.created_at,
   };
 }
