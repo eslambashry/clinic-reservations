@@ -17,6 +17,8 @@ const DEFAULT_REGION = REGION_CONSTANTS.DEFAULT_REGION_CODE;
  * locally; the fallback here is fine for a throwaway local Postgres.
  */
 const DEMO_STAFF_PASSWORD = process.env.SEED_DEMO_STAFF_PASSWORD ?? 'DevPass123!';
+const DEMO_PHARMACY_PASSWORD = process.env.SEED_DEMO_PHARMACY_PASSWORD ?? DEMO_STAFF_PASSWORD;
+const DEMO_LAB_PASSWORD = process.env.SEED_DEMO_LAB_PASSWORD ?? DEMO_STAFF_PASSWORD;
 
 async function main() {
   console.log('🌱 Starting database seed verification...');
@@ -235,24 +237,32 @@ async function main() {
   // `SetPasswordUseCase`/`LoginWithPasswordUseCase` use, same pattern as
   // the lab-staff seed below: an Admin has no legitimate reason to depend
   // on OTP-over-SMS (still undeliverable, P0-1) just to review a doctor.
-  const adminPassword = 'DevPass123!';
+  const adminPassword = process.env.SEED_DEMO_ADMIN_PASSWORD ?? 'DevPass123!';
   let adminUser = await prisma.user.findUnique({ where: { phone: '+201000000001' } });
   if (!adminUser) {
     adminUser = await prisma.user.create({
       data: {
         phone: '+201000000001',
-        first_name: 'مسؤول',
-        last_name: 'المنصة',
+        first_name: 'Platform',
+        last_name: 'Admin',
+        status: 'ACTIVE',
         password_hash: await argon2.hash(adminPassword),
       },
     });
-    console.log(`✅ Seeded admin user: ${adminUser.phone} (password: ${adminPassword})`);
-  } else if (!adminUser.password_hash) {
+    console.log(`✅ Seeded admin user: ${adminUser.phone}`);
+  } else {
     adminUser = await prisma.user.update({
       where: { id: adminUser.id },
-      data: { password_hash: await argon2.hash(adminPassword) },
+      data: {
+        first_name: 'Platform',
+        last_name: 'Admin',
+        status: 'ACTIVE',
+        ...(!adminUser.password_hash || process.env.SEED_DEMO_ADMIN_PASSWORD
+          ? { password_hash: await argon2.hash(adminPassword) }
+          : {}),
+      },
     });
-    console.log(`✅ Backfilled password for existing admin user: ${adminUser.phone} (password: ${adminPassword})`);
+    console.log(`✅ Ensured demo admin account: ${adminUser.phone}`);
   }
   const adminMembership = await prisma.roleMembership.findFirst({
     where: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
@@ -262,6 +272,11 @@ async function main() {
       data: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
     });
     console.log(`✅ Granted ADMIN role_membership to ${adminUser.phone}`);
+  } else if (adminMembership.status !== 'ACTIVE') {
+    await prisma.roleMembership.update({
+      where: { id: adminMembership.id },
+      data: { status: 'ACTIVE' },
+    });
   }
 
   // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
@@ -462,18 +477,26 @@ async function main() {
     pharmacyStaffUser = await prisma.user.create({
       data: {
         phone: '+201000000003',
-        first_name: 'Youssef',
+        first_name: 'Yousef',
         last_name: 'Adel',
-        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
+        status: 'ACTIVE',
+        password_hash: await argon2.hash(DEMO_PHARMACY_PASSWORD),
       },
     });
-    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
-  } else if (!pharmacyStaffUser.password_hash) {
+    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone}`);
+  } else {
     pharmacyStaffUser = await prisma.user.update({
       where: { id: pharmacyStaffUser.id },
-      data: { password_hash: await argon2.hash(DEMO_STAFF_PASSWORD) },
+      data: {
+        first_name: 'Yousef',
+        last_name: 'Adel',
+        status: 'ACTIVE',
+        ...(!pharmacyStaffUser.password_hash || process.env.SEED_DEMO_PHARMACY_PASSWORD
+          ? { password_hash: await argon2.hash(DEMO_PHARMACY_PASSWORD) }
+          : {}),
+      },
     });
-    console.log(`✅ Backfilled password for existing pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+    console.log(`✅ Ensured demo pharmacy staff account: ${pharmacyStaffUser.phone}`);
   }
   let pharmacyStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
@@ -489,12 +512,17 @@ async function main() {
       },
     });
     console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone} (branch ${demoPharmacyBranchId})`);
-  } else if (!pharmacyStaffMembership.context_id) {
+  } else if (pharmacyStaffMembership.context_id !== demoPharmacyBranchId || pharmacyStaffMembership.status !== 'ACTIVE') {
     pharmacyStaffMembership = await prisma.roleMembership.update({
       where: { id: pharmacyStaffMembership.id },
-      data: { context_id: demoPharmacyBranchId },
+      data: { context_id: demoPharmacyBranchId, status: 'ACTIVE' },
     });
     console.log(`✅ Assigned branch ${demoPharmacyBranchId} to existing PHARMACY_STAFF membership for ${pharmacyStaffUser.phone}`);
+  } else if (pharmacyStaffMembership.status !== 'ACTIVE') {
+    pharmacyStaffMembership = await prisma.roleMembership.update({
+      where: { id: pharmacyStaffMembership.id },
+      data: { status: 'ACTIVE' },
+    });
   }
   // FK-verified mirror of the membership above (`PharmacyStaffAssignment`) —
   // real referential integrity to `pharmacy_branches`/`users`, kept 1:1 with
@@ -573,10 +601,24 @@ async function main() {
         phone: '+201000000004',
         first_name: 'Amina',
         last_name: 'Tarek',
-        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
+        status: 'ACTIVE',
+        password_hash: await argon2.hash(DEMO_LAB_PASSWORD),
       },
     });
-    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone}`);
+  } else {
+    labStaffUser = await prisma.user.update({
+      where: { id: labStaffUser.id },
+      data: {
+        first_name: 'Amina',
+        last_name: 'Tarek',
+        status: 'ACTIVE',
+        ...(!labStaffUser.password_hash || process.env.SEED_DEMO_LAB_PASSWORD
+          ? { password_hash: await argon2.hash(DEMO_LAB_PASSWORD) }
+          : {}),
+      },
+    });
+    console.log(`✅ Ensured demo lab staff account: ${labStaffUser.phone}`);
   }
   let labStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF' },
@@ -586,6 +628,11 @@ async function main() {
       data: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: demoLabBranchId },
     });
     console.log(`✅ Granted LAB_STAFF role_membership to ${labStaffUser.phone} (branch ${demoLabBranchId})`);
+  } else if (labStaffMembership.context_id !== demoLabBranchId || labStaffMembership.status !== 'ACTIVE') {
+    labStaffMembership = await prisma.roleMembership.update({
+      where: { id: labStaffMembership.id },
+      data: { context_id: demoLabBranchId, status: 'ACTIVE' },
+    });
   }
   // FK-verified mirror, same rationale as the pharmacy staff block above.
   await prisma.labStaffAssignment.upsert({
@@ -902,7 +949,7 @@ async function main() {
         create: { user_id: staffUser.id, pharmacy_branch_id: branch.id, role_membership_id: staffMembership.id },
       });
       console.log(
-        `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
+        `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone}`,
       );
     }
   }
@@ -1081,7 +1128,7 @@ async function main() {
         create: { user_id: staffUser.id, lab_branch_id: branch.id, role_membership_id: staffMembership.id },
       });
       console.log(
-        `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
+        `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone}`,
       );
     }
   }

@@ -1,4 +1,5 @@
 import { prisma } from './client';
+import * as argon2 from '@node-rs/argon2';
 
 /**
  * Standalone demo-data seed for one specific doctor account
@@ -15,6 +16,8 @@ import { prisma } from './client';
  */
 
 const DOCTOR_PHONE = '+201055555555';
+const DOCTOR_PASSWORD = process.env.SEED_DEMO_DOCTOR_PASSWORD;
+const PATIENT_PASSWORD = process.env.SEED_DEMO_PATIENT_PASSWORD;
 
 // Fixed ids so re-running this script is a no-op update, not a duplicate
 // insert — all under one easily-greppable prefix.
@@ -137,6 +140,8 @@ async function main() {
       first_name: 'محمود',
       last_name: 'طه',
       email: 'dr.mahmoud.taha@medsuper.example',
+      status: 'ACTIVE',
+      ...(DOCTOR_PASSWORD ? { password_hash: await argon2.hash(DOCTOR_PASSWORD) } : {}),
     },
     create: {
       id: IDS.user,
@@ -145,6 +150,7 @@ async function main() {
       last_name: 'طه',
       email: 'dr.mahmoud.taha@medsuper.example',
       status: 'ACTIVE',
+      ...(DOCTOR_PASSWORD ? { password_hash: await argon2.hash(DOCTOR_PASSWORD) } : {}),
     },
   });
 
@@ -159,7 +165,10 @@ async function main() {
     create: {
       id: IDS.doctor,
       user_id: user.id,
-      specialty_code: 'DERMATOLOGY',
+      specialty_code: (await prisma.specialty.findFirstOrThrow({
+        where: { name_ar: 'أمراض الجلدية' },
+        select: { code: true },
+      })).code,
       license_number: '55555',
       status: 'VERIFIED',
       license_verified_at: new Date(),
@@ -176,6 +185,11 @@ async function main() {
   if (!existingDoctorMembership) {
     await prisma.roleMembership.create({
       data: { user_id: user.id, role_code: 'DOCTOR', context_type: 'DOCTOR', status: 'ACTIVE' },
+    });
+  } else if (existingDoctorMembership.status !== 'ACTIVE') {
+    await prisma.roleMembership.update({
+      where: { id: existingDoctorMembership.id },
+      data: { status: 'ACTIVE' },
     });
   }
   console.log(`✅ Doctor profile: ${DOCTOR_PHONE} — د. محمود طه (${doctor.id})`);
@@ -251,8 +265,26 @@ async function main() {
   for (const p of PATIENTS) {
     const patientUser = await prisma.user.upsert({
       where: { phone: p.phone },
-      update: { first_name: p.first, last_name: p.last, email: p.email },
-      create: { id: p.id, phone: p.phone, first_name: p.first, last_name: p.last, email: p.email, status: 'ACTIVE' },
+      update: {
+        first_name: p.first,
+        last_name: p.last,
+        email: p.email,
+        status: 'ACTIVE',
+        ...(p.phone === PATIENTS[0].phone && PATIENT_PASSWORD
+          ? { password_hash: await argon2.hash(PATIENT_PASSWORD) }
+          : {}),
+      },
+      create: {
+        id: p.id,
+        phone: p.phone,
+        first_name: p.first,
+        last_name: p.last,
+        email: p.email,
+        status: 'ACTIVE',
+        ...(p.phone === PATIENTS[0].phone && PATIENT_PASSWORD
+          ? { password_hash: await argon2.hash(PATIENT_PASSWORD) }
+          : {}),
+      },
     });
     patientIdByPhone.set(p.phone, patientUser.id);
 
@@ -262,6 +294,11 @@ async function main() {
     if (!existingMembership) {
       await prisma.roleMembership.create({
         data: { user_id: patientUser.id, role_code: 'PATIENT', context_type: 'PATIENT', status: 'ACTIVE' },
+      });
+    } else if (existingMembership.status !== 'ACTIVE') {
+      await prisma.roleMembership.update({
+        where: { id: existingMembership.id },
+        data: { status: 'ACTIVE' },
       });
     }
   }
@@ -309,7 +346,10 @@ async function main() {
     // claims its slot — a slot is only ever OPEN before something books it.
     await prisma.appointmentSlot.upsert({
       where: { id: apt.slotId },
-      update: { start_at: startAt, end_at: endAt, status: 'BOOKED' },
+      // Keep an existing slot's time stable across seed reruns. Moving a
+      // relative-date slot can collide with another booking/slot created
+      // since the previous run (the unique key is affiliation + start_at).
+      update: { status: 'BOOKED' },
       create: {
         id: apt.slotId,
         doctor_clinic_affiliation_id: apt.affiliationId,
