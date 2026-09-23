@@ -1,7 +1,10 @@
 model Specialty {
-  code        String      @id
+  /// UUID like every other primary key in the schema. Kept named `code`
+  /// (rather than `id`) so the API and clients that already send
+  /// `specialty=<code>` keep working unchanged.
+  code        String      @id @default(uuid()) @db.Uuid
   name_ar     String
-  parent_code String?
+  parent_code String?     @db.Uuid
   created_at  DateTime    @default(now()) @db.Timestamptz(6)
   updated_at  DateTime    @updatedAt @db.Timestamptz(6)
   version     Int         @default(1)
@@ -35,7 +38,7 @@ model Address {
 model Doctor {
   id                  String                    @id @default(uuid()) @db.Uuid
   user_id             String                    @unique @db.Uuid
-  specialty_code      String
+  specialty_code      String                    @db.Uuid
   license_number      String
   license_verified_at DateTime?                 @db.Timestamptz(6)
   status              DoctorStatus              @default(PENDING)

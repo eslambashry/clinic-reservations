@@ -17,7 +17,8 @@ describe('DoctorSearchRepository (integration)', () => {
   const repository = new DoctorSearchRepository(prisma as any);
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   // Cairo-ish coordinates a few km apart, so radius filtering is meaningful.
   const NEAR = { lat: 30.0444, lng: 31.2357 };

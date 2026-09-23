@@ -13,7 +13,6 @@ export type SpecialtyWithCounts = Specialty & {
 };
 
 export interface CreateSpecialtyInput {
-  code: string;
   name_ar: string;
   parent_code?: string | null;
 }
@@ -28,8 +27,8 @@ export interface UpdateSpecialtyInput {
  * Specialties started as static seed data (File 10 §3.3) but are now
  * admin-managed, so this repository writes as well as reads.
  *
- * `code` is the primary key (there is no separate `id`) and doctors
- * reference it by FK, so it is set once at creation and never updated.
+ * `code` is the primary key (there is no separate `id`): a database-generated
+ * UUID that doctors reference by FK, so it is never supplied or updated.
  */
 @Injectable()
 export class SpecialtyRepository {
@@ -45,13 +44,10 @@ export class SpecialtyRepository {
 
   /** Admin list: optional `name_ar`/`code` search, each row carrying its counts. */
   async findAllWithCounts(search?: string): Promise<SpecialtyWithCounts[]> {
+    // `code` is a UUID, so it supports no substring match — the admin search
+    // is over `name_ar`, which is what the console actually types.
     const where: Prisma.SpecialtyWhereInput | undefined = search
-      ? {
-          OR: [
-            { name_ar: { contains: search, mode: 'insensitive' } },
-            { code: { contains: search, mode: 'insensitive' } },
-          ],
-        }
+      ? { name_ar: { contains: search, mode: 'insensitive' } }
       : undefined;
 
     const rows = await this.prisma.specialty.findMany({
@@ -81,7 +77,6 @@ export class SpecialtyRepository {
   create(db: Prisma.TransactionClient, input: CreateSpecialtyInput): Promise<Specialty> {
     return db.specialty.create({
       data: {
-        code: input.code,
         name_ar: input.name_ar,
         parent_code: input.parent_code ?? null,
       },

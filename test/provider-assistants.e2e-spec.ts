@@ -22,7 +22,8 @@ describe('Provider Assistants (e2e)', () => {
   let jwt: JwtService;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `E2E_ASSISTANT_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   // E.164 phone numbers must be all-digits — `suffix` above is hex (can
   // contain a-f), so phone numbers use this purely numeric suffix instead.
   const numericSuffix = (Date.now() % 10000000).toString().padStart(7, '0');

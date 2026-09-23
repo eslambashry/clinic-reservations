@@ -67,7 +67,8 @@ export class DoctorSearchRepository {
     ];
 
     if (params.specialtyCode) {
-      whereParts.push(Prisma.sql`d.specialty_code = ${params.specialtyCode}`);
+      // `specialty_code` is uuid; the bound parameter arrives as text.
+      whereParts.push(Prisma.sql`d.specialty_code = ${params.specialtyCode}::uuid`);
     }
     if (params.q) {
       whereParts.push(Prisma.sql`(

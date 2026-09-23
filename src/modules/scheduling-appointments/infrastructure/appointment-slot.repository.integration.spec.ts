@@ -31,7 +31,8 @@ describe('GenerateSlotsUseCase (integration)', () => {
   let generateSlots: GenerateSlotsUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_SCHED_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   const TIMEZONE = 'Africa/Cairo';
 
   let clinicId: string;

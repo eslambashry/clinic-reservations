@@ -1,10 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 /**
- * `code` is deliberately absent: it is the primary key and the target of
- * `doctors.specialty_code`, so changing it would rewrite every doctor's
- * specialty. Create a new specialty instead.
+ * `code` is deliberately absent: it is a generated UUID primary key and the
+ * target of `doctors.specialty_code`.
  */
 export class UpdateSpecialtyDto {
   @ApiPropertyOptional({ example: 'أمراض القلب' })
@@ -19,12 +18,12 @@ export class UpdateSpecialtyDto {
    * omitting the field leaves the current parent untouched.
    */
   @ApiPropertyOptional({
-    example: 'INTERNAL_MEDICINE',
+    format: 'uuid',
     nullable: true,
     description: 'null makes the specialty top-level; omit to leave unchanged.',
   })
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
-  @IsString()
+  @IsUUID()
   parent_code?: string | null;
 }

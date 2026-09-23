@@ -6,6 +6,7 @@ import {
   HttpCode,
   Inject,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -65,7 +66,7 @@ export class SpecialtiesController {
   @Roles(RoleContextType.ADMIN)
   @Get('admin/:code')
   @ApiOperation({ summary: 'Admin: one specialty with its doctor and child counts' })
-  getAdmin(@Param('code') code: string): Promise<SpecialtyWithCounts> {
+  getAdmin(@Param('code', ParseUUIDPipe) code: string): Promise<SpecialtyWithCounts> {
     return this.getForAdmin.execute(code);
   }
 
@@ -85,7 +86,7 @@ export class SpecialtiesController {
   @Patch(':code')
   @ApiOperation({ summary: 'Admin: update a specialty (code itself is immutable)' })
   update(
-    @Param('code') code: string,
+    @Param('code', ParseUUIDPipe) code: string,
     @Body() dto: UpdateSpecialtyDto,
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<Specialty> {
@@ -100,7 +101,7 @@ export class SpecialtiesController {
     summary: 'Admin: delete a specialty — 409 if any doctor or child specialty uses it',
   })
   async remove(
-    @Param('code') code: string,
+    @Param('code', ParseUUIDPipe) code: string,
     @CurrentUser() user: AccessTokenPayload,
   ): Promise<void> {
     await this.deleteSpecialty.execute(code, user);

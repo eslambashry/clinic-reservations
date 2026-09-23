@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { CreateSpecialtyUseCase } from './create-specialty.use-case';
 
 const actor = {
@@ -15,7 +15,9 @@ describe('CreateSpecialtyUseCase', () => {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const specialties = {
       findByCode: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((_tx: unknown, input: any) => ({ ...input })),
+      create: jest
+        .fn()
+        .mockImplementation((_tx: unknown, input: any) => ({ code: '11111111-1111-4111-8111-111111111111', ...input })),
     };
     const audit = { record: jest.fn() };
     const useCase = new CreateSpecialtyUseCase(prisma as any, specialties as any, audit as any);
@@ -25,64 +27,39 @@ describe('CreateSpecialtyUseCase', () => {
   it('creates a top-level specialty and records an audit entry', async () => {
     const { tx, specialties, audit, useCase } = setup();
 
-    const result = await useCase.execute({ code: 'CARDIOLOGY', name_ar: 'أمراض القلب' }, actor);
+    const result = await useCase.execute({ name_ar: 'أمراض القلب' }, actor);
 
-    expect(result.code).toBe('CARDIOLOGY');
-    expect(specialties.create).toHaveBeenCalledWith(tx, {
-      code: 'CARDIOLOGY',
-      name_ar: 'أمراض القلب',
-    });
+    // `code` comes back from the database, it is never supplied.
+    expect(result.code).toBe('11111111-1111-4111-8111-111111111111');
+    expect(specialties.create).toHaveBeenCalledWith(tx, { name_ar: 'أمراض القلب' });
     expect(audit.record).toHaveBeenCalledWith(tx, {
       actorUserId: 'admin-user-1',
       actorRoleMembershipId: 'membership-1',
       action: 'provider_directory.specialty.create',
       resourceType: 'specialty',
-      resourceId: 'CARDIOLOGY',
+      resourceId: '11111111-1111-4111-8111-111111111111',
     });
-  });
-
-  it('409s when the code is already taken', async () => {
-    const { specialties, useCase } = setup();
-    specialties.findByCode.mockResolvedValue({ code: 'CARDIOLOGY' });
-
-    const error = await useCase
-      .execute({ code: 'CARDIOLOGY', name_ar: 'أمراض القلب' }, actor)
-      .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ConflictError);
-    expect((error as ConflictError).code).toBe('SPECIALTY_CODE_EXISTS');
-    expect(specialties.create).not.toHaveBeenCalled();
   });
 
   it('404s when the parent code does not exist', async () => {
     const { specialties, useCase } = setup();
-    // The specialty itself is free, its parent is missing.
-    specialties.findByCode.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    specialties.findByCode.mockResolvedValue(null);
 
     await expect(
-      useCase.execute(
-        { code: 'PEDIATRIC_CARDIOLOGY', name_ar: 'قلب الأطفال', parent_code: 'NOPE' },
-        actor,
-      ),
+      useCase.execute({ name_ar: 'قلب الأطفال', parent_code: '22222222-2222-4222-8222-222222222222' }, actor),
     ).rejects.toBeInstanceOf(NotFoundError);
     expect(specialties.create).not.toHaveBeenCalled();
   });
 
   it('creates a child specialty when the parent exists', async () => {
     const { specialties, useCase } = setup();
-    specialties.findByCode
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ code: 'CARDIOLOGY' });
+    specialties.findByCode.mockResolvedValue({ code: '22222222-2222-4222-8222-222222222222' });
 
-    await useCase.execute(
-      { code: 'PEDIATRIC_CARDIOLOGY', name_ar: 'قلب الأطفال', parent_code: 'CARDIOLOGY' },
-      actor,
-    );
+    await useCase.execute({ name_ar: 'قلب الأطفال', parent_code: '22222222-2222-4222-8222-222222222222' }, actor);
 
     expect(specialties.create).toHaveBeenCalledWith(expect.anything(), {
-      code: 'PEDIATRIC_CARDIOLOGY',
       name_ar: 'قلب الأطفال',
-      parent_code: 'CARDIOLOGY',
+      parent_code: '22222222-2222-4222-8222-222222222222',
     });
   });
 });

@@ -107,7 +107,6 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // (`arErrorMessage` keeps an Arabic message from the throw site); these are
   // the catalog fallbacks.
   SPECIALTY_IN_USE: 'لا يمكن حذف هذا التخصص لارتباطه بأطباء أو تخصصات فرعية.',
-  SPECIALTY_CODE_EXISTS: 'يوجد تخصص بهذا الكود بالفعل.',
   SPECIALTY_PARENT_CYCLE: 'لا يمكن جعل التخصص تابعاً لنفسه أو لأحد تخصصاته الفرعية.',
 
   // ── Payments ────────────────────────────────────────────────────────────

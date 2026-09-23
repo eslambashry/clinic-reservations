@@ -57,7 +57,8 @@ describe('Appointment booking loop (integration)', () => {
   let getAppointment: GetAppointmentUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_HOLD_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   const CONCURRENT_PATIENTS = 5;
 
   let clinicId: string;

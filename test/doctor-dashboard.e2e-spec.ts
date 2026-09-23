@@ -29,7 +29,8 @@ describe('Doctor Dashboard (e2e)', () => {
 
   const suffix = randomUUID().slice(0, 8);
   const numericSuffix = (Date.now() % 100000000).toString().padStart(8, '0');
-  const specialtyCode = `E2E_DASH_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   const createdUserIds: string[] = [];
 

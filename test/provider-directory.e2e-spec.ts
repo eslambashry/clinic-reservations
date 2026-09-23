@@ -25,7 +25,8 @@ describe('Provider Directory (e2e)', () => {
   let jwt: JwtService;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `E2E_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   let adminUserId: string;
   let adminMembershipId: string;

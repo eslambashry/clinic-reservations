@@ -132,42 +132,43 @@ async function main() {
   // the test doctor below depends on; the rest exist so the doctor roster
   // further down has real variety to search/filter across.
   const specialtiesData = [
-    { code: 'GENERAL_PRACTICE', name_ar: 'طب عام' },
-    { code: 'CARDIOLOGY', name_ar: 'أمراض القلب' },
-    { code: 'DERMATOLOGY', name_ar: 'أمراض الجلدية' },
-    { code: 'PEDIATRICS', name_ar: 'طب الأطفال' },
-    { code: 'ORTHOPEDICS', name_ar: 'جراحة العظام' },
-    { code: 'OTOLARYNGOLOGY', name_ar: 'أنف وأذن وحنجرة' },
-    { code: 'OPHTHALMOLOGY', name_ar: 'طب وجراحة العيون' },
-    { code: 'NEUROLOGY', name_ar: 'طب المخ والأعصاب' },
-    { code: 'PSYCHIATRY', name_ar: 'الطب النفسي' },
-    { code: 'OBSTETRICS_AND_GYNECOLOGY', name_ar: 'أمراض النساء والتوليد' },
-    { code: 'UROLOGY', name_ar: 'المسالك البولية' },
-    { code: 'ENDOCRINOLOGY', name_ar: 'الغدد الصماء' },
-    { code: 'GASTROENTEROLOGY', name_ar: 'الجهاز الهضمي' },
-    { code: 'PULMONOLOGY', name_ar: 'الصدر' },
-    { code: 'DENTISTRY', name_ar: 'طب الأسنان' },
-    { code: 'FAMILY_MEDICINE', name_ar: 'طب الأسرة' },
-    { code: 'RHEUMATOLOGY', name_ar: 'أمراض الروماتيزم' },
-    { code: 'HEMATOLOGY', name_ar: 'أمراض الدم' },
-    { code: 'NEPHROLOGY', name_ar: 'أمراض الكلى' },
-    { code: 'ALLERGY_AND_IMMUNOLOGY', name_ar: 'الحساسية والمناعة' },
-    { code: 'INTERNAL_MEDICINE', name_ar: 'الباطنة العامة' },
+    { name_ar: 'طب عام' },
+    { name_ar: 'أمراض القلب' },
+    { name_ar: 'أمراض الجلدية' },
+    { name_ar: 'طب الأطفال' },
+    { name_ar: 'جراحة العظام' },
+    { name_ar: 'أنف وأذن وحنجرة' },
+    { name_ar: 'طب وجراحة العيون' },
+    { name_ar: 'طب المخ والأعصاب' },
+    { name_ar: 'الطب النفسي' },
+    { name_ar: 'أمراض النساء والتوليد' },
+    { name_ar: 'المسالك البولية' },
+    { name_ar: 'الغدد الصماء' },
+    { name_ar: 'الجهاز الهضمي' },
+    { name_ar: 'الصدر' },
+    { name_ar: 'طب الأسنان' },
+    { name_ar: 'طب الأسرة' },
+    { name_ar: 'أمراض الروماتيزم' },
+    { name_ar: 'أمراض الدم' },
+    { name_ar: 'أمراض الكلى' },
+    { name_ar: 'الحساسية والمناعة' },
+    { name_ar: 'الباطنة العامة' },
     
   ];
 
+  // `code` is a generated UUID, so it cannot be written here and cannot
+  // identify a row across environments — `name_ar` is the seed's natural
+  // key, and the doctor roster below resolves specialties by it too.
   for (const spec of specialtiesData) {
-    const existing = await prisma.specialty.findUnique({
-      where: { code: spec.code },
+    const existing = await prisma.specialty.findFirst({
+      where: { name_ar: spec.name_ar },
     });
 
     if (!existing) {
-      // `code` is Specialty's primary key (no separate `id`); these literals
-      // preserve the codes the earlier English-name-derived seed produced.
       const created = await prisma.specialty.create({
-        data: { code: spec.code, name_ar: spec.name_ar },
+        data: { name_ar: spec.name_ar },
       });
-      console.log(`✅ Seeded specialty: ${created.code} / ${created.name_ar}`);
+      console.log(`✅ Seeded specialty: ${created.name_ar} (${created.code})`);
     }
   }
 
@@ -213,7 +214,7 @@ async function main() {
   // (File 11 Part 28 Phase 2 exit criterion): once an Admin verifies this
   // doctor, it becomes visible via `GET /v1/doctors/search` because its
   // affiliation/branch/clinic are already in good standing.
-  const generalPractice = await prisma.specialty.findUnique({ where: { code: 'GENERAL_PRACTICE' } });
+  const generalPractice = await prisma.specialty.findFirst({ where: { name_ar: 'طب عام' } });
   let testDoctorUser = await prisma.user.findUnique({ where: { phone: '+201000000002' } });
   if (!testDoctorUser) {
     testDoctorUser = await prisma.user.create({
@@ -1155,7 +1156,7 @@ async function main() {
     phone: string;
     firstName: string;
     lastName: string;
-    specialtyCode: string;
+    specialtyName: string;
     licenseNumber: string;
     degree: string;
     bio: string;
@@ -1170,7 +1171,7 @@ async function main() {
       phone: '+201000000030',
       firstName: 'Ahmed',
       lastName: 'Hassan',
-      specialtyCode: 'CARDIOLOGY',
+      specialtyName: 'أمراض القلب',
       licenseNumber: 'EG-MED-2012-00101',
       degree: 'MBBCh, MD Cardiology',
       bio: 'Consultant cardiologist with a focus on hypertension and preventive heart care.',
@@ -1188,7 +1189,7 @@ async function main() {
       phone: '+201000000031',
       firstName: 'Heba',
       lastName: 'Magdy',
-      specialtyCode: 'CARDIOLOGY',
+      specialtyName: 'أمراض القلب',
       licenseNumber: 'EG-MED-2014-00102',
       degree: 'MBBCh, MSc Cardiology',
       bio: 'Cardiologist specializing in echocardiography and heart failure management.',
@@ -1206,7 +1207,7 @@ async function main() {
       phone: '+201000000032',
       firstName: 'Sara',
       lastName: 'Youssef',
-      specialtyCode: 'DERMATOLOGY',
+      specialtyName: 'أمراض الجلدية',
       licenseNumber: 'EG-MED-2015-00103',
       degree: 'MBBCh, MSc Dermatology',
       bio: 'Dermatologist covering general skin conditions, acne, and cosmetic dermatology.',
@@ -1224,7 +1225,7 @@ async function main() {
       phone: '+201000000033',
       firstName: 'Khaled',
       lastName: 'Mostafa',
-      specialtyCode: 'PEDIATRICS',
+      specialtyName: 'طب الأطفال',
       licenseNumber: 'EG-MED-2010-00104',
       degree: 'MBBCh, MD Pediatrics',
       bio: 'Pediatrician with two decades of experience in newborn and child care.',
@@ -1242,7 +1243,7 @@ async function main() {
       phone: '+201000000034',
       firstName: 'Nourhan',
       lastName: 'Adel',
-      specialtyCode: 'ORTHOPEDICS',
+      specialtyName: 'جراحة العظام',
       licenseNumber: 'EG-MED-2013-00105',
       degree: 'MBBCh, MSc Orthopedic Surgery',
       bio: 'Orthopedic surgeon specializing in sports injuries and joint pain.',
@@ -1260,7 +1261,7 @@ async function main() {
       phone: '+201000000035',
       firstName: 'Omar',
       lastName: 'Farouk',
-      specialtyCode: 'OTOLARYNGOLOGY',
+      specialtyName: 'أنف وأذن وحنجرة',
       licenseNumber: 'EG-MED-2016-00106',
       degree: 'MBBCh, MSc ENT Surgery',
       bio: 'ENT specialist treating sinus, ear, and throat conditions in adults and children.',
@@ -1278,7 +1279,7 @@ async function main() {
       phone: '+201000000036',
       firstName: 'Dina',
       lastName: 'Samir',
-      specialtyCode: 'OPHTHALMOLOGY',
+      specialtyName: 'طب وجراحة العيون',
       licenseNumber: 'EG-MED-2011-00107',
       degree: 'MBBCh, MD Ophthalmology',
       bio: 'Ophthalmologist with a focus on cataract surgery and general eye care.',
@@ -1296,7 +1297,7 @@ async function main() {
       phone: '+201000000037',
       firstName: 'Tarek',
       lastName: 'Ibrahim',
-      specialtyCode: 'NEUROLOGY',
+      specialtyName: 'طب المخ والأعصاب',
       licenseNumber: 'EG-MED-2009-00108',
       degree: 'MBBCh, MD Neurology',
       bio: 'Neurologist managing migraines, epilepsy, and general neurological disorders.',
@@ -1314,7 +1315,7 @@ async function main() {
       phone: '+201000000038',
       firstName: 'Rana',
       lastName: 'Elshamy',
-      specialtyCode: 'PSYCHIATRY',
+      specialtyName: 'الطب النفسي',
       licenseNumber: 'EG-MED-2017-00109',
       degree: 'MBBCh, MSc Psychiatry',
       bio: 'Psychiatrist focusing on anxiety, depression, and stress-related disorders.',
@@ -1332,7 +1333,7 @@ async function main() {
       phone: '+201000000039',
       firstName: 'Mahmoud',
       lastName: 'Saeed',
-      specialtyCode: 'OBSTETRICS_AND_GYNECOLOGY',
+      specialtyName: 'أمراض النساء والتوليد',
       licenseNumber: 'EG-MED-2008-00110',
       degree: 'MBBCh, MD Obstetrics and Gynecology',
       bio: 'OB/GYN consultant covering prenatal care, deliveries, and women\'s health.',
@@ -1350,7 +1351,7 @@ async function main() {
       phone: '+201000000040',
       firstName: 'Yara',
       lastName: 'Kamal',
-      specialtyCode: 'UROLOGY',
+      specialtyName: 'المسالك البولية',
       licenseNumber: 'EG-MED-2014-00111',
       degree: 'MBBCh, MSc Urology',
       bio: 'Urologist treating kidney stones, urinary tract conditions, and general urology.',
@@ -1368,7 +1369,7 @@ async function main() {
       phone: '+201000000041',
       firstName: 'Hossam',
       lastName: 'Aly',
-      specialtyCode: 'ENDOCRINOLOGY',
+      specialtyName: 'الغدد الصماء',
       licenseNumber: 'EG-MED-2013-00112',
       degree: 'MBBCh, MD Endocrinology',
       bio: 'Endocrinologist specializing in diabetes, thyroid disorders, and hormonal health.',
@@ -1386,7 +1387,7 @@ async function main() {
       phone: '+201000000042',
       firstName: 'Mai',
       lastName: 'Reda',
-      specialtyCode: 'GASTROENTEROLOGY',
+      specialtyName: 'الجهاز الهضمي',
       licenseNumber: 'EG-MED-2015-00113',
       degree: 'MBBCh, MSc Gastroenterology',
       bio: 'Gastroenterologist managing digestive disorders and endoscopic procedures.',
@@ -1404,7 +1405,7 @@ async function main() {
       phone: '+201000000043',
       firstName: 'Amr',
       lastName: 'Nabil',
-      specialtyCode: 'PULMONOLOGY',
+      specialtyName: 'الصدر',
       licenseNumber: 'EG-MED-2012-00114',
       degree: 'MBBCh, MD Pulmonology',
       bio: 'Pulmonologist treating asthma, COPD, and general respiratory conditions.',
@@ -1422,7 +1423,7 @@ async function main() {
       phone: '+201000000044',
       firstName: 'Salma',
       lastName: 'Zaki',
-      specialtyCode: 'DENTISTRY',
+      specialtyName: 'طب الأسنان',
       licenseNumber: 'EG-DEN-2016-00115',
       degree: 'BDS, MSc Dentistry',
       bio: 'General dentist offering checkups, fillings, and cosmetic dentistry.',
@@ -1440,7 +1441,7 @@ async function main() {
       phone: '+201000000045',
       firstName: 'Karim',
       lastName: 'Adly',
-      specialtyCode: 'FAMILY_MEDICINE',
+      specialtyName: 'طب الأسرة',
       licenseNumber: 'EG-MED-2018-00116',
       degree: 'MBBCh',
       bio: 'Family medicine physician for general checkups and everyday health concerns.',
@@ -1457,7 +1458,7 @@ async function main() {
   ];
 
   for (const doc of demoDoctors) {
-    const specialty = await prisma.specialty.findUnique({ where: { code: doc.specialtyCode } });
+    const specialty = await prisma.specialty.findFirst({ where: { name_ar: doc.specialtyName } });
     const branchId = demoClinicBranchIdByKey.get(doc.clinicKey);
     if (!specialty || !branchId) {
       console.warn(`⚠️ Skipping doctor ${doc.firstName} ${doc.lastName}: missing specialty or clinic branch`);
@@ -1521,7 +1522,7 @@ async function main() {
         });
       }
     }
-    console.log(`✅ Seeded doctor: Dr. ${doc.firstName} ${doc.lastName} (${doc.specialtyCode}) at ${doc.clinicKey}`);
+    console.log(`✅ Seeded doctor: Dr. ${doc.firstName} ${doc.lastName} (${doc.specialtyName}) at ${doc.clinicKey}`);
   }
   // Slots aren't generated here — same as the single test doctor above,
   // `HoldExpiryJob`'s sibling `SlotGenerationJob` (worker process cron)

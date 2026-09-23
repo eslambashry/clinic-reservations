@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsISO8601, IsInt, IsLatitude, IsLongitude, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsISO8601, IsInt, IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 const SORT_VALUES = ['distance:asc', 'rating:desc', 'price:asc'] as const;
 
@@ -11,9 +11,11 @@ const SORT_VALUES = ['distance:asc', 'rating:desc', 'price:asc'] as const;
  * Phase 3).
  */
 export class DoctorSearchQueryDto {
-  @ApiPropertyOptional({ example: 'CARDIOLOGY' })
+  // Validated as a UUID so a stale text code (`CARDIOLOGY`) is a 400 rather
+  // than a 500 from the ::uuid cast in the search query.
+  @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
-  @IsString()
+  @IsUUID()
   specialty?: string;
 
   @ApiPropertyOptional({ description: 'Free-text name/specialty search (pg_trgm)' })

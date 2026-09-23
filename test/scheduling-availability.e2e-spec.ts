@@ -24,7 +24,8 @@ describe('Scheduling Availability (e2e)', () => {
   let generateSlots: GenerateSlotsUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `E2E_SCHED_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   let adminUserId: string;
   let adminMembershipId: string;
