@@ -103,6 +103,12 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   BRANCH_HAS_BOOKINGS: 'لا يمكن حذف الفرع لأنه يحتوي على مواعيد محجوزة.',
   PROVIDER_TYPE_NOT_SUPPORTED: 'هذا النوع من مقدّمي الخدمة غير مدعوم في هذا الإجراء.',
   DOCTOR_APPLICATION_NOT_PENDING: 'لا يمكن رفض طلب طبيب لم يعد قيد المراجعة.',
+  // The throw sites build a more specific Arabic sentence naming the counts
+  // (`arErrorMessage` keeps an Arabic message from the throw site); these are
+  // the catalog fallbacks.
+  SPECIALTY_IN_USE: 'لا يمكن حذف هذا التخصص لارتباطه بأطباء أو تخصصات فرعية.',
+  SPECIALTY_CODE_EXISTS: 'يوجد تخصص بهذا الكود بالفعل.',
+  SPECIALTY_PARENT_CYCLE: 'لا يمكن جعل التخصص تابعاً لنفسه أو لأحد تخصصاته الفرعية.',
 
   // ── Payments ────────────────────────────────────────────────────────────
   PAYMENT_METHOD_NOT_SUPPORTED: 'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
