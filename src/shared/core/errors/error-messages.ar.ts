@@ -90,6 +90,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
+  VISIT_STATUS_TOO_EARLY: 'لا يمكن تغيير حالة الزيارة قبل موعد المريض المسموح به.',
+  VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW: 'تغيير حالة الزيارة متاح فقط خلال وقت الموعد المحدد.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
   SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
   INVALID_DATE_RANGE: 'النطاق الزمني المطلوب غير صحيح.',

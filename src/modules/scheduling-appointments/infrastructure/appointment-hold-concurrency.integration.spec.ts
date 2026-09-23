@@ -10,6 +10,7 @@ import { CreateHoldUseCase } from '../application/create-hold.use-case';
 import { GetAppointmentUseCase } from '../application/get-appointment.use-case';
 import { ListAppointmentsUseCase } from '../application/list-appointments.use-case';
 import { RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
+import { ResolveAppointmentPaymentAmountUseCase } from '../application/resolve-appointment-payment-amount.use-case';
 import { ResolveAppointmentScopeUseCase } from '../application/resolve-appointment-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AuditLogRepository } from '../../audit/infrastructure/audit-log.repository';
@@ -89,6 +90,7 @@ describe('Appointment booking loop (integration)', () => {
         // this instead of hard-coding `patient_id === actor.sub`.
         ResolveDoctorScopeUseCase,
         ResolveAppointmentScopeUseCase,
+        ResolveAppointmentPaymentAmountUseCase,
         PaymentIntentRepository,
         PaymentSplitRepository,
         RefundRepository,
