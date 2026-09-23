@@ -46,6 +46,61 @@ async function main() {
   }
   console.log(`✅ Seeded ${rolesData.length} roles`);
 
+  // File 12 Part 51 — provider clinical requests. `@Permissions()`/
+  // `role_permissions` existed as pure scaffolding until now (zero rows,
+  // zero `@Permissions()` call sites anywhere in this codebase before this
+  // pass — verified). These two codes are role-wide, not per-assistant: a
+  // `CLINIC_STAFF` membership's permissions are resolved once at token
+  // issuance (`TokenService`, from `role_code`), so every assistant
+  // provisioned under a doctor gets the same capability — there is no
+  // per-assignment grant/revoke mechanism yet, and permissions embedded in
+  // an already-issued token do not change until that token is refreshed.
+  // Both are flagged as a known limitation in the Part 51 write-up, not
+  // silently assumed away.
+  const permissionsData = [
+    {
+      code: 'prescriptions:create:assistant',
+      module: 'prescriptions',
+      action: 'create:assistant',
+      description: 'CLINIC_STAFF may prepare a doctor-issued prescription draft, pending the supervising doctor’s approval.',
+    },
+    {
+      code: 'lab-orders:create:assistant',
+      module: 'lab-orders',
+      action: 'create:assistant',
+      description: 'CLINIC_STAFF may create a lab order on behalf of the supervising doctor.',
+    },
+    {
+      code: 'pharmacy-orders:create:assistant',
+      module: 'pharmacy-orders',
+      action: 'create:assistant',
+      description: 'CLINIC_STAFF may submit an already approved doctor-issued prescription to pharmacy fulfillment.',
+    },
+  ];
+
+  for (const permission of permissionsData) {
+    await prisma.permission.upsert({
+      where: { code: permission.code },
+      update: {},
+      create: permission,
+    });
+  }
+
+  const rolePermissionsData = [
+    { role_code: 'CLINIC_STAFF', permission_code: 'prescriptions:create:assistant' },
+    { role_code: 'CLINIC_STAFF', permission_code: 'lab-orders:create:assistant' },
+    { role_code: 'CLINIC_STAFF', permission_code: 'pharmacy-orders:create:assistant' },
+  ];
+
+  for (const rolePermission of rolePermissionsData) {
+    await prisma.rolePermission.upsert({
+      where: { role_code_permission_code: rolePermission },
+      update: {},
+      create: rolePermission,
+    });
+  }
+  console.log(`✅ Seeded ${permissionsData.length} permissions / ${rolePermissionsData.length} role_permissions`);
+
   // Seed default cancellation-fee policy (File 11 Part 12: cancellation fee
   // is computed server-side from policy_configs, never hardcoded).
   const existingPolicy = await prisma.policyConfig.findFirst({

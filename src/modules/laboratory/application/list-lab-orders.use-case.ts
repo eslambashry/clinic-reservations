@@ -3,6 +3,7 @@ import { LabOrder, LabOrderStatus } from '@prisma/client';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { ForbiddenError } from '../../../shared/core/errors/domain-errors';
@@ -49,6 +50,7 @@ export class ListLabOrdersUseCase {
     @Inject(LabOrderNoteRepository) private readonly labOrderNotes: LabOrderNoteRepository,
     @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(GetCustodyEventsUseCase) private readonly getCustodyEvents: GetCustodyEventsUseCase,
@@ -70,6 +72,9 @@ export class ListLabOrdersUseCase {
         throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
       }
       rows = await this.labOrders.findForBranch(this.prisma, membership.contextId, page);
+    } else if (actor.contextType === 'DOCTOR' || actor.contextType === 'CLINIC_STAFF') {
+      const scope = await this.resolveDoctorScope.execute(actor);
+      rows = await this.labOrders.findByDoctorId(this.prisma, scope.doctorUserId, page, actor.contextType === 'CLINIC_STAFF' ? actor.sub : undefined);
     } else {
       throw new ForbiddenError('FORBIDDEN', 'صلاحيات حسابك لا تسمح بعرض طلبات التحاليل.');
     }

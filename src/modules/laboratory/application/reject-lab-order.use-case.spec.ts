@@ -7,8 +7,9 @@ function setup() {
   const getActiveRoleMembership = { execute: jest.fn() };
   const getCustodyEvents = { executeForOrders: jest.fn().mockResolvedValue(new Map()) };
   const audit = { record: jest.fn() };
-  const useCase = new RejectLabOrderUseCase(prisma as any, labOrders as any, getActiveRoleMembership as any, getCustodyEvents as any, audit as any);
-  return { tx, labOrders, getActiveRoleMembership, getCustodyEvents, audit, useCase };
+  const outbox = { emit: jest.fn() };
+  const useCase = new RejectLabOrderUseCase(prisma as any, labOrders as any, getActiveRoleMembership as any, getCustodyEvents as any, audit as any, outbox as any);
+  return { tx, labOrders, getActiveRoleMembership, getCustodyEvents, audit, outbox, useCase };
 }
 
 describe('RejectLabOrderUseCase', () => {
@@ -16,14 +17,15 @@ describe('RejectLabOrderUseCase', () => {
   const membership = { roleMembershipId: 'm-2', contextId: 'branch-1' };
 
   it('rejects a REQUESTED order with no live sample', async () => {
-    const { tx, getActiveRoleMembership, labOrders, audit, useCase } = setup();
+    const { tx, getActiveRoleMembership, labOrders, audit, outbox, useCase } = setup();
     getActiveRoleMembership.execute.mockResolvedValue(membership);
-    labOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'REQUESTED', lab_branch_id: 'branch-1' });
+    labOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'REQUESTED', lab_branch_id: 'branch-1', patient_id: 'patient-1' });
 
     const result = await useCase.execute('order-1', { reason: 'التحليل غير متاح' }, actor);
 
     expect(labOrders.rejectOrder).toHaveBeenCalledWith(tx, 'order-1', 1, { reason: 'التحليل غير متاح', note: null });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'laboratory.lab-order.order-rejected' }));
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'LabOrderStatusChanged', expect.objectContaining({ recipientUserId: 'patient-1', status: 'REJECTED' }));
     expect(result).toEqual({ labOrderId: 'order-1', status: 'REJECTED' });
   });
 

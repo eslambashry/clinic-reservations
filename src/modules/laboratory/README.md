@@ -80,6 +80,8 @@ an order-level result (nullable FK) for a freeform order, flipping
 `record-result-delivery` needed no changes — none of them were ever keyed
 off item count. Catalog-based (`testCodes`) orders are untouched.
 
+**Provider clinical requests (File 12 Part 51, 2026-09-19):** `POST /v1/lab-orders/provider` creates a patient-specific order in `REQUESTED` in the same `LabBranch` queue; `GET /v1/lab-orders` and detail are scoped to the provider/patient/branch. Assistants require `lab-orders:create:assistant`; lab orders do not require a physician countersignature under the current authorization model. `GET /v1/lab-orders/catalog` exposes the existing seeded `TestCatalog`; `/v1/lab-branches/search` supplies verified branches. Origin is derived from `doctor_id IS NOT NULL`. The pharmacy-order-origin migration remains subject to local DB deployment verification; see Part 51.10 for the current phase status.
+
 Not built (explicitly out of scope, tracked as open decisions in the dashboard's own `types.ts`):
 - `DEC-002` — payment timing.
 - `DEC-003` — automated critical-result escalation (the human critical/non-critical call exists; automated

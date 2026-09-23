@@ -35,6 +35,14 @@ describe('GetPrescriptionUseCase', () => {
     await expect(useCase.execute('prescription-1', actor)).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it('hides unsigned assistant drafts from the patient and pharmacy staff', async () => {
+    const { prescriptions, useCase } = setup();
+    prescriptions.findById.mockResolvedValue({ ...prescription, status: 'PENDING_DOCTOR_APPROVAL' });
+
+    await expect(useCase.execute('prescription-1', { sub: 'patient-1', contextType: 'PATIENT' } as any)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(useCase.execute('prescription-1', { sub: 'pharmacy-staff', contextType: 'PHARMACY_STAFF' } as any)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it('allows the owning patient to read their own prescription', async () => {
     const { prescriptions, images, items, reviews, useCase } = setup();
     prescriptions.findById.mockResolvedValue(prescription);

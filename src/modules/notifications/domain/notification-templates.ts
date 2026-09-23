@@ -117,6 +117,34 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { pharmacyOrderId: p.pharmacyOrderId },
     }),
   },
+  ProviderPrescriptionCreated: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'أصدر طبيبك روشتة', body: 'أصدر طبيبك روشتة جديدة. يمكنك مراجعة تفاصيلها داخل التطبيق.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionPendingApproval: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({ title: 'روشتة بانتظار اعتمادك', body: 'أعدّ مساعد العيادة روشتة وتحتاج إلى مراجعتك واعتمادها قبل تفعيلها.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionApproved: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'تم اعتماد الروشتة', body: 'اعتمد طبيبك الروشتة وأصبحت متاحة لمتابعة طلب الدواء.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionRejected: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.createdByUserId,
+    render: (p) => ({ title: 'لم يتم اعتماد الروشتة', body: 'راجع الطبيب الروشتة وأعادها للمراجعة. افتح التطبيق لمراجعة التفاصيل.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionStatusChanged: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'تحديث على الروشتة', body: 'تغيّرت حالة الروشتة التي أعددتها. افتح التطبيق لمراجعة الحالة الحالية.', data: { prescriptionId: p.prescriptionId, status: p.status } }),
+  },
+  ProviderPharmacyOrderCreated: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'تم إرسال طلب الدواء', body: 'أرسل طبيبك طلب الدواء إلى الصيدلية، ويمكنك متابعة حالته داخل التطبيق.', data: { pharmacyOrderId: p.pharmacyOrderId } }),
+  },
+  ProviderPharmacyOrderStatusChanged: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'تحديث على طلب الدواء', body: 'تغيّرت حالة طلب الدواء. افتح التطبيق لمراجعة الحالة الحالية.', data: { pharmacyOrderId: p.pharmacyOrderId, status: p.status } }),
+  },
   PaymentCaptured: {
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],
@@ -176,6 +204,18 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       body: 'نتيجة التحليل جاهزة. يمكنك الاطلاع عليها الآن داخل التطبيق.',
       data: { labOrderId: p.labOrderId },
     }),
+  },
+  LabResultReadyForProvider: {
+    tier: 'INFORMATIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'نتيجة تحليل المريض جاهزة', body: 'أصدر المعمل نتيجة التحليل. افتح التطبيق لمراجعة حالة الطلب.', data: { labOrderId: p.labOrderId } }),
+  },
+  ProviderLabOrderCreated: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'طلب طبيبك تحاليل', body: 'أرسل طبيبك طلب تحاليل إلى المعمل. يمكنك متابعة حالته داخل التطبيق.', data: { labOrderId: p.labOrderId } }),
+  },
+  LabOrderStatusChanged: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'تحديث على طلب التحاليل', body: 'تغيّرت حالة طلب التحاليل. افتح التطبيق لمراجعة الحالة الحالية.', data: { labOrderId: p.labOrderId, status: p.status } }),
   },
   CriticalLabResult: {
     tier: 'SAFETY_CRITICAL',

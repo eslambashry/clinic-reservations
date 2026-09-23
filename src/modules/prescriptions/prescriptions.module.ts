@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrescriptionsController } from './api/prescriptions.controller';
+import { ApproveProviderPrescriptionUseCase } from './application/approve-provider-prescription.use-case';
+import { CreateProviderPrescriptionUseCase } from './application/create-provider-prescription.use-case';
 import { GetAcceptedPrescriptionForOrderUseCase } from './application/get-accepted-prescription-for-order.use-case';
 import { GetDrugCatalogControlledStatusUseCase } from './application/get-drug-catalog-controlled-status.use-case';
 import { GetPrescriptionItemDrugCodesUseCase } from './application/get-prescription-item-drug-codes.use-case';
@@ -8,6 +10,9 @@ import { GetPrescriptionUseCase } from './application/get-prescription.use-case'
 import { ListPrescriptionsUseCase } from './application/list-prescriptions.use-case';
 import { OCR_EXTRACTOR } from './application/ports/ocr-extractor.port';
 import { QUALITY_CHECKER } from './application/ports/quality-checker.port';
+import { RejectProviderPrescriptionUseCase } from './application/reject-provider-prescription.use-case';
+import { GetProviderPrescriptionUseCase } from './application/get-provider-prescription.use-case';
+import { ListProviderPrescriptionsUseCase } from './application/list-provider-prescriptions.use-case';
 import { ReviewPrescriptionUseCase } from './application/review-prescription.use-case';
 import { UploadPrescriptionUseCase } from './application/upload-prescription.use-case';
 import { DrugCatalogRepository } from './infrastructure/drug-catalog.repository';
@@ -18,14 +23,16 @@ import { PrescriptionItemRepository } from './infrastructure/prescription-item.r
 import { PrescriptionRepository } from './infrastructure/prescription.repository';
 import { PrescriptionReviewRepository } from './infrastructure/prescription-review.repository';
 import { AuditModule } from '../audit/audit.module';
+import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
+import { SchedulingAppointmentsModule } from '../scheduling-appointments/scheduling-appointments.module';
 
 /**
  * File 11 Part 03: owns `drug_catalog`, `prescriptions`, `prescription_items`,
  * `prescription_images`, `prescription_reviews` (File 12 Part 37 — patient
- * upload, quality-check gate, pharmacist review; doctor-issued prescriptions
- * are POSTPONE, per this module's README). No OCR/image-quality vendor and
- * no object storage are wired — `QualityCheckerPort`/`OcrExtractorPort` bind
- * to stub adapters here, same pattern as `identity-auth`'s `OtpSenderPort`.
+ * upload, quality-check gate, pharmacist review). No OCR/image-quality
+ * vendor and no object storage are wired — `QualityCheckerPort`/
+ * `OcrExtractorPort` bind to stub adapters here, same pattern as
+ * `identity-auth`'s `OtpSenderPort`.
  *
  * File 12 Part 39.3: exports `GetAcceptedPrescriptionForOrderUseCase` for
  * `pharmacy-fulfillment` to read an `ACCEPTED` prescription's fulfillable
@@ -37,9 +44,19 @@ import { AuditModule } from '../audit/audit.module';
  * owned here). 2026-08-29 adds `GetPrescriptionSummaryUseCase` — a plain
  * tx-scoped prescription+images read for `pharmacy-fulfillment`'s
  * order-detail response.
+ *
+ * File 12 Part 51 (2026-09-19): doctor-issued prescriptions are no longer
+ * POSTPONE — `CreateProviderPrescriptionUseCase`/`Approve.../Reject...`
+ * implement the domain foundation for Doctor-direct and `CLINIC_STAFF`
+ * (assistant)-prepared prescriptions. `ProviderDirectoryModule` is imported
+ * for `ResolveDoctorScopeUseCase` (doctor/assistant identity+branch scope);
+ * `SchedulingAppointmentsModule` for `AssertPatientInDoctorScopeUseCase`
+ * (the doctor↔patient relationship check) and `GetDoctorAppointmentUseCase`
+ * (validating an optional `appointmentId` link) — never either module's
+ * `infrastructure/`. No controllers yet (Phase 2).
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, ProviderDirectoryModule, SchedulingAppointmentsModule],
   controllers: [PrescriptionsController],
   providers: [
     // infrastructure
@@ -59,6 +76,11 @@ import { AuditModule } from '../audit/audit.module';
     GetPrescriptionItemDrugCodesUseCase,
     GetDrugCatalogControlledStatusUseCase,
     GetPrescriptionSummaryUseCase,
+    CreateProviderPrescriptionUseCase,
+    ApproveProviderPrescriptionUseCase,
+    RejectProviderPrescriptionUseCase,
+    GetProviderPrescriptionUseCase,
+    ListProviderPrescriptionsUseCase,
   ],
   exports: [
     GetAcceptedPrescriptionForOrderUseCase,

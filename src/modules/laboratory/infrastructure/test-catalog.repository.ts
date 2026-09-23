@@ -4,6 +4,13 @@ import { Prisma, TestCatalog } from '@prisma/client';
 /** Minimal lookup-table reads — mirrors how `prescriptions`' `DrugCatalog` is read (referenced by code, never embedded free text). */
 @Injectable()
 export class TestCatalogRepository {
+  list(db: Prisma.TransactionClient, search?: string): Promise<TestCatalog[]> {
+    return db.testCatalog.findMany({
+      where: search ? { display_name: { contains: search, mode: 'insensitive' } } : undefined,
+      orderBy: [{ display_name: 'asc' }, { code: 'asc' }],
+    });
+  }
+
   findByCodes(db: Prisma.TransactionClient, codes: string[]): Promise<TestCatalog[]> {
     if (codes.length === 0) {
       return Promise.resolve([]);

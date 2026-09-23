@@ -7,6 +7,7 @@ function setup() {
   const labOrderItems = { createMany: jest.fn() };
   const labBranches = { findById: jest.fn() };
   const testCatalog = { findAllCodes: jest.fn() };
+  const getPrescriptionSummary = { execute: jest.fn().mockResolvedValue({ id: 'presc-1', patientId: 'patient-1' }) };
   const audit = { record: jest.fn() };
   const outbox = { emit: jest.fn() };
   const listStaffByContext = { execute: jest.fn().mockResolvedValue([]) };
@@ -16,11 +17,12 @@ function setup() {
     labOrderItems as any,
     labBranches as any,
     testCatalog as any,
+    getPrescriptionSummary as any,
     audit as any,
     outbox as any,
     listStaffByContext as any,
   );
-  return { tx, prisma, labOrders, labOrderItems, labBranches, testCatalog, audit, outbox, listStaffByContext, useCase };
+  return { tx, prisma, labOrders, labOrderItems, labBranches, testCatalog, getPrescriptionSummary, audit, outbox, listStaffByContext, useCase };
 }
 
 describe('CreateLabOrderUseCase', () => {
@@ -63,6 +65,15 @@ describe('CreateLabOrderUseCase', () => {
 
     expect(labOrderItems.createMany).not.toHaveBeenCalled();
     expect(labOrders.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ prescriptionId: 'presc-1' }));
+  });
+
+  it('404s rather than linking another patient\'s prescription', async () => {
+    const { labBranches, getPrescriptionSummary, labOrders, useCase } = setup();
+    labBranches.findById.mockResolvedValue(branch);
+    getPrescriptionSummary.execute.mockResolvedValue({ id: 'presc-1', patientId: 'someone-else' });
+
+    await expect(useCase.execute({ labBranchId: 'branch-1', collectionType: 'VISIT', prescriptionId: 'presc-1' }, actor)).rejects.toMatchObject({ httpStatus: 404 });
+    expect(labOrders.create).not.toHaveBeenCalled();
   });
 
   it('rejects when neither test codes nor a prescription are provided', async () => {

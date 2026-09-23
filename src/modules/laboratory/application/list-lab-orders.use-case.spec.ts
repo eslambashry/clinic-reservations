@@ -4,12 +4,13 @@ const patient = { id: 'patient-1', firstName: 'Sara', lastName: 'Ali', phoneMask
 
 function setup() {
   const prisma = {} as any;
-  const labOrders = { findForPatient: jest.fn(), findForBranch: jest.fn() };
+  const labOrders = { findForPatient: jest.fn(), findForBranch: jest.fn(), findByDoctorId: jest.fn() };
   const labOrderItems = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labResults = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labOrderNotes = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const testCatalog = { findByCodes: jest.fn().mockResolvedValue([]) };
   const getActiveRoleMembership = { execute: jest.fn() };
+  const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
   const getPrescriptionSummary = { execute: jest.fn() };
   const getCustodyEvents = { executeForOrders: jest.fn().mockResolvedValue(new Map()) };
@@ -22,12 +23,13 @@ function setup() {
     labOrderNotes as any,
     testCatalog as any,
     getActiveRoleMembership as any,
+    resolveDoctorScope as any,
     getUserSummary as any,
     getPrescriptionSummary as any,
     getCustodyEvents as any,
     mediaStorage as any,
   );
-  return { labOrders, getActiveRoleMembership, getUserSummary, getCustodyEvents, mediaStorage, useCase };
+  return { labOrders, getActiveRoleMembership, resolveDoctorScope, getUserSummary, getCustodyEvents, mediaStorage, useCase };
 }
 
 function row(id: string, createdAt: string) {
@@ -57,6 +59,8 @@ function row(id: string, createdAt: string) {
 describe('ListLabOrdersUseCase', () => {
   const patientActor = { sub: 'patient-1', roleMembershipId: 'm-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const staffActor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'LAB_STAFF', contextType: 'LAB_STAFF', permissions: [] } as any;
+  const doctorActor = { sub: 'doctor-user-1', roleMembershipId: 'm-3', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+  const assistantActor = { sub: 'assistant-user-1', roleMembershipId: 'm-4', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF', permissions: [] } as any;
 
   it("lists and enriches the caller's own orders for a PATIENT actor", async () => {
     const { labOrders, useCase } = setup();
@@ -113,5 +117,17 @@ describe('ListLabOrdersUseCase', () => {
     const result = await useCase.execute({ limit: 20 }, patientActor);
 
     expect(result.nextCursor).toBeNull();
+  });
+
+  it('lists provider requests in the doctor scope and restricts assistants to their own submissions', async () => {
+    const { labOrders, resolveDoctorScope, useCase } = setup();
+    labOrders.findByDoctorId.mockResolvedValue([]);
+
+    await useCase.execute({}, doctorActor);
+    await useCase.execute({}, assistantActor);
+
+    expect(resolveDoctorScope.execute).toHaveBeenNthCalledWith(1, doctorActor);
+    expect(labOrders.findByDoctorId).toHaveBeenNthCalledWith(1, expect.anything(), 'doctor-user-1', expect.objectContaining({ limit: 21 }), undefined);
+    expect(labOrders.findByDoctorId).toHaveBeenNthCalledWith(2, expect.anything(), 'doctor-user-1', expect.objectContaining({ limit: 21 }), 'assistant-user-1');
   });
 });

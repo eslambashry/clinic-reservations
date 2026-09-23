@@ -126,7 +126,7 @@ export class RecordResultUseCase {
       if (allRecorded && order.status === 'IN_ANALYSIS') {
         await this.labOrders.setStatus(tx, labOrderId, order.version, 'RESULTS_READY');
         status = 'RESULTS_READY';
-        await this.outbox.emit(tx, 'LabResultReady', { labOrderId, patientId: order.patient_id });
+        await this.emitResultReady(tx, order);
       }
 
       const catalog = await this.testCatalog.findByCodes(tx, [item.catalog_code]);
@@ -174,7 +174,7 @@ export class RecordResultUseCase {
     if (order.status === 'IN_ANALYSIS') {
       await this.labOrders.setStatus(tx, order.id, order.version, 'RESULTS_READY');
       status = 'RESULTS_READY';
-      await this.outbox.emit(tx, 'LabResultReady', { labOrderId: order.id, patientId: order.patient_id });
+      await this.emitResultReady(tx, order);
     }
 
     await this.audit.record(tx, {
@@ -187,6 +187,19 @@ export class RecordResultUseCase {
     });
 
     return { labOrderId: order.id, status };
+  }
+
+  private async emitResultReady(
+    tx: Prisma.TransactionClient,
+    order: { id: string; patient_id: string; doctor_id?: string | null; created_by_user_id?: string | null },
+  ): Promise<void> {
+    await this.outbox.emit(tx, 'LabResultReady', { labOrderId: order.id, patientId: order.patient_id });
+    if (order.doctor_id) {
+      await this.outbox.emit(tx, 'LabResultReadyForProvider', {
+        labOrderId: order.id,
+        recipientUserId: order.created_by_user_id ?? order.doctor_id,
+      });
+    }
   }
 
   private defaultFileLabel(catalogCode: string | null, labOrderId: string): string {

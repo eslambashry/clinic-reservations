@@ -66,4 +66,29 @@ export class GetAcceptedPrescriptionForOrderUseCase {
       items: fulfillable.map((item) => ({ id: item.id, drugCode: item.drug_code, quantity: item.quantity })),
     };
   }
+
+  /** Provider path: the caller's doctor scope and patient relationship are validated before this read. */
+  async executeForProvider(
+    tx: Prisma.TransactionClient,
+    prescriptionId: string,
+    patientId: string,
+    doctorUserId: string,
+  ): Promise<AcceptedPrescriptionForOrder> {
+    const prescription = await this.prescriptions.findById(tx, prescriptionId);
+    if (
+      !prescription ||
+      prescription.patient_id !== patientId ||
+      prescription.doctor_id !== doctorUserId ||
+      prescription.source !== 'DOCTOR_ISSUED'
+    ) {
+      throw new NotFoundError('Prescription', prescriptionId);
+    }
+    if (prescription.status !== 'ACCEPTED') {
+      throw new BusinessRuleError('PRESCRIPTION_NOT_ACCEPTED', 'يجب اعتماد الروشتة من الطبيب قبل إرسالها للصيدلية.');
+    }
+
+    const items = await this.items.findByPrescriptionId(tx, prescriptionId);
+    const fulfillable = items.filter((item): item is typeof item & { quantity: number } => item.quantity !== null && (item.drug_code !== null || item.drug_name_free_text !== null));
+    return { prescriptionId: prescription.id, items: fulfillable.map((item) => ({ id: item.id, drugCode: item.drug_code, quantity: item.quantity })) };
+  }
 }
