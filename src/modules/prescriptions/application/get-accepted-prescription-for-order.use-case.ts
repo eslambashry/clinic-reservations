@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrescriptionItemRepository } from '../infrastructure/prescription-item.repository';
+import { PrescriptionImageRepository } from '../infrastructure/prescription-image.repository';
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
 
 export interface FulfillableItem {
@@ -13,6 +14,7 @@ export interface FulfillableItem {
 export interface AcceptedPrescriptionForOrder {
   prescriptionId: string;
   items: FulfillableItem[];
+  imageCount: number;
 }
 
 /**
@@ -40,6 +42,7 @@ export class GetAcceptedPrescriptionForOrderUseCase {
   constructor(
     @Inject(PrescriptionRepository) private readonly prescriptions: PrescriptionRepository,
     @Inject(PrescriptionItemRepository) private readonly items: PrescriptionItemRepository,
+    @Inject(PrescriptionImageRepository) private readonly images: PrescriptionImageRepository,
   ) {}
 
   async execute(tx: Prisma.TransactionClient, prescriptionId: string, patientId: string): Promise<AcceptedPrescriptionForOrder> {
@@ -47,11 +50,17 @@ export class GetAcceptedPrescriptionForOrderUseCase {
     if (!prescription || prescription.patient_id !== patientId) {
       throw new NotFoundError('Prescription', prescriptionId);
     }
+    if (prescription.document_type !== 'PRESCRIPTION') {
+      throw new BusinessRuleError('DOCUMENT_NOT_A_PRESCRIPTION', 'لا يمكن إرسال إحالة المعمل إلى الصيدلية.');
+    }
     if (prescription.status !== 'ACCEPTED' && prescription.status !== 'QUALITY_CHECK_PASSED') {
       throw new BusinessRuleError('PRESCRIPTION_NOT_ACCEPTED', 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.');
     }
 
-    const items = await this.items.findByPrescriptionId(tx, prescriptionId);
+    const [items, images] = await Promise.all([
+      this.items.findByPrescriptionId(tx, prescriptionId),
+      this.images.findByPrescriptionId(tx, prescriptionId),
+    ]);
     // File 12 Part 44: `medsuper-pharmacy-dashboard` never reads/sets
     // `drug_code` at all (its pharmacist quotes a flat total off the
     // prescription image, File 12 Part 40) — requiring a coded item here
@@ -64,6 +73,7 @@ export class GetAcceptedPrescriptionForOrderUseCase {
     return {
       prescriptionId: prescription.id,
       items: fulfillable.map((item) => ({ id: item.id, drugCode: item.drug_code, quantity: item.quantity })),
+      imageCount: images.length,
     };
   }
 
@@ -79,7 +89,8 @@ export class GetAcceptedPrescriptionForOrderUseCase {
       !prescription ||
       prescription.patient_id !== patientId ||
       prescription.doctor_id !== doctorUserId ||
-      prescription.source !== 'DOCTOR_ISSUED'
+      prescription.source !== 'DOCTOR_ISSUED' ||
+      prescription.document_type !== 'PRESCRIPTION'
     ) {
       throw new NotFoundError('Prescription', prescriptionId);
     }
@@ -87,8 +98,15 @@ export class GetAcceptedPrescriptionForOrderUseCase {
       throw new BusinessRuleError('PRESCRIPTION_NOT_ACCEPTED', 'يجب اعتماد الروشتة من الطبيب قبل إرسالها للصيدلية.');
     }
 
-    const items = await this.items.findByPrescriptionId(tx, prescriptionId);
+    const [items, images] = await Promise.all([
+      this.items.findByPrescriptionId(tx, prescriptionId),
+      this.images.findByPrescriptionId(tx, prescriptionId),
+    ]);
     const fulfillable = items.filter((item): item is typeof item & { quantity: number } => item.quantity !== null && (item.drug_code !== null || item.drug_name_free_text !== null));
-    return { prescriptionId: prescription.id, items: fulfillable.map((item) => ({ id: item.id, drugCode: item.drug_code, quantity: item.quantity })) };
+    return {
+      prescriptionId: prescription.id,
+      items: fulfillable.map((item) => ({ id: item.id, drugCode: item.drug_code, quantity: item.quantity })),
+      imageCount: images.length,
+    };
   }
 }

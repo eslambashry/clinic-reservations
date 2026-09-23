@@ -13,6 +13,7 @@ import { GetProviderPrescriptionUseCase } from '../application/get-provider-pres
 import { ListProviderPrescriptionsUseCase } from '../application/list-provider-prescriptions.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { BusinessRuleError } from '../../../shared/core/errors/domain-errors';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { IdempotencyInterceptor } from '../../../shared/core/idempotency/idempotency-key.interceptor';
@@ -23,6 +24,7 @@ import { toUploadedMediaFiles } from '../../../shared/kernel/storage/multer-file
 import { ListPrescriptionsQueryDto } from './dto/list-prescriptions-query.dto';
 import { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import { UploadPrescriptionDto } from './dto/upload-prescription.dto';
+import { UploadProviderClinicalDocumentDto } from './dto/upload-provider-clinical-document.dto';
 import { CreateProviderPrescriptionBatchDto, CreateProviderPrescriptionDto } from './dto/create-provider-prescription.dto';
 import { ApproveProviderPrescriptionDto, ListProviderPrescriptionsQueryDto, RejectProviderPrescriptionDto } from './dto/provider-prescription-decision.dto';
 
@@ -136,6 +138,52 @@ export class PrescriptionsController {
     });
 
     return this.uploadPrescription.execute({ files: uploadedFiles, notes: dto.notes }, user);
+  }
+
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @Post('provider/upload')
+  @UseInterceptors(
+    FilesInterceptor('files', MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES, buildMemoryMulterOptions(MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES)),
+    IdempotencyInterceptor,
+  )
+  @RequireIdempotencyKey()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['patientId', 'documentType', 'files'],
+      properties: {
+        patientId: { type: 'string', format: 'uuid' },
+        documentType: { type: 'string', enum: ['PRESCRIPTION', 'LAB_REFERRAL'] },
+        appointmentId: { type: 'string', format: 'uuid' },
+        files: { type: 'array', items: { type: 'string', format: 'binary' }, maxItems: MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES },
+        notes: { type: 'string' },
+      },
+    },
+  })
+  @ApiOperation({ summary: 'Upload prescription or lab-referral images for a patient in the provider scope' })
+  uploadForProvider(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() dto: UploadProviderClinicalDocumentDto,
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<UploadPrescriptionResult> {
+    const uploadedFiles = toUploadedMediaFiles(files ?? []);
+    assertValidMediaFiles(uploadedFiles, {
+      allowedMimeTypes: MEDIA_CONSTANTS.DOCUMENT_MIME_TYPES,
+      maxFileSizeBytes: MEDIA_CONSTANTS.MAX_DOCUMENT_SIZE_BYTES,
+      maxFileCount: MEDIA_CONSTANTS.PRESCRIPTION_MAX_FILES,
+    });
+    if (uploadedFiles.length === 0) {
+      throw new BusinessRuleError('PRESCRIPTION_NEEDS_FILES', 'أرفق صورة واحدة على الأقل للطلب.');
+    }
+
+    return this.uploadPrescription.executeForProvider({
+      files: uploadedFiles,
+      notes: dto.notes,
+      patientId: dto.patientId,
+      documentType: dto.documentType,
+      appointmentId: dto.appointmentId,
+    }, user);
   }
 
   @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF, RoleContextType.ADMIN)

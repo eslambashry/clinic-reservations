@@ -1,5 +1,5 @@
 import {
-  assertHasFulfillableItems,
+  assertCanCreatePharmacyOrder,
   assertNoActiveOrderExists,
   assertOrderCanBeginFulfillment,
   assertOrderIsReadyToComplete,
@@ -35,13 +35,17 @@ describe('assertNoActiveOrderExists', () => {
   });
 });
 
-describe('assertHasFulfillableItems', () => {
-  it('throws NO_FULFILLABLE_ITEMS for an empty list', () => {
-    expect(() => assertHasFulfillableItems([])).toThrow(expect.objectContaining({ code: 'NO_FULFILLABLE_ITEMS' }));
+describe('assertCanCreatePharmacyOrder', () => {
+  it('throws when neither structured items nor an image exists', () => {
+    expect(() => assertCanCreatePharmacyOrder([], 0)).toThrow(expect.objectContaining({ code: 'PRESCRIPTION_HAS_NO_CONTENT' }));
   });
 
-  it('allows a non-empty list', () => {
-    expect(() => assertHasFulfillableItems([{}])).not.toThrow();
+  it('allows image-only prescriptions because the staff queue prices from the image', () => {
+    expect(() => assertCanCreatePharmacyOrder([], 1)).not.toThrow();
+  });
+
+  it('allows structured prescription items', () => {
+    expect(() => assertCanCreatePharmacyOrder([{}], 0)).not.toThrow();
   });
 });
 

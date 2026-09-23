@@ -20,6 +20,7 @@ model Prescription {
   patient_id      String               @db.Uuid
   doctor_id       String?              @db.Uuid
   source          PrescriptionSource
+  document_type   PrescriptionDocumentType @default(PRESCRIPTION)
   status          PrescriptionStatus   @default(UPLOADED)
   /// Patient-typed free text from `POST /v1/prescriptions/upload`'s `notes`
   /// field — accepted by that endpoint but never actually persisted until

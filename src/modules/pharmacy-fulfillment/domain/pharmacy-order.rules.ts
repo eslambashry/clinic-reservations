@@ -16,9 +16,12 @@ export function assertNoActiveOrderExists(existing: { status: PharmacyOrderStatu
 }
 
 /** File 12 Part 39.3/44: an order needs at least one fulfillable (quantity-bearing) prescription item to be worth creating. */
-export function assertHasFulfillableItems(items: unknown[]): void {
-  if (items.length === 0) {
-    throw new BusinessRuleError('NO_FULFILLABLE_ITEMS', 'لا توجد أصناف قابلة للصرف في هذه الروشتة.');
+export function assertCanCreatePharmacyOrder(items: unknown[], imageCount: number): void {
+  // The pharmacy console prices from the prescription image, and OCR is
+  // explicitly optional. A valid uploaded image is therefore fulfillable
+  // even when no structured item was confidently extracted.
+  if (items.length === 0 && imageCount === 0) {
+    throw new BusinessRuleError('PRESCRIPTION_HAS_NO_CONTENT', 'أضف دواءً أو أرفق صورة للروشتة قبل إرسالها للصيدلية.');
   }
 }
 

@@ -9,6 +9,7 @@ export interface PrescriptionSummary {
   id: string;
   patientId: string;
   source: string;
+  documentType: string;
   status: string;
   expiresAt: string | null;
   doctorId: string | null;
@@ -47,6 +48,7 @@ export class GetPrescriptionSummaryUseCase {
       id: prescription.id,
       patientId: prescription.patient_id,
       source: prescription.source,
+      documentType: prescription.document_type,
       status: prescription.status,
       expiresAt: prescription.expires_at?.toISOString() ?? null,
       doctorId: prescription.doctor_id,

@@ -7,17 +7,21 @@ describe('GetProviderPrescriptionUseCase', () => {
   const row = {
     id: 'prescription-1', patient_id: 'patient-1', doctor_id: 'doctor-user-1', created_by_user_id: 'assistant-1',
     created_by_role: 'CLINIC_STAFF', decided_by_user_id: 'doctor-user-1', appointment_id: null, status: 'ACCEPTED',
-    source: 'DOCTOR_ISSUED', notes: null, version: 2, approved_at: new Date('2026-09-23T10:00:00.000Z'), rejected_at: null,
+    source: 'DOCTOR_ISSUED', document_type: 'PRESCRIPTION', notes: null, version: 2, approved_at: new Date('2026-09-23T10:00:00.000Z'), rejected_at: null,
     rejection_reason: null,
   };
 
   function setup() {
     const prescriptions = { findById: jest.fn().mockResolvedValue(row) };
     const items = { findByPrescriptionId: jest.fn().mockResolvedValue([]) };
+    const images = { findByPrescriptionId: jest.fn().mockResolvedValue([]) };
     const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
     return {
-      prescriptions, items, resolveDoctorScope,
-      useCase: new GetProviderPrescriptionUseCase({} as any, prescriptions as any, items as any, resolveDoctorScope as any),
+      prescriptions, items, images, resolveDoctorScope,
+      useCase: new GetProviderPrescriptionUseCase(
+        {} as any, prescriptions as any, items as any, images as any,
+        resolveDoctorScope as any, { getSignedUrl: jest.fn().mockReturnValue('signed-url') } as any,
+      ),
     };
   }
 

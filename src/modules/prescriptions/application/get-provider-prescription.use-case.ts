@@ -4,7 +4,10 @@ import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { PrescriptionItemRepository } from '../infrastructure/prescription-item.repository';
+import { PrescriptionImageRepository } from '../infrastructure/prescription-image.repository';
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
+import { MEDIA_STORAGE, MediaStoragePort } from '../../../shared/kernel/storage/media-storage.port';
+import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 
 @Injectable()
 export class GetProviderPrescriptionUseCase {
@@ -12,7 +15,9 @@ export class GetProviderPrescriptionUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PrescriptionRepository) private readonly prescriptions: PrescriptionRepository,
     @Inject(PrescriptionItemRepository) private readonly items: PrescriptionItemRepository,
+    @Inject(PrescriptionImageRepository) private readonly images: PrescriptionImageRepository,
     @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
+    @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
   ) {}
 
   async execute(prescriptionId: string, actor: AccessTokenPayload) {
@@ -24,11 +29,15 @@ export class GetProviderPrescriptionUseCase {
     if (
       !prescription ||
       prescription.doctor_id !== scope.doctorUserId ||
+      prescription.document_type !== 'PRESCRIPTION' ||
       (actor.contextType === 'CLINIC_STAFF' && prescription.created_by_user_id !== actor.sub)
     ) {
       throw new NotFoundError('Prescription', prescriptionId);
     }
-    const items = await this.items.findByPrescriptionId(this.prisma, prescriptionId);
+    const [items, images] = await Promise.all([
+      this.items.findByPrescriptionId(this.prisma, prescriptionId),
+      this.images.findByPrescriptionId(this.prisma, prescriptionId),
+    ]);
     return {
       id: prescription.id,
       patientId: prescription.patient_id,
@@ -51,6 +60,11 @@ export class GetProviderPrescriptionUseCase {
         frequency: item.frequency,
         durationDays: item.duration_days,
         quantity: item.quantity,
+      })),
+      images: images.map((image) => ({
+        id: image.id,
+        fileUrl: this.mediaStorage.getSignedUrl(image.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS),
+        qualityCheckStatus: image.quality_check_status,
       })),
     };
   }

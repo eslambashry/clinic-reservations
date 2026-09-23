@@ -8,7 +8,7 @@ describe('CreatePharmacyOrderUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const input = { prescriptionId: 'prescription-1', fulfillmentType: 'PICKUP' as const, lat: 30.0444, lng: 31.2357 };
   const branchSearchResult = { items: [{ branchId: 'branch-1' }, { branchId: 'branch-2' }], nextCursor: null };
-  const acceptedPrescription = { prescriptionId: 'prescription-1', items: [{ id: 'item-1', drugCode: 'PARA500', quantity: 20 }] };
+  const acceptedPrescription = { prescriptionId: 'prescription-1', items: [{ id: 'item-1', drugCode: 'PARA500', quantity: 20 }], imageCount: 1 };
 
   function setup() {
     const tx = buildTx();
@@ -132,7 +132,7 @@ describe('CreatePharmacyOrderUseCase', () => {
   });
 
   it('broadcasts to exactly the chosen branch when pharmacyBranchId is given, skipping the nearest-branch search', async () => {
-    const { pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
+    const { pharmacyOrders, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
     getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: true });
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
     getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
@@ -147,7 +147,7 @@ describe('CreatePharmacyOrderUseCase', () => {
   });
 
   it('broadcasts to the chosen branch without lat/lng at all — File 12 Part 46, a chosen branch does not need the caller\'s GPS location', async () => {
-    const { pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
+    const { pharmacyOrders, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
     getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: true });
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
     getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
@@ -215,13 +215,13 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(result.pharmacyOrderId).toBe('order-1');
   });
 
-  it('422s with NO_FULFILLABLE_ITEMS when the accepted prescription has no fulfillable items', async () => {
+  it('422s when the accepted prescription has neither fulfillable items nor an image', async () => {
     const { pharmacyOrders, getAcceptedPrescription, searchPharmacyBranches, useCase } = setup();
     searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
-    getAcceptedPrescription.execute.mockResolvedValue({ prescriptionId: 'prescription-1', items: [] });
+    getAcceptedPrescription.execute.mockResolvedValue({ prescriptionId: 'prescription-1', items: [], imageCount: 0 });
 
-    await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'NO_FULFILLABLE_ITEMS', httpStatus: 422 });
+    await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'PRESCRIPTION_HAS_NO_CONTENT', httpStatus: 422 });
   });
 
   it('propagates PRESCRIPTION_NOT_ACCEPTED from the prescriptions module read', async () => {

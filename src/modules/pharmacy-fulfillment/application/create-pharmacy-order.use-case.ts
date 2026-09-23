@@ -12,7 +12,7 @@ import { PHARMACY_CONSTANTS } from '../../../shared/config/constants';
 import { BusinessRuleError, ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { assertHasFulfillableItems, assertNoActiveOrderExists } from '../domain/pharmacy-order.rules';
+import { assertCanCreatePharmacyOrder, assertNoActiveOrderExists } from '../domain/pharmacy-order.rules';
 import { PharmacyOrderBroadcastRepository } from '../infrastructure/pharmacy-order-broadcast.repository';
 import { PharmacyOrderItemRepository } from '../infrastructure/pharmacy-order-item.repository';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
@@ -117,7 +117,7 @@ export class CreatePharmacyOrderUseCase {
       const prescription = providerDoctorUserId
         ? await this.getAcceptedPrescription.executeForProvider(tx, input.prescriptionId, patientId, providerDoctorUserId)
         : await this.getAcceptedPrescription.execute(tx, input.prescriptionId, patientId);
-      assertHasFulfillableItems(prescription.items);
+      assertCanCreatePharmacyOrder(prescription.items, prescription.imageCount);
 
       const order = await this.pharmacyOrders.create(tx, {
         prescriptionId: input.prescriptionId,

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PrescriptionStatus } from '@prisma/client';
+import { PrescriptionDocumentType, PrescriptionStatus } from '@prisma/client';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
@@ -40,6 +40,7 @@ export class ListProviderPrescriptionsUseCase {
     const scope = await this.resolveDoctorScope.execute(actor);
     const limit = Math.min(input.limit ?? 20, 50);
     const params: ListProviderPrescriptionsParams = {
+      documentType: PrescriptionDocumentType.PRESCRIPTION,
       status: input.status,
       cursor: decodeCursor(input.cursor),
       limit: limit + 1,

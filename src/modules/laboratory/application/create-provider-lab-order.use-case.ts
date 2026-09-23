@@ -130,7 +130,11 @@ export class CreateProviderLabOrderUseCase {
 
     if (input.prescriptionId) {
       const prescription = await this.getPrescriptionSummary.execute(this.prisma, input.prescriptionId);
-      if (!prescription || prescription.patientId !== input.patientId) {
+      if (
+        !prescription ||
+        prescription.patientId !== input.patientId ||
+        (prescription.source === 'DOCTOR_ISSUED' && prescription.documentType !== 'LAB_REFERRAL')
+      ) {
         throw new NotFoundError('Prescription', input.prescriptionId);
       }
     }

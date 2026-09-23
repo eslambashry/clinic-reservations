@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { Prescription, PrescriptionSource, PrescriptionStatus, Prisma, RoleContextType } from '@prisma/client';
+import { Prescription, PrescriptionDocumentType, PrescriptionSource, PrescriptionStatus, Prisma, RoleContextType } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
 
 export interface NewPrescription {
   patientId: string;
   source: PrescriptionSource;
+  documentType?: PrescriptionDocumentType;
   notes?: string;
   /** File 12 Part 51 — provider clinical requests, all optional/null for the existing patient-upload path. */
   doctorId?: string;
@@ -28,6 +29,7 @@ export interface ListQueueParams {
 }
 
 export interface ListProviderPrescriptionsParams {
+  documentType?: PrescriptionDocumentType;
   status?: PrescriptionStatus;
   cursor?: { createdAt: string; id: string };
   limit: number;
@@ -41,6 +43,7 @@ export class PrescriptionRepository {
       data: {
         patient_id: input.patientId,
         source: input.source,
+        document_type: input.documentType,
         notes: input.notes,
         doctor_id: input.doctorId,
         created_by_user_id: input.createdByUserId,
@@ -62,6 +65,7 @@ export class PrescriptionRepository {
       where: {
         AND: [
           { doctor_id: doctorUserId },
+          ...(params.documentType ? [{ document_type: params.documentType }] : []),
           ...(params.createdByUserId ? [{ created_by_user_id: params.createdByUserId }] : []),
           ...(params.status ? [{ status: params.status }] : []),
           ...(params.cursor ? [{
