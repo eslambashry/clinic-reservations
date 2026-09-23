@@ -31,6 +31,13 @@ export interface InitiateOnlineAppointmentPaymentResult {
   redirectUrl?: string;
   referenceCode?: string;
   expiresAt: string;
+  /**
+   * What the gateway will actually charge, e.g. `"50.00"`. On a retry this is
+   * the FIRST attempt's amount (a different `paymentAmount` sent again is
+   * ignored), so the app must show this value, not the one it sent.
+   */
+  amount: string;
+  currency: string;
 }
 
 function holdExpired(holdId: string): DomainError {
@@ -180,6 +187,8 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         redirectUrl: gatewayResult.redirectUrl,
         referenceCode: gatewayResult.referenceCode,
         expiresAt: expiresAt.toISOString(),
+        amount: prepared.gatewayInput.amount,
+        currency: prepared.gatewayInput.currency,
       };
     });
   }

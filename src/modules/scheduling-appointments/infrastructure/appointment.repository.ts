@@ -51,10 +51,13 @@ export type AppointmentWithSlotTimes = Prisma.AppointmentGetPayload<{ include: t
  * number must not become reachable from a response shape a patient can ask
  * for. `iana_timezone` is added here because the Doctor Dashboard renders a
  * clinic-local day view and would otherwise have to guess the offset.
+ * `payment_intent` is read so the doctor can see what the patient already
+ * paid and what is left to collect at the clinic.
  */
 const WITH_DOCTOR_VIEW = {
   slot: { select: { start_at: true, end_at: true } },
   patient: { select: { id: true, first_name: true, last_name: true, phone: true } },
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },

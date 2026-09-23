@@ -22,8 +22,18 @@ describe('CreateHoldUseCase', () => {
     const holds = { create: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const useCase = new CreateHoldUseCase(prisma as any, slots as any, holds as any, audit as any, outbox as any);
-    return { tx, prisma, slots, holds, audit, outbox, useCase };
+    const affiliationBilling = { execute: jest.fn().mockResolvedValue({ consultFee: '500', currency: 'EGP' }) };
+    const resolvePaymentAmount = { findMinimum: jest.fn().mockResolvedValue('50.00') };
+    const useCase = new CreateHoldUseCase(
+      prisma as any,
+      slots as any,
+      holds as any,
+      audit as any,
+      outbox as any,
+      affiliationBilling as any,
+      resolvePaymentAmount as any,
+    );
+    return { tx, prisma, slots, holds, audit, outbox, affiliationBilling, resolvePaymentAmount, useCase };
   }
 
   it('rejects a patientId that is not the caller, before touching the database', async () => {
@@ -81,5 +91,28 @@ describe('CreateHoldUseCase', () => {
       expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment_hold.create', resourceId: 'hold-1' }),
     );
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentHeld', expect.objectContaining({ holdId: 'hold-1', slotId: 'slot-1' }));
+  });
+
+  it('returns the server-side fee and payment minimum so the app can pre-validate a partial amount', async () => {
+    const { tx, slots, holds, affiliationBilling, resolvePaymentAmount, useCase } = setup();
+    slots.findById.mockResolvedValue(slot);
+    slots.markHeld.mockResolvedValue(true);
+    holds.create.mockResolvedValue({ id: 'hold-1' });
+
+    const result = await useCase.execute(input, actor);
+
+    expect(affiliationBilling.execute).toHaveBeenCalledWith(tx, 'aff-1');
+    expect(resolvePaymentAmount.findMinimum).toHaveBeenCalledWith(tx, '500.00');
+    expect(result).toMatchObject({ fullAmount: '500.00', currency: 'EGP', minPaymentAmount: '50.00' });
+  });
+
+  it('returns a null minimum when the policy is not configured, without failing the hold', async () => {
+    const { slots, holds, resolvePaymentAmount, useCase } = setup();
+    slots.findById.mockResolvedValue(slot);
+    slots.markHeld.mockResolvedValue(true);
+    holds.create.mockResolvedValue({ id: 'hold-1' });
+    resolvePaymentAmount.findMinimum.mockResolvedValue(null);
+
+    await expect(useCase.execute(input, actor)).resolves.toMatchObject({ holdId: 'hold-1', minPaymentAmount: null });
   });
 });

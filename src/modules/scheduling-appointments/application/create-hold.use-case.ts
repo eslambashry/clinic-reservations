@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
+import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ConflictError, DomainError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
@@ -8,6 +9,7 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { holdExpiresAt } from '../domain/appointment-lifecycle.rules';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
+import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
 
 export interface CreateHoldInput {
   doctorClinicAffiliationId: string;
@@ -20,6 +22,15 @@ export interface CreateHoldResult {
   slotId: string;
   expiresAt: Date;
   status: 'HELD';
+  /** The doctor's consult fee for this slot, e.g. `"500.00"` — what a full payment charges. */
+  fullAmount: string;
+  currency: string;
+  /**
+   * Smallest partial amount the wallet/online payment will accept
+   * (`min(MIN_APPOINTMENT_PAYMENT, fullAmount)`). `null` when the policy is
+   * not configured — only a full payment works then.
+   */
+  minPaymentAmount: string | null;
 }
 
 /**
@@ -37,6 +48,8 @@ export class CreateHoldUseCase {
     @Inject(AppointmentHoldRepository) private readonly holds: AppointmentHoldRepository,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(GetAffiliationBillingInfoUseCase) private readonly affiliationBilling: GetAffiliationBillingInfoUseCase,
+    @Inject(ResolveAppointmentPaymentAmountUseCase) private readonly resolvePaymentAmount: ResolveAppointmentPaymentAmountUseCase,
   ) {}
 
   async execute(input: CreateHoldInput, actor: AccessTokenPayload): Promise<CreateHoldResult> {
@@ -75,7 +88,21 @@ export class CreateHoldUseCase {
         expiresAt: expiresAt.toISOString(),
       });
 
-      return { holdId: hold.id, slotId: slot.id, expiresAt, status: 'HELD' as const };
+      // Informational only — confirm/payments re-read the fee and the
+      // minimum and re-validate; the client can never supply either.
+      const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
+      const fullAmount = Number(billing.consultFee).toFixed(2);
+      const minPaymentAmount = await this.resolvePaymentAmount.findMinimum(tx, fullAmount);
+
+      return {
+        holdId: hold.id,
+        slotId: slot.id,
+        expiresAt,
+        status: 'HELD' as const,
+        fullAmount,
+        currency: billing.currency,
+        minPaymentAmount,
+      };
     });
   }
 }

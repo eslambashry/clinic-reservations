@@ -196,6 +196,24 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     expect(prepareCallExpiresAt.getTime()).toBe(originalExpiry.getTime());
   });
 
+  it('echoes the amount the gateway will charge — the stored one on a retry, not the one sent again', async () => {
+    const { holds, slots, affiliationBilling, initiatePayment, useCase } = setup();
+    holds.findById.mockResolvedValue({ ...activeHold, payment_intent_id: 'intent-1' });
+    slots.findById.mockResolvedValue(slot);
+    affiliationBilling.execute.mockResolvedValue(billing);
+    initiatePayment.prepare.mockResolvedValue({
+      paymentIntentId: 'intent-1',
+      paymentAttemptId: 'attempt-1',
+      method: 'FAWRY',
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: new Date() },
+    });
+    initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
+
+    const result = await useCase.execute('hold-1', { method: 'FAWRY', customer, paymentAmount: '100.00' }, actor);
+
+    expect(result).toMatchObject({ amount: '200.00', currency: 'EGP', referenceCode: '123456' });
+  });
+
   it('reuses the existing PaymentIntent on retry (hold.payment_intent_id already set) without re-linking the hold', async () => {
     const { holds, slots, affiliationBilling, initiatePayment, useCase } = setup();
     const holdWithIntent = { ...activeHold, payment_intent_id: 'intent-1' };
