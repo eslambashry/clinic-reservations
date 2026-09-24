@@ -36,7 +36,7 @@ export function assertCanCreatePharmacyOrder(items: unknown[], imageCount: numbe
  * narrowing itself.
  */
 export function nextStatusAfterFulfill(fulfillmentType: FulfillmentType): PharmacyOrderStatus {
-  return fulfillmentType === 'DELIVERY' ? 'OUT_FOR_DELIVERY' : 'READY_FOR_PICKUP';
+  return fulfillmentType === 'PICKUP' ? 'READY_FOR_PICKUP' : 'OUT_FOR_DELIVERY';
 }
 
 export function assertOrderCanBeginFulfillment(status: PharmacyOrderStatus): void {

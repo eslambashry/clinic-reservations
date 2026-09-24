@@ -181,7 +181,7 @@ export class CreatePharmacyOrderUseCase {
   /** Validates the caller's chosen branch (exists, VERIFIED, delivery-capable if needed) and returns its id alone as the broadcast set. */
   private async resolveChosenBranch(branchId: string, fulfillmentType: FulfillmentType): Promise<string> {
     const branch = await this.getPharmacyBranch.execute(branchId, undefined);
-    if (fulfillmentType === 'DELIVERY' && !branch.delivery_capable) {
+    if (fulfillmentType !== 'PICKUP' && !branch.delivery_capable) {
       throw new BusinessRuleError('PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE', 'فرع الصيدلية المختار لا يوفّر خدمة التوصيل.');
     }
     return branch.id;
@@ -192,7 +192,7 @@ export class CreatePharmacyOrderUseCase {
       lat,
       lng,
       radiusKm: PHARMACY_CONSTANTS.BROADCAST_RADIUS_KM,
-      deliveryCapable: fulfillmentType === 'DELIVERY' ? true : undefined,
+      deliveryCapable: fulfillmentType !== 'PICKUP' ? true : undefined,
       limit: PHARMACY_CONSTANTS.BROADCAST_FANOUT_COUNT,
     });
     if (branchResults.items.length === 0) {

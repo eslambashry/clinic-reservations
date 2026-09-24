@@ -58,8 +58,8 @@ describe('nextStatusAfterFulfill', () => {
     expect(nextStatusAfterFulfill('DELIVERY')).toBe('OUT_FOR_DELIVERY');
   });
 
-  it('routes CLINIC_HANDOVER orders to READY_FOR_PICKUP — same as PICKUP', () => {
-    expect(nextStatusAfterFulfill('CLINIC_HANDOVER')).toBe('READY_FOR_PICKUP');
+  it('routes CLINIC_HANDOVER orders to OUT_FOR_DELIVERY like home delivery', () => {
+    expect(nextStatusAfterFulfill('CLINIC_HANDOVER')).toBe('OUT_FOR_DELIVERY');
   });
 });
 
