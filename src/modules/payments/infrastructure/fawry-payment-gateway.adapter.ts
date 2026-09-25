@@ -57,7 +57,6 @@ export class FawryPaymentGatewayAdapter implements FawryGatewayPort {
     const merchantCode = this.requireConfig('merchantCode', 'FAWRY_MERCHANT_CODE');
     const secureKey = this.requireConfig('secureKey', 'FAWRY_SECURE_KEY');
     const amount = formatAmount(input.amount);
-    const [firstName, ...rest] = input.customer.firstName.split(' ');
 
     const signature = sha256(`${merchantCode}${input.merchantReference}${PAYMENT_METHOD}${amount}${secureKey}`);
 
@@ -68,9 +67,11 @@ export class FawryPaymentGatewayAdapter implements FawryGatewayPort {
     }>('/ECommerceWeb/Fawry/payments/charge', {
       merchantCode,
       merchantRefNum: input.merchantReference,
-      customerName: [firstName, ...rest].join(' ').trim() || 'N/A',
       customerMobile: input.customer.phone,
-      customerEmail: input.customer.email || 'na@medsuper.example',
+      // Customer name is optional per FawryPay's reference-number API. Email
+      // is required upstream, so use a non-personal system address instead
+      // of collecting or forwarding the patient's email.
+      customerEmail: 'na@medsuper.example',
       amount,
       currencyCode: input.currency,
       language: LANGUAGE,

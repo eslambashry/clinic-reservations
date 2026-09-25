@@ -1,0 +1,10 @@
+.git
+.claude
+.serena
+node_modules
+dist
+coverage
+test
+.env
+.env.*
+npm-debug.log*

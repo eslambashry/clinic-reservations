@@ -50,10 +50,9 @@ class EnvironmentVariables {
   /**
    * Comma-separated allowlist of browser origins allowed to call the API
    * (e.g. `https://app.medsuper.example,https://admin.medsuper.example`).
-   * Optional: unset means "reflect any Origin" (`src/main.ts`), which is
-   * fine for local dev across arbitrary localhost ports but must be set
-   * before a real deployment — `main.ts` logs a warning at boot if it's
-   * still unset while `NODE_ENV=production`.
+   * Optional in development: unset means "reflect any Origin"
+   * (`src/main.ts`) so local browser clients can use arbitrary ports.
+   * Production requires an explicit list of HTTPS origins.
    */
   @IsString()
   @IsOptional()
@@ -161,6 +160,52 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
       .map((error) => Object.values(error.constraints ?? {}).join(', '))
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${messages}`);
+  }
+
+  if (validated.NODE_ENV === NodeEnv.Production) {
+    const blockers: string[] = [];
+    if (validated.JWT_ACCESS_SECRET.length < 32) {
+      blockers.push('JWT_ACCESS_SECRET must contain at least 32 characters');
+    }
+    if (validated.REDIS_ENABLED !== 'true') {
+      blockers.push('REDIS_ENABLED must be true');
+    }
+
+    const allowedOrigins = (validated.CORS_ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    const invalidOrigins = allowedOrigins.some((origin) => {
+      try {
+        const url = new URL(origin);
+        return (
+          url.protocol !== 'https:' ||
+          !url.host ||
+          url.username.length > 0 ||
+          url.password.length > 0 ||
+          url.pathname !== '/' ||
+          url.search.length > 0 ||
+          url.hash.length > 0
+        );
+      } catch {
+        return true;
+      }
+    });
+    if (allowedOrigins.length === 0 || invalidOrigins) {
+      blockers.push(
+        'CORS_ALLOWED_ORIGINS must list one or more HTTPS origins without paths',
+      );
+    }
+
+    // This build still binds OTP_SENDER to LoggingOtpSender. Replace this
+    // blocker in the same change that installs a real, verified provider.
+    blockers.push('a production OTP sender must be selected and configured');
+
+    if (blockers.length > 0) {
+      throw new Error(
+        `Production startup is blocked:\n- ${blockers.join('\n- ')}`,
+      );
+    }
   }
 
   return validated;

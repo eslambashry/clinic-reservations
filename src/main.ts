@@ -27,21 +27,14 @@ async function bootstrap(): Promise<void> {
 
   const config = app.get(ConfigService);
 
-  // CORS_ALLOWED_ORIGINS (env.validation.ts) is the explicit allowlist any
-  // real deployment should set. Unset falls back to reflecting whatever
-  // Origin header the request sends (`origin: true`), which is what makes
-  // local dev across arbitrary localhost ports work with zero config — but
-  // it's a wildcard-equivalent for a credentialed API, so a production boot
-  // without an explicit allowlist logs a loud warning instead of silently
-  // shipping it.
+  // Production config validation requires an explicit HTTPS allowlist. Keep
+  // origin reflection only for local development across arbitrary ports.
   const allowedOrigins = config.get<string[] | null>('cors.allowedOrigins');
   if (allowedOrigins) {
     app.enableCors({ origin: allowedOrigins, credentials: true });
   } else {
     if (config.get<string>('nodeEnv') === 'production') {
-      logger.warn(
-        'CORS_ALLOWED_ORIGINS is not set — reflecting any Origin in production. Set CORS_ALLOWED_ORIGINS to an explicit comma-separated allowlist before this is reachable from the internet.',
-      );
+      throw new Error('Production startup requires CORS_ALLOWED_ORIGINS.');
     }
     app.enableCors({ origin: true, credentials: true });
   }

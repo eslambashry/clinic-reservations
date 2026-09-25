@@ -22,3 +22,10 @@ phone, timezone, street/city) and `PATCH /v1/doctors/me/clinics/affiliations/{id
 returned to a doctor, verification stays Admin-only, and **nothing on this
 surface deletes** — pausing an affiliation is the only deactivation, and it
 never touches appointments patients already booked.
+
+Branch contact phone fields on clinic and pharmacy branch create/update DTOs
+accept E.164 numbers up to 15 digits, including landlines. User, assistant, and
+staff identity phone fields remain restricted to Egyptian mobile numbers.
+Provider self-registration retains its separate phone mapping as described in
+ADR-005 until product confirms whether that field is the doctor's phone or the
+clinic branch's contact number.

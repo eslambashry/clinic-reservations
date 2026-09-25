@@ -49,6 +49,10 @@ describe('FawryPaymentGatewayAdapter', () => {
       expect(body.amount).toBe('580.50');
       expect(body.merchantRefNum).toBe('attempt-1');
       expect(body.paymentMethod).toBe('PayAtFawry');
+      expect(body.customerMobile).toBe(customer.phone);
+      expect(body.customerEmail).toBe('na@medsuper.example');
+      expect(body).not.toHaveProperty('customerName');
+      expect(body.customerEmail).not.toBe(customer.email);
     });
 
     it('sends paymentExpiry as the caller-computed expiresAt, in unix milliseconds', async () => {

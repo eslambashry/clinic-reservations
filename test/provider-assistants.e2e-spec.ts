@@ -373,6 +373,7 @@ describe('Provider Assistants (e2e)', () => {
         data: { user_id: patient.id, role_code: 'PATIENT', context_type: 'PATIENT' },
       });
 
+      // A visit transition can be recorded before its scheduled slot starts.
       const startAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const slot = await prisma.appointmentSlot.create({
         data: {

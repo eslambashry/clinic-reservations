@@ -11,7 +11,9 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
   const activeHold = { id: 'hold-1', slot_id: 'slot-1', patient_id: 'patient-1', version: 1, status: 'ACTIVE', expires_at: new Date(Date.now() + 5 * 60_000), payment_intent_id: null };
   const slot = { id: 'slot-1', doctor_clinic_affiliation_id: 'aff-1' };
   const billing = { consultFee: '200.00', currency: 'EGP', doctorId: 'doctor-1' };
-  const customer = { firstName: 'Sara', lastName: 'Ahmed', email: 'sara@example.com', phone: '+201000000000' };
+  const customer = { phone: '+201000000000' };
+  const billingData = { firstName: 'Sara', lastName: 'Ahmed', email: 'sara@example.com' };
+  const gatewayCustomer = { ...billingData, ...customer };
 
   function setup() {
     const tx = buildTx();
@@ -47,7 +49,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
         paymentIntentId: 'intent-1',
         paymentAttemptId: 'attempt-1',
         method: input.method,
-        gatewayInput: { merchantReference: 'attempt-1', amount: input.amount, currency: 'EGP', customer, expiresAt: input.expiresAt },
+        gatewayInput: { merchantReference: 'attempt-1', amount: input.amount, currency: 'EGP', customer: input.customer, expiresAt: input.expiresAt },
       }));
       s.holds.linkOnlinePayment.mockResolvedValue(true);
       s.initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
@@ -57,7 +59,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     it.each([['50.00'], ['100'], ['299.99'], ['300.00']])('accepts %s and charges exactly that, with the full fee snapshotted', async (paymentAmount) => {
       const { initiatePayment, useCase } = arrange();
 
-      await useCase.execute('hold-1', { method: 'CARD', customer, paymentAmount }, actor);
+      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount }, actor);
 
       const prepareInput = initiatePayment.prepare.mock.calls[0][1];
       expect(Number(prepareInput.amount)).toBe(Number(paymentAmount));
@@ -73,6 +75,19 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       expect(policyConfig.getValue).not.toHaveBeenCalled();
     });
 
+    it('strips billing name and email from Fawry gateway input even if a caller includes billingData', async () => {
+      const { initiatePayment, useCase } = arrange();
+
+      await useCase.execute('hold-1', { method: 'FAWRY', customer, billingData }, actor);
+
+      expect(initiatePayment.prepare.mock.calls[0][1].customer).toEqual({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: customer.phone,
+      });
+    });
+
     it.each([
       ['49.99', 'PAYMENT_AMOUNT_BELOW_MINIMUM'],
       ['0', 'PAYMENT_AMOUNT_INVALID'],
@@ -84,7 +99,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     ])('rejects %s with %s and never reaches the gateway', async (paymentAmount, code) => {
       const { initiatePayment, useCase } = arrange();
 
-      await expect(useCase.execute('hold-1', { method: 'CARD', customer, paymentAmount }, actor)).rejects.toMatchObject({ code });
+      await expect(useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount }, actor)).rejects.toMatchObject({ code });
       expect(initiatePayment.callGateway).not.toHaveBeenCalled();
     });
 
@@ -92,10 +107,10 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       const { affiliationBilling, initiatePayment, useCase } = arrange();
       affiliationBilling.execute.mockResolvedValue({ ...billing, consultFee: '40.00' });
 
-      await useCase.execute('hold-1', { method: 'CARD', customer, paymentAmount: '40.00' }, actor);
+      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '40.00' }, actor);
       expect(initiatePayment.prepare.mock.calls[0][1]).toMatchObject({ amount: '40.00', fullAmount: '40.00' });
 
-      await expect(useCase.execute('hold-1', { method: 'CARD', customer, paymentAmount: '39.99' }, actor)).rejects.toMatchObject({
+      await expect(useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '39.99' }, actor)).rejects.toMatchObject({
         code: 'PAYMENT_AMOUNT_BELOW_MINIMUM',
       });
     });
@@ -103,7 +118,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     it('never trusts a client-supplied fee or remaining balance — extra body fields are simply not read', async () => {
       const { initiatePayment, useCase } = arrange();
 
-      await useCase.execute('hold-1', { method: 'CARD', customer, paymentAmount: '100', consultFee: '1', remainingBalance: '0' } as any, actor);
+      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '100', consultFee: '1', remainingBalance: '0' } as any, actor);
 
       expect(initiatePayment.prepare.mock.calls[0][1].fullAmount).toBe('300.00');
     });
@@ -134,7 +149,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'FAWRY',
-      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: new Date() },
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer: gatewayCustomer, expiresAt: new Date() },
     });
     holds.linkOnlinePayment.mockResolvedValue(true);
     initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
@@ -163,7 +178,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'FAWRY',
-      gatewayInput: { merchantReference: 'attempt-1', amount: input.amount, currency: input.currency, customer, expiresAt: input.expiresAt },
+      gatewayInput: { merchantReference: 'attempt-1', amount: input.amount, currency: input.currency, customer: gatewayCustomer, expiresAt: input.expiresAt },
     }));
     holds.linkOnlinePayment.mockResolvedValue(true);
     initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
@@ -186,7 +201,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'FAWRY',
-      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: originalExpiry },
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer: gatewayCustomer, expiresAt: originalExpiry },
     });
     initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
 
@@ -205,7 +220,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'FAWRY',
-      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: new Date() },
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer: gatewayCustomer, expiresAt: new Date() },
     });
     initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
 
@@ -224,11 +239,11 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'CARD',
-      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: new Date() },
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer: gatewayCustomer, expiresAt: new Date() },
     });
     initiatePayment.callGateway.mockResolvedValue({ metadata: {}, redirectUrl: 'https://accept.paymob.com/iframe/x' });
 
-    await useCase.execute('hold-1', { method: 'CARD', customer }, actor);
+    await useCase.execute('hold-1', { method: 'CARD', customer, billingData }, actor);
 
     expect(initiatePayment.prepare).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ existingPaymentIntentId: 'intent-1' }));
     expect(holds.linkOnlinePayment).not.toHaveBeenCalled();
@@ -243,12 +258,12 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'MOBILE_WALLET',
-      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: new Date() },
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer: gatewayCustomer, expiresAt: new Date() },
     });
     holds.linkOnlinePayment.mockResolvedValue(false);
 
     await expect(
-      useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, walletProvider: 'VODAFONE_CASH', walletMobileNumber: '+201000000000' }, actor),
+      useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, billingData, walletProvider: 'VODAFONE_CASH', walletMobileNumber: '+201000000000' }, actor),
     ).rejects.toMatchObject({ code: 'HOLD_EXPIRED' });
 
     expect(initiatePayment.callGateway).not.toHaveBeenCalled();
@@ -263,7 +278,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       paymentIntentId: 'intent-1',
       paymentAttemptId: 'attempt-1',
       method: 'FAWRY',
-      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer, expiresAt: new Date() },
+      gatewayInput: { merchantReference: 'attempt-1', amount: '200.00', currency: 'EGP', customer: gatewayCustomer, expiresAt: new Date() },
     });
     holds.linkOnlinePayment.mockResolvedValue(true);
     initiatePayment.callGateway.mockRejectedValue(new Error('gateway timeout'));
