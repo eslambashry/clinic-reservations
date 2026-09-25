@@ -13,9 +13,7 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabBranchRepository } from '../infrastructure/lab-branch.repository';
-import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
 import { LabOrderRepository } from '../infrastructure/lab-order.repository';
-import { TestCatalogRepository } from '../infrastructure/test-catalog.repository';
 
 const ASSISTANT_PERMISSION = 'lab-orders:create:assistant';
 
@@ -23,8 +21,7 @@ export interface CreateProviderLabOrderInput {
   patientId: string;
   labBranchId: string;
   collectionType: 'VISIT' | 'HOME_COLLECTION';
-  testCodes?: string[];
-  prescriptionId?: string;
+  prescriptionId: string;
   appointmentId?: string;
 }
 
@@ -59,9 +56,7 @@ export class CreateProviderLabOrderUseCase {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(LabOrderRepository) private readonly labOrders: LabOrderRepository,
-    @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(LabBranchRepository) private readonly labBranches: LabBranchRepository,
-    @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(ResolveDoctorScopeUseCase) private readonly doctorScope: ResolveDoctorScopeUseCase,
     @Inject(AssertPatientInDoctorScopeUseCase) private readonly patientAccess: AssertPatientInDoctorScopeUseCase,
@@ -73,9 +68,9 @@ export class CreateProviderLabOrderUseCase {
 
   async execute(input: CreateProviderLabOrderInput, actor: AccessTokenPayload): Promise<CreateProviderLabOrderResult> {
     const scope = await this.authorize(actor);
-    const testCodes = await this.validateInput(input, actor, scope.affiliationIds);
+    await this.validateInput(input, actor, scope.affiliationIds);
 
-    return this.prisma.$transaction((tx) => this.createInTransaction(tx, input, actor, scope.doctorUserId, testCodes));
+    return this.prisma.$transaction((tx) => this.createInTransaction(tx, input, actor, scope.doctorUserId));
   }
 
   /**
@@ -90,16 +85,17 @@ export class CreateProviderLabOrderUseCase {
     this.assertDistinctPatients(inputs);
 
     const scope = await this.authorize(actor);
-    const validated = [] as Array<{ input: CreateProviderLabOrderInput; testCodes: string[] }>;
+    const validated: CreateProviderLabOrderInput[] = [];
     for (const input of inputs) {
-      validated.push({ input, testCodes: await this.validateInput(input, actor, scope.affiliationIds) });
+      await this.validateInput(input, actor, scope.affiliationIds);
+      validated.push(input);
     }
 
     const batchId = randomUUID();
     const results = await this.prisma.$transaction(async (tx) => {
       const created: Array<CreateProviderLabOrderResult & { patientId: string }> = [];
-      for (const { input, testCodes } of validated) {
-        const result = await this.createInTransaction(tx, input, actor, scope.doctorUserId, testCodes, batchId);
+      for (const input of validated) {
+        const result = await this.createInTransaction(tx, input, actor, scope.doctorUserId, batchId);
         created.push({ ...result, patientId: input.patientId });
       }
       return created;
@@ -120,23 +116,20 @@ export class CreateProviderLabOrderUseCase {
     return this.doctorScope.execute(actor);
   }
 
-  private async validateInput(input: CreateProviderLabOrderInput, actor: AccessTokenPayload, affiliationIds: string[]): Promise<string[]> {
-    const testCodes = input.testCodes ?? [];
-    if (testCodes.length === 0 && !input.prescriptionId) {
-      throw new BusinessRuleError('LAB_ORDER_NEEDS_TESTS_OR_PRESCRIPTION', 'اختر تحليلاً واحدًا على الأقل أو أرفق روشتة.');
+  private async validateInput(input: CreateProviderLabOrderInput, actor: AccessTokenPayload, affiliationIds: string[]): Promise<void> {
+    if (!input.prescriptionId) {
+      throw new BusinessRuleError('LAB_ORDER_REFERRAL_REQUIRED', 'أرفق إحالة معملية لطلب التحاليل.');
     }
 
     await this.patientAccess.execute(input.patientId, affiliationIds);
 
-    if (input.prescriptionId) {
-      const prescription = await this.getPrescriptionSummary.execute(this.prisma, input.prescriptionId);
-      if (
-        !prescription ||
-        prescription.patientId !== input.patientId ||
-        (prescription.source === 'DOCTOR_ISSUED' && prescription.documentType !== 'LAB_REFERRAL')
-      ) {
-        throw new NotFoundError('Prescription', input.prescriptionId);
-      }
+    const prescription = await this.getPrescriptionSummary.execute(this.prisma, input.prescriptionId);
+    if (
+      !prescription ||
+      prescription.patientId !== input.patientId ||
+      (prescription.source === 'DOCTOR_ISSUED' && prescription.documentType !== 'LAB_REFERRAL')
+    ) {
+      throw new NotFoundError('Prescription', input.prescriptionId);
     }
 
     if (input.appointmentId) {
@@ -154,15 +147,6 @@ export class CreateProviderLabOrderUseCase {
       throw new BusinessRuleError('LAB_BRANCH_NOT_HOME_COLLECTION_CAPABLE', 'فرع المعمل المختار لا يوفّر سحب العيّنة من المنزل.');
     }
 
-    if (testCodes.length > 0) {
-      const found = await this.testCatalog.findAllCodes(this.prisma, testCodes);
-      const missing = testCodes.filter((code) => !found.includes(code));
-      if (missing.length > 0) {
-        throw new BusinessRuleError('UNKNOWN_TEST_CODE', `يوجد تحليل غير معروف ضمن الطلب: ${missing.join('، ')}`);
-      }
-    }
-
-    return testCodes;
   }
 
   private async createInTransaction(
@@ -170,7 +154,6 @@ export class CreateProviderLabOrderUseCase {
     input: CreateProviderLabOrderInput,
     actor: AccessTokenPayload,
     doctorUserId: string,
-    testCodes: string[],
     batchId?: string,
   ): Promise<CreateProviderLabOrderResult> {
     const order = await this.labOrders.create(tx, {
@@ -183,14 +166,6 @@ export class CreateProviderLabOrderUseCase {
         appointmentId: input.appointmentId,
       batchId,
     });
-
-    if (testCodes.length > 0) {
-      await this.labOrderItems.createMany(
-        tx,
-        order.id,
-        testCodes.map((code) => ({ catalogCode: code })),
-      );
-    }
 
       // Same `REQUEST_RECEIVED` custody stage the patient-facing
       // `CreateLabOrderUseCase` writes — this vocabulary is a closed set

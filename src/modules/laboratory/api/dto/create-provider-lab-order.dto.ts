@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CollectionType } from '@prisma/client';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsEnum, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsEnum, IsOptional, IsUUID, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateProviderLabOrderDto {
@@ -16,18 +16,9 @@ export class CreateProviderLabOrderDto {
   @IsEnum(CollectionType)
   collectionType: CollectionType;
 
-  @ApiPropertyOptional({ type: [String], example: ['CBC', 'LIPID_PANEL'], maxItems: 50 })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(50)
-  @ArrayUnique()
-  @IsString({ each: true })
-  testCodes?: string[];
-
-  @ApiPropertyOptional({ format: 'uuid', description: 'Optional referral prescription belonging to the same patient.' })
-  @IsOptional()
+  @ApiProperty({ format: 'uuid', description: 'Uploaded referral prescription belonging to the same patient.' })
   @IsUUID()
-  prescriptionId?: string;
+  prescriptionId: string;
 
   @ApiPropertyOptional({ format: 'uuid', description: 'Optional appointment in the authenticated provider scope for this patient.' })
   @IsOptional()

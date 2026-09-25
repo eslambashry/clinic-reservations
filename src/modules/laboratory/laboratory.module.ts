@@ -47,8 +47,6 @@ import { LabOrderItemRepository } from './infrastructure/lab-order-item.reposito
 import { LabOrderNoteRepository } from './infrastructure/lab-order-note.repository';
 import { LabOrderRepository } from './infrastructure/lab-order.repository';
 import { LabResultRepository } from './infrastructure/lab-result.repository';
-import { TestCatalogRepository } from './infrastructure/test-catalog.repository';
-import { ListTestCatalogUseCase } from './application/list-test-catalog.use-case';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
@@ -58,7 +56,7 @@ import { SchedulingAppointmentsModule } from '../scheduling-appointments/schedul
 /**
  * Laboratory module (File 12 Part 47, 2026-09-02) — un-postponed at the
  * user's explicit direction. Owns `laboratories`, `lab_branches`,
- * `test_catalog`, `lab_orders`, `lab_order_items`, `lab_result_documents`,
+ * `lab_orders`, `lab_order_items`, `lab_result_documents`,
  * `lab_order_notes` (`prisma/schema/laboratory.prisma`) — no other module
  * reaches into these tables directly (File 12 Part 05).
  *
@@ -72,7 +70,7 @@ import { SchedulingAppointmentsModule } from '../scheduling-appointments/schedul
  * extended — no dedicated custody-event table.
  *
  * `PrescriptionsModule` is imported only for `GetPrescriptionSummaryUseCase`
- * (optional prescription-linked orders' image projection) — never that
+ * (required referral-linked orders' image projection) — never that
  * module's `infrastructure/`. `LabBranch` lookups are served by this
  * module's own `LabBranchRepository`. `LabBranchesController`/
  * `GetLabBranchUseCase` (Part 48) add one self-scoped
@@ -102,8 +100,6 @@ import { SchedulingAppointmentsModule } from '../scheduling-appointments/schedul
     LabBranchSearchRepository,
     LaboratoryRepository,
     LabStaffAssignmentRepository,
-    TestCatalogRepository,
-    ListTestCatalogUseCase,
     // application
     GetCustodyEventsUseCase,
     GetLabBranchUseCase,

@@ -167,9 +167,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   INVALID_ESTIMATED_READY_MINUTES: 'مدة التجهيز المتوقّعة خارج النطاق المسموح به.',
 
   // ── Laboratory ──────────────────────────────────────────────────────────
-  LAB_ORDER_NEEDS_TESTS_OR_PRESCRIPTION: 'اختر تحليلًا واحدًا على الأقل أو أرفق روشتة.',
+  LAB_ORDER_REFERRAL_REQUIRED: 'أرفق إحالة معملية لطلب التحاليل.',
   LAB_BRANCH_NOT_HOME_COLLECTION_CAPABLE: 'فرع المعمل المختار لا يوفّر سحب العيّنة من المنزل.',
-  UNKNOWN_TEST_CODE: 'يوجد تحليل غير معروف ضمن الطلب. راجع التحاليل المختارة.',
   LAB_ORDER_ITEM_ID_REQUIRED: 'هذا الطلب يحتوي على تحاليل مسجّلة — حدّد التحليل المطلوب تسجيل نتيجته.',
   LAB_ORDER_NOT_REQUESTED: 'التسعير متاح فقط لطلب في انتظار عرض سعر.',
   LAB_ORDER_NOT_QUOTED: 'تأكيد الحجز يتطلّب عرض سعر مُرسَلًا في انتظار رد المريض.',

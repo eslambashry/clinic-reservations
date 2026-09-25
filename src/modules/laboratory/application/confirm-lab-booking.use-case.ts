@@ -36,8 +36,8 @@ function generateBookingCode(): string {
  * progress. Real reception staff commonly take a phone/walk-in booking on
  * the patient's behalf (the existing `bookingCode`/`queueNumber` design —
  * "reception can match walk-ins" — already assumes this), so this closes the
- * gap as a staff action rather than waiting on a patient-facing Flutter
- * booking flow (`lab_booking` is BLOCKED, MEMORY.md).
+ * gap as a staff action while the patient-facing Flutter lab request and
+ * tracking flow uses uploaded referrals.
  */
 @Injectable()
 export class ConfirmLabBookingUseCase {

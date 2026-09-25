@@ -1911,3 +1911,14 @@ remain independently `PENDING_DOCTOR_APPROVAL`, so every prescription in the
 batch must be signed by its supervising doctor before it can be submitted to
 the existing pharmacy queue. Lab rows preserve their existing direct
 `REQUESTED` transition and enter their individually chosen branch queues.
+
+### 51.12 Laboratory test catalog removed by product decision (2026-09-25)
+
+The product has no patient- or provider-selectable laboratory test catalog.
+Laboratory orders are created from uploaded referral images only. The
+`GET /v1/lab-orders/catalog` route, `testCodes` write fields, `TestCatalog`
+seed/table, and catalog-dependent client surfaces are removed. Existing
+per-order analysis names and result links are preserved by migrating each
+legacy item into a `test_name` snapshot before dropping the catalog table.
+This decision supersedes the earlier test-catalog assumptions in Parts 47,
+50, and 51; `LabOrderItem` remains solely for historical item/result rows.

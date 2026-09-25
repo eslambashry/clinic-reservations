@@ -21,8 +21,7 @@ export interface NoteDetail {
 
 export interface LabOrderItemDetail {
   id: string;
-  catalogCode: string;
-  displayName: string;
+  testName: string;
   unitPrice: string | null;
   resultState: string;
   resultId: string | null;
@@ -63,7 +62,7 @@ export interface LabOrderDetail {
     reviewState: string;
   }[];
   custodyEvents: CustodyEventDetail[];
-  /** Sourced from the linked prescription's own images (`PrescriptionSummary.images`) — empty when `prescriptionId` is null (direct catalog selection, no upload). */
+  /** Sourced from the linked referral's private images (`PrescriptionSummary.images`). */
   prescriptionImages: { id: string; fileUrl: string }[];
   /** Not persisted anywhere yet — same `not_persisted[]` precedent pharmacy's own `patientNote` follows. */
   patientNote: string | null;
@@ -75,7 +74,7 @@ export interface LabOrderDetail {
 /**
  * Pure mapping only, no I/O — mirrors `buildPharmacyOrderDetail`'s role.
  * Callers (`GetLabOrderUseCase`/`ListLabOrdersUseCase`) already fetched and
- * resolved everything (patient/prescription/items/catalog/results/notes/
+ * resolved everything (patient/prescription/items/results/notes/
  * custody events with actor names) before calling this.
  */
 export function buildLabOrderDetail(
@@ -83,7 +82,6 @@ export function buildLabOrderDetail(
   patient: UserSummary,
   prescription: PrescriptionSummary | null,
   items: LabOrderItem[],
-  catalogNameByCode: Map<string, string>,
   results: LabResultDocument[],
   custodyEvents: CustodyEventDetail[],
   notes: NoteDetail[],
@@ -99,8 +97,7 @@ export function buildLabOrderDetail(
     patient: { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, phoneMasked: patient.phoneMasked },
     items: items.map((item) => ({
       id: item.id,
-      catalogCode: item.catalog_code,
-      displayName: catalogNameByCode.get(item.catalog_code) ?? item.catalog_code,
+      testName: item.test_name,
       unitPrice: item.unit_price ? item.unit_price.toFixed(2) : null,
       resultState: item.result_state,
       resultId: results.find((r) => r.item_id === item.id)?.id ?? null,

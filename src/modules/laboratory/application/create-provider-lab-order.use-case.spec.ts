@@ -12,15 +12,13 @@ describe('CreateProviderLabOrderUseCase', () => {
   } as any;
   const scope = { doctorId: 'doctor-1', doctorUserId: 'doctor-user-1', affiliations: [], affiliationIds: ['aff-1'], clinicBranchIds: ['branch-1'] };
   const verifiedBranch = { id: 'lab-branch-1', status: 'VERIFIED', home_collection_capable: false };
-  const baseInput = { patientId: 'patient-1', labBranchId: 'lab-branch-1', collectionType: 'VISIT' as const, testCodes: ['CBC'] };
+  const baseInput = { patientId: 'patient-1', labBranchId: 'lab-branch-1', collectionType: 'VISIT' as const, prescriptionId: 'prescription-1' };
 
   function setup() {
     const tx = {} as any;
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const labOrders = { create: jest.fn().mockResolvedValue({ id: 'lab-order-1' }) };
-    const labOrderItems = { createMany: jest.fn() };
     const labBranches = { findById: jest.fn().mockResolvedValue(verifiedBranch) };
-    const testCatalog = { findAllCodes: jest.fn().mockResolvedValue(['CBC']) };
     const getPrescriptionSummary = { execute: jest.fn().mockResolvedValue({ id: 'prescription-1', patientId: 'patient-1' }) };
     const doctorScope = { execute: jest.fn().mockResolvedValue(scope) };
     const patientAccess = { execute: jest.fn().mockResolvedValue(undefined) };
@@ -32,9 +30,7 @@ describe('CreateProviderLabOrderUseCase', () => {
     const useCase = new CreateProviderLabOrderUseCase(
       prisma as any,
       labOrders as any,
-      labOrderItems as any,
       labBranches as any,
-      testCatalog as any,
       getPrescriptionSummary as any,
       doctorScope as any,
       patientAccess as any,
@@ -44,7 +40,7 @@ describe('CreateProviderLabOrderUseCase', () => {
       listStaffByContext as any,
     );
 
-    return { tx, prisma, labOrders, labOrderItems, labBranches, testCatalog, getPrescriptionSummary, doctorScope, patientAccess, getDoctorAppointment, audit, outbox, listStaffByContext, useCase };
+    return { tx, prisma, labOrders, labBranches, getPrescriptionSummary, doctorScope, patientAccess, getDoctorAppointment, audit, outbox, listStaffByContext, useCase };
   }
 
   it('a DOCTOR creates a lab order straight into REQUESTED, in the named branch', async () => {
@@ -109,10 +105,10 @@ describe('CreateProviderLabOrderUseCase', () => {
     await expect(useCase.execute({ ...baseInput, collectionType: 'HOME_COLLECTION' }, doctorActor)).rejects.toBeInstanceOf(BusinessRuleError);
   });
 
-  it('rejects when neither testCodes nor a prescriptionId is supplied', async () => {
+  it('rejects when no uploaded referral is supplied', async () => {
     const { useCase } = setup();
 
-    await expect(useCase.execute({ ...baseInput, testCodes: [] }, doctorActor)).rejects.toBeInstanceOf(BusinessRuleError);
+    await expect(useCase.execute({ ...baseInput, prescriptionId: undefined as any }, doctorActor)).rejects.toBeInstanceOf(BusinessRuleError);
   });
 
   it('rejects when the optional appointmentId belongs to a different patient', async () => {

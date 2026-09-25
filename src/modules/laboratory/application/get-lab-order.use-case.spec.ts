@@ -33,7 +33,6 @@ function setup() {
   const labOrderItems = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labResults = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labOrderNotes = { findByOrderId: jest.fn().mockResolvedValue([]) };
-  const testCatalog = { findByCodes: jest.fn().mockResolvedValue([]) };
   const getActiveRoleMembership = { execute: jest.fn() };
   const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
@@ -46,7 +45,6 @@ function setup() {
     labOrderItems as any,
     labResults as any,
     labOrderNotes as any,
-    testCatalog as any,
     getActiveRoleMembership as any,
     resolveDoctorScope as any,
     getUserSummary as any,
@@ -54,7 +52,7 @@ function setup() {
     getCustodyEvents as any,
     mediaStorage as any,
   );
-  return { labOrders, labOrderItems, labResults, labOrderNotes, testCatalog, getActiveRoleMembership, resolveDoctorScope, getUserSummary, getPrescriptionSummary, getCustodyEvents, mediaStorage, useCase };
+  return { labOrders, labOrderItems, labResults, labOrderNotes, getActiveRoleMembership, resolveDoctorScope, getUserSummary, getPrescriptionSummary, getCustodyEvents, mediaStorage, useCase };
 }
 
 describe('GetLabOrderUseCase', () => {
@@ -130,7 +128,7 @@ describe('GetLabOrderUseCase', () => {
     expect(result.prescriptionImages).toEqual([{ id: 'img-1', fileUrl: 'https://x/1.jpg' }]);
   });
 
-  it('leaves prescriptionImages empty for a direct catalog-selection order', async () => {
+  it('leaves prescriptionImages empty when the order has no linked uploaded referral', async () => {
     const { labOrders, getPrescriptionSummary, useCase } = setup();
     labOrders.findById.mockResolvedValue(order());
 

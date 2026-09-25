@@ -32,11 +32,11 @@ const CURRENCY = 'EGP';
  * pricing; `unit_price` split across items is presentational only, same
  * "not specified anywhere" reasoning the mock's own comment gives).
  *
- * No item-count gate (File 12 Part 50): a freeform order (patient uploaded
- * an image instead of picking catalog tests) has zero `LabOrderItem` rows by
+ * No item-count gate (File 12 Part 50): a referral order without historical
+ * item rows has zero `LabOrderItem` rows by
  * design — the image is what told the lab which analysis to run, staff
  * price the whole request after reading it, the same way this method
- * already prices a catalog-based order as one flat total rather than
+ * already prices orders with item rows as one flat total rather than
  * per-line. The per-item price split below is simply skipped when there are
  * no items to split across.
  */

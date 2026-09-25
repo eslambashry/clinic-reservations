@@ -12,7 +12,6 @@ import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
 import { LabOrderRepository } from '../infrastructure/lab-order.repository';
 import { LabResultRepository } from '../infrastructure/lab-result.repository';
-import { TestCatalogRepository } from '../infrastructure/test-catalog.repository';
 
 export interface RecordResultInput {
   /** Omitted for a freeform order (no registered `LabOrderItem`) — File 12 Part 50. */
@@ -32,10 +31,10 @@ export interface RecordResultResult {
 
 /**
  * `POST /lab-orders/{orderId}/results`, `LAB_STAFF` only. Two shapes (File
- * 12 Part 50): a catalog-based order records one result per `LabOrderItem`
+ * 12 Part 50): an order with historical `LabOrderItem` rows records one result per item
  * and flips to `RESULTS_READY` once every item is `RECORDED` (DEC-006,
  * mirrors the mock's `recordResult` exactly); a freeform order (patient
- * uploaded an image instead of picking catalog tests — that image is what
+ * uploaded an image without item rows — that image is what
  * told the lab which analysis to run, it was never a drug-style
  * prescription needing item-by-item transcription) has no items at all, so
  * the first result recorded against it flips the order straight to
@@ -55,7 +54,6 @@ export class RecordResultUseCase {
     @Inject(LabOrderRepository) private readonly labOrders: LabOrderRepository,
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(LabResultRepository) private readonly labResults: LabResultRepository,
-    @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
@@ -100,7 +98,7 @@ export class RecordResultUseCase {
       // this order and are recorded as extra freeform (`item_id: null`)
       // documents rather than silently dropped.
       const [firstFileUrl, ...restFileUrls] = fileUrls;
-      const fileLabel = input.fileLabel?.trim() || this.defaultFileLabel(item.catalog_code, labOrderId);
+      const fileLabel = input.fileLabel?.trim() || this.defaultFileLabel(labOrderId);
       await this.labResults.create(tx, {
         labOrderId,
         itemId: item.id,
@@ -112,7 +110,7 @@ export class RecordResultUseCase {
       for (const [offset, fileUrl] of restFileUrls.entries()) {
         await this.labResults.create(tx, {
           labOrderId,
-          fileLabel: this.defaultFileLabel(item.catalog_code, labOrderId),
+          fileLabel: this.defaultFileLabel(labOrderId),
           fileUrl,
           sizeKb: this.sizeKbFor(input, offset + 1),
           uploadedBy: actor.sub,
@@ -129,21 +127,20 @@ export class RecordResultUseCase {
         await this.emitResultReady(tx, order);
       }
 
-      const catalog = await this.testCatalog.findByCodes(tx, [item.catalog_code]);
       await this.audit.record(tx, {
         actorUserId: actor.sub,
         actorRoleMembershipId: actor.roleMembershipId,
         action: encodeCustodyAction('RESULT_RECORDED'),
         resourceType: 'lab_order',
         resourceId: labOrderId,
-        reasonCode: catalog[0]?.display_name ?? item.catalog_code,
+        reasonCode: item.test_name,
       });
 
       return { labOrderId, status };
     });
   }
 
-  /** `order` here is a freeform order — verified below to genuinely have zero registered items, not just an omitted `itemId` on a catalog-based one. */
+  /** A referral order with no historical item rows receives order-level results. */
   private async recordFreeformResult(
     tx: Prisma.TransactionClient,
     order: { id: string; version: number; status: string; patient_id: string },
@@ -159,7 +156,7 @@ export class RecordResultUseCase {
     // No `item_id` to be unique against here (freeform), so every uploaded
     // file gets its own result document row rather than collapsing to one.
     const urls: (string | undefined)[] = fileUrls.length > 0 ? fileUrls : [undefined];
-    const fileLabel = input.fileLabel?.trim() || this.defaultFileLabel(null, order.id);
+    const fileLabel = input.fileLabel?.trim() || this.defaultFileLabel(order.id);
     for (const [index, fileUrl] of urls.entries()) {
       await this.labResults.create(tx, {
         labOrderId: order.id,
@@ -202,8 +199,8 @@ export class RecordResultUseCase {
     }
   }
 
-  private defaultFileLabel(catalogCode: string | null, labOrderId: string): string {
-    return `${catalogCode ?? 'RESULT'}_${labOrderId.slice(-6).toUpperCase()}.pdf`;
+  private defaultFileLabel(labOrderId: string): string {
+    return `RESULT_${labOrderId.slice(-6).toUpperCase()}.pdf`;
   }
 
   /** Prefers the actual uploaded file's real size over the caller-supplied `sizeKb` (which only ever applies to a single file, and files may not even have been provided in a legacy/metadata-only call). */

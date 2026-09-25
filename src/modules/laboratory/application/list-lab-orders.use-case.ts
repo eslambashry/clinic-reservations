@@ -16,7 +16,6 @@ import { LabOrderItemRepository } from '../infrastructure/lab-order-item.reposit
 import { LabOrderNoteRepository } from '../infrastructure/lab-order-note.repository';
 import { ListOrdersCursor, LabOrderRepository } from '../infrastructure/lab-order.repository';
 import { LabResultRepository } from '../infrastructure/lab-result.repository';
-import { TestCatalogRepository } from '../infrastructure/test-catalog.repository';
 
 export interface ListLabOrdersInput {
   status?: LabOrderStatus;
@@ -48,7 +47,6 @@ export class ListLabOrdersUseCase {
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(LabResultRepository) private readonly labResults: LabResultRepository,
     @Inject(LabOrderNoteRepository) private readonly labOrderNotes: LabOrderNoteRepository,
-    @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
@@ -93,7 +91,7 @@ export class ListLabOrdersUseCase {
 
   /**
    * Batched enrichment: one custody-events read for the whole page
-   * (`GetCustodyEventsUseCase`), but patient/prescription/catalog lookups
+   * (`GetCustodyEventsUseCase`), but patient/prescription lookups
    * remain per-row — an accepted N+1 for an MVP staff console, same
    * "not a performance target" tradeoff `ListPharmacyOrdersUseCase` already
    * documents.
@@ -114,9 +112,6 @@ export class ListLabOrdersUseCase {
           throw new Error(`LabOrder ${order.id} references a missing patient.`);
         }
 
-        const catalog = await this.testCatalog.findByCodes(this.prisma, items.map((i) => i.catalog_code));
-        const catalogNameByCode = new Map(catalog.map((c) => [c.code, c.display_name]));
-
         const noteAuthorIds = [...new Set(notes.map((n) => n.author_id))];
         const authorSummaries = await Promise.all(noteAuthorIds.map((id) => this.getUserSummary.execute(this.prisma, id)));
         const authorNameById = new Map(
@@ -128,7 +123,7 @@ export class ListLabOrdersUseCase {
           r.file_url ? { ...r, file_url: this.mediaStorage.getSignedUrl(r.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS) } : r,
         );
 
-        return buildLabOrderDetail(order, patient, prescription, items, catalogNameByCode, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
+        return buildLabOrderDetail(order, patient, prescription, items, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
       }),
     );
   }

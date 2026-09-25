@@ -1,7 +1,7 @@
 # laboratory
 
 **MVP** — un-postponed 2026-09-02 (was POSTPONE with zero schema/endpoints since inception). Owns `Laboratory`,
-`LabBranch`, `TestCatalog`, `LabOrder`, `LabOrderItem`, `LabResultDocument`, `LabOrderNote` (see
+`LabBranch`, `LabOrder`, historical `LabOrderItem` snapshots, `LabResultDocument`, `LabOrderNote` (see
 `prisma/schema/laboratory.prisma`), per `docs/FILE_12_Engineering_Decisions_And_Conventions.md` Part 47.
 
 **Status:** the full order lifecycle is implemented — request → quote → confirm-booking → arrival/courier dispatch →
@@ -52,8 +52,8 @@ columns exist so none are selected), `SearchLabBranchesUseCase`, `LabBranchSearc
 `:branchId` — Nest route order matters). The existing `:branchId` route is untouched. `POST /lab-orders`,
 `GET /lab-orders`, `GET /lab-orders/{id}`, and `POST /prescriptions/upload` needed no backend changes — the
 Flutter app's image-upload step calls the already-real `prescriptions` upload endpoint to get a `prescriptionId`,
-then passes it into `POST /lab-orders` alongside `collectionType`; direct `testCodes` selection is left as a
-documented follow-up on the Flutter side, since `test_catalog` is unseeded and has no read endpoint. Payment,
+then passes it into `POST /lab-orders` alongside `collectionType`. A platform test catalog and direct
+`testCodes` selection are deliberately excluded; referral images are the only request source. Payment,
 pricing, and appointment scheduling were deliberately dropped from the Flutter creation flow rather than faked —
 none of that exists until `SubmitLabQuoteUseCase` runs, so the app now has a status-tracking screen instead of a
 fabricated instant confirmation.
@@ -78,9 +78,10 @@ an order-level result (nullable FK) for a freeform order, flipping
 `IN_ANALYSIS --> RESULTS_READY` on the first result recorded rather than
 "every item recorded." `start-analysis`, `set-critical-flag`, and
 `record-result-delivery` needed no changes — none of them were ever keyed
-off item count. Catalog-based (`testCodes`) orders are untouched.
+off item count. The test catalog was later removed per the user's product
+decision on 2026-09-25; legacy item labels are migrated as order snapshots.
 
-**Provider clinical requests (File 12 Part 51, 2026-09-19):** `POST /v1/lab-orders/provider` creates a patient-specific order in `REQUESTED` in the same `LabBranch` queue; `GET /v1/lab-orders` and detail are scoped to the provider/patient/branch. Assistants require `lab-orders:create:assistant`; lab orders do not require a physician countersignature under the current authorization model. `GET /v1/lab-orders/catalog` exposes the existing seeded `TestCatalog`; `/v1/lab-branches/search` supplies verified branches. Origin is derived from `doctor_id IS NOT NULL`. The pharmacy-order-origin migration remains subject to local DB deployment verification; see Part 51.10 for the current phase status.
+**Provider clinical requests (File 12 Part 51, 2026-09-19):** `POST /v1/lab-orders/provider` creates a patient-specific order in `REQUESTED` in the same `LabBranch` queue; `GET /v1/lab-orders` and detail are scoped to the provider/patient/branch. Assistants require `lab-orders:create:assistant`; lab orders do not require a physician countersignature under the current authorization model. Requests require a linked `LAB_REFERRAL`; `/v1/lab-branches/search` supplies verified branches. Origin is derived from `doctor_id IS NOT NULL`. The pharmacy-order-origin migration remains subject to local DB deployment verification; see Part 51.10 for the current phase status.
 
 As of 2026-09-23, providers may submit a `LAB_REFERRAL` via
 `POST /v1/prescriptions/provider/upload` and attach its `prescriptionId` to
@@ -95,3 +96,10 @@ Not built (explicitly out of scope, tracked as open decisions in the dashboard's
 - `DEC-004` — result delivery channel (only a staff self-attestation exists; no push/email/SMS is sent).
 - `DEC-005` — ordering-doctor visibility into results (depends on the deferred `encounter-emr` module).
 - `DEC-006` — whether a partial per-item result panel is the final model (adopted here as the working assumption).
+
+**Product decision (2026-09-25):** the product has no patient- or provider-
+selectable test catalog. The catalog endpoint, `testCodes` request fields,
+seed data, and database table are removed. Existing `LabOrderItem` rows are
+retained as per-order name snapshots, with a forward migration copying each
+catalog display name before dropping the lookup table. New requests require
+an uploaded referral.

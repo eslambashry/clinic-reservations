@@ -1,14 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import { CollectionType } from '@prisma/client';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsUUID } from 'class-validator';
 
 /**
- * `POST /lab-orders`, `PATIENT`-role. Either `testCodes` (direct catalog
- * selection) or `prescriptionId` (an uploaded referral image/file — purely
- * informational input for lab staff's own price+ETA judgment call, not a
- * drug-style prescription needing item-by-item transcription; File 12 Part
- * 50) must be present — enforced in `CreateLabOrderUseCase`, not here (a
- * cross-field rule, not a per-field one).
+ * `POST /lab-orders`, `PATIENT`-role. The request must reference an uploaded
+ * referral image/file for laboratory staff to review.
  */
 export class CreateLabOrderDto {
   @ApiProperty()
@@ -19,16 +15,7 @@ export class CreateLabOrderDto {
   @IsEnum(CollectionType)
   collectionType: CollectionType;
 
-  @ApiPropertyOptional({ type: [String], example: ['CBC', 'LIPID_PANEL'] })
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(50)
-  @ArrayUnique()
-  @IsString({ each: true })
-  testCodes?: string[];
-
-  @ApiPropertyOptional()
-  @IsOptional()
+  @ApiProperty()
   @IsUUID()
-  prescriptionId?: string;
+  prescriptionId: string;
 }

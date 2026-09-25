@@ -24,7 +24,6 @@ import { RescheduleVisitUseCase } from '../application/reschedule-visit.use-case
 import { SetCriticalFlagUseCase } from '../application/set-critical-flag.use-case';
 import { StartAnalysisUseCase } from '../application/start-analysis.use-case';
 import { SubmitLabQuoteUseCase } from '../application/submit-lab-quote.use-case';
-import { ListTestCatalogUseCase } from '../application/list-test-catalog.use-case';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Roles } from '../../../shared/core/auth/roles.decorator';
@@ -77,7 +76,6 @@ export class LabOrdersController {
     @Inject(RejectLabOrderUseCase) private readonly rejectLabOrder: RejectLabOrderUseCase,
     @Inject(AddOperationalNoteUseCase) private readonly addOperationalNote: AddOperationalNoteUseCase,
     @Inject(RecordResultDeliveryUseCase) private readonly recordResultDelivery: RecordResultDeliveryUseCase,
-    @Inject(ListTestCatalogUseCase) private readonly listTestCatalog: ListTestCatalogUseCase,
   ) {}
 
   @Roles(RoleContextType.PATIENT, RoleContextType.LAB_STAFF, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
@@ -87,17 +85,10 @@ export class LabOrdersController {
     return this.listLabOrders.execute(query, user);
   }
 
-  @Roles(RoleContextType.PATIENT, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
-  @Get('catalog')
-  @ApiOperation({ summary: 'Enabled laboratory test catalog for patient/provider request creation' })
-  listCatalog(@Query('search') search?: string) {
-    return this.listTestCatalog.execute(search);
-  }
-
   @Roles(RoleContextType.PATIENT)
   @Post()
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Create a lab order — direct catalog-test selection and/or an uploaded prescription, assigned to one chosen branch' })
+  @ApiOperation({ summary: 'Create a lab order from an uploaded referral, assigned to one chosen branch' })
   create(@Body() dto: CreateLabOrderDto, @CurrentUser() user: AccessTokenPayload) {
     return this.createLabOrder.execute(dto, user);
   }

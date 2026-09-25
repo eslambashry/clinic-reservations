@@ -741,49 +741,6 @@ async function main() {
   console.log(`✅ Seeded ${drugCount} drug catalog entries`);
 
   // ---------------------------------------------------------------------
-  // Test catalog — reference data for Laboratory (`lab_order_items.catalog_code`).
-  const testCatalogData: { code: string; display_name: string }[] = [
-    { code: 'CBC', display_name: 'Complete Blood Count (CBC)' },
-    { code: 'ESR', display_name: 'Erythrocyte Sedimentation Rate (ESR)' },
-    { code: 'CRP', display_name: 'C-Reactive Protein (CRP)' },
-    { code: 'FBS', display_name: 'Fasting Blood Sugar (FBS)' },
-    { code: 'RBS', display_name: 'Random Blood Sugar (RBS)' },
-    { code: 'HBA1C', display_name: 'Glycated Hemoglobin (HbA1c)' },
-    { code: 'LIPID_PROFILE', display_name: 'Lipid Profile' },
-    { code: 'LFT', display_name: 'Liver Function Test (LFT)' },
-    { code: 'KFT', display_name: 'Kidney Function Test (KFT)' },
-    { code: 'URINALYSIS', display_name: 'Complete Urinalysis' },
-    { code: 'STOOL_ANALYSIS', display_name: 'Stool Analysis' },
-    { code: 'TSH', display_name: 'Thyroid Stimulating Hormone (TSH)' },
-    { code: 'FREE_T3', display_name: 'Free Triiodothyronine (Free T3)' },
-    { code: 'FREE_T4', display_name: 'Free Thyroxine (Free T4)' },
-    { code: 'VIT_D', display_name: 'Vitamin D (25-OH)' },
-    { code: 'VIT_B12', display_name: 'Vitamin B12' },
-    { code: 'IRON_STUDIES', display_name: 'Iron Studies (Serum Iron, TIBC, Ferritin)' },
-    { code: 'ELECTROLYTES', display_name: 'Electrolytes Panel (Na/K/Cl)' },
-    { code: 'COAG_PROFILE', display_name: 'Coagulation Profile (PT/PTT/INR)' },
-    { code: 'BETA_HCG', display_name: 'Beta hCG (Pregnancy Test)' },
-    { code: 'HBSAG', display_name: 'Hepatitis B Surface Antigen (HBsAg)' },
-    { code: 'HCV_AB', display_name: 'Hepatitis C Antibody (HCV Ab)' },
-    { code: 'HIV_SCREEN', display_name: 'HIV Screening Test' },
-    { code: 'PSA', display_name: 'Prostate Specific Antigen (PSA)' },
-    { code: 'BLOOD_GROUP', display_name: 'Blood Group & Rh Factor' },
-    { code: 'URINE_CULTURE', display_name: 'Urine Culture & Sensitivity' },
-    { code: 'C_PEPTIDE', display_name: 'C-Peptide' },
-  ];
-
-  let testCount = 0;
-  for (const test of testCatalogData) {
-    await prisma.testCatalog.upsert({
-      where: { code: test.code },
-      update: {},
-      create: { code: test.code, display_name: test.display_name },
-    });
-    testCount++;
-  }
-  console.log(`✅ Seeded ${testCount} test catalog entries`);
-
-  // ---------------------------------------------------------------------
   // More demo pharmacy chains + branches + PHARMACY_STAFF accounts — same
   // shape as `demoPharmacies` above, extended with a password-login-ready
   // staff user per branch (same pattern the lab staff seed below uses) and,

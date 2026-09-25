@@ -72,27 +72,11 @@ model LabStaffAssignment {
   @@map("lab_staff_assignments")
 }
 
-/// Mirrors `DrugCatalog`'s minimal lookup-table shape — referenced by code,
-/// never embedded free text (dashboard `CatalogTest { code, displayName }`).
-model TestCatalog {
-  code         String   @id
-  display_name String
-  created_at   DateTime @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime @updatedAt @db.Timestamptz(6)
-  version      Int      @default(1)
-  items        LabOrderItem[]
-
-  @@map("test_catalog")
-}
-
 model LabOrder {
   id                    String              @id @default(uuid()) @db.Uuid
   patient_id            String              @db.Uuid
   lab_branch_id         String              @db.Uuid
-  /// Optional — "patient-selected analyses OR uploaded prescription"
-  /// (dashboard `LabOrder.prescriptionImages`, sourced via this FK same as
-  /// `PharmacyOrder.prescription_id`). Direct catalog-code selection needs
-  /// no prescription at all.
+  /// Uploaded referral image/file that tells lab staff which analyses to run.
   prescription_id       String?             @db.Uuid
   /// File 12 Part 51 — provider clinical requests. The ordering/authorizing
   /// physician; null for patient-originated orders. Provider-origin is
@@ -169,14 +153,15 @@ model LabOrder {
 model LabOrderItem {
   id             String          @id @default(uuid()) @db.Uuid
   lab_order_id   String          @db.Uuid
-  catalog_code   String
+  /// Snapshot of an analysis name retained with the historical order.
+  /// There is intentionally no platform-maintained test catalog.
+  test_name      String
   unit_price     Decimal?        @db.Decimal(10, 2)
   result_state   ItemResultState @default(PENDING)
   created_at     DateTime        @default(now()) @db.Timestamptz(6)
   updated_at     DateTime        @updatedAt @db.Timestamptz(6)
   version        Int             @default(1)
   lab_order      LabOrder        @relation(fields: [lab_order_id], references: [id], onDelete: Cascade)
-  catalog_test   TestCatalog     @relation(fields: [catalog_code], references: [code])
   /// Implicit back-relation — the FK (`item_id`, unique) lives on
   /// `LabResultDocument`, which is the side that comes into existence second
   /// (`recordResult`). One item has at most one result document.
@@ -188,11 +173,9 @@ model LabOrderItem {
 model LabResultDocument {
   id                String            @id @default(uuid()) @db.Uuid
   lab_order_id      String            @db.Uuid
-  /// Nullable (File 12 Part 50): a catalog-based order still enforces "at
-  /// most one result per item" via this `@unique` FK, but a freeform order
-  /// (patient uploaded an image instead of picking catalog tests — the
-  /// image itself tells the lab what to run, it is not a drug-style
-  /// prescription needing item-by-item transcription) has no `LabOrderItem`
+  /// Nullable (File 12 Part 50): an order with historical item snapshots
+  /// still enforces "at most one result per item" via this `@unique` FK; a
+  /// referral-based order without item rows has no `LabOrderItem`
   /// row to attach to at all, so its result documents attach to the order
   /// directly with `item_id: null`. Postgres treats multiple `NULL`s as
   /// distinct under a unique constraint, so several freeform results per

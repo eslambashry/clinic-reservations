@@ -8,7 +8,6 @@ function setup() {
   const labOrderItems = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labResults = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labOrderNotes = { findByOrderId: jest.fn().mockResolvedValue([]) };
-  const testCatalog = { findByCodes: jest.fn().mockResolvedValue([]) };
   const getActiveRoleMembership = { execute: jest.fn() };
   const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
@@ -21,7 +20,6 @@ function setup() {
     labOrderItems as any,
     labResults as any,
     labOrderNotes as any,
-    testCatalog as any,
     getActiveRoleMembership as any,
     resolveDoctorScope as any,
     getUserSummary as any,

@@ -2,18 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { LabOrderItem, Prisma } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
 
-export interface NewLabOrderItem {
-  catalogCode: string;
-}
-
 @Injectable()
 export class LabOrderItemRepository {
-  createMany(db: Prisma.TransactionClient, labOrderId: string, items: NewLabOrderItem[]): Promise<Prisma.BatchPayload> {
-    return db.labOrderItem.createMany({
-      data: items.map((item) => ({ lab_order_id: labOrderId, catalog_code: item.catalogCode })),
-    });
-  }
-
   findByOrderId(db: Prisma.TransactionClient, labOrderId: string): Promise<LabOrderItem[]> {
     return db.labOrderItem.findMany({ where: { lab_order_id: labOrderId } });
   }

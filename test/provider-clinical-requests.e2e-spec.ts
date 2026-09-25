@@ -35,7 +35,8 @@ describe('Provider clinical requests (e2e)', () => {
   let outsidePatientId: string;
   let pharmacyBranchId: string;
   let labBranchId: string;
-  const testCode = `E2E-CBC-${suffix}`;
+  let labReferralAId: string;
+  let labReferralBId: string;
 
   const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
@@ -99,7 +100,12 @@ describe('Provider clinical requests (e2e)', () => {
     const laboratory = await prisma.laboratory.create({ data: { legal_name: `Laboratory E2E ${suffix}`, brand_name: `Laboratory E2E ${suffix}`, status: 'VERIFIED' } });
     const labBranch = await prisma.labBranch.create({ data: { laboratory_id: laboratory.id, address_id: labAddress.id, phone: '+20200000993', iana_timezone: 'Africa/Cairo', status: 'VERIFIED' } });
     labBranchId = labBranch.id;
-    await prisma.testCatalog.create({ data: { code: testCode, display_name: 'E2E complete blood count' } });
+    const [labReferralA, labReferralB] = await Promise.all([
+      prisma.prescription.create({ data: { patient_id: patientA.id, doctor_id: doctorAUser.id, created_by_user_id: doctorAUser.id, created_by_role: 'DOCTOR', source: 'DOCTOR_ISSUED', document_type: 'LAB_REFERRAL', status: 'QUALITY_CHECK_PASSED', images: { create: [{ file_url: `https://example.invalid/e2e-lab-referral-${suffix}-a.pdf`, quality_check_status: 'PASSED' }] } } }),
+      prisma.prescription.create({ data: { patient_id: patientB.id, doctor_id: doctorAUser.id, created_by_user_id: doctorAUser.id, created_by_role: 'DOCTOR', source: 'DOCTOR_ISSUED', document_type: 'LAB_REFERRAL', status: 'QUALITY_CHECK_PASSED', images: { create: [{ file_url: `https://example.invalid/e2e-lab-referral-${suffix}-b.pdf`, quality_check_status: 'PASSED' }] } } }),
+    ]);
+    labReferralAId = labReferralA.id;
+    labReferralBId = labReferralB.id;
     const labStaff = await prisma.user.create({ data: { phone: `+2012${numericSuffix}8`, first_name: 'Lab', last_name: 'Staff' } });
     const labMembership = await prisma.roleMembership.create({ data: { user_id: labStaff.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: labBranch.id } });
     await prisma.labStaffAssignment.create({ data: { user_id: labStaff.id, lab_branch_id: labBranch.id, role_membership_id: labMembership.id } });
@@ -178,17 +184,17 @@ describe('Provider clinical requests (e2e)', () => {
   });
 
   it('runs doctor/assistant lab requests through the existing lab branch queue and batches independently', async () => {
-    const doctorOrder = await request(server()).post('/v1/lab-orders/provider').set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, labBranchId, collectionType: 'VISIT', testCodes: [testCode] }).expect(201);
+    const doctorOrder = await request(server()).post('/v1/lab-orders/provider').set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId }).expect(201);
     const doctorOrderId = doctorOrder.body.data.labOrderId;
     await request(server()).post(`/v1/lab-orders/${doctorOrderId}/quote`).set(auth(labStaffToken)).set('Idempotency-Key', idempotencyKey()).send({ totalPrice: '300.00', appointmentAt: new Date(Date.now() + 172_800_000).toISOString(), prepInstructions: 'Fast 8 hours', queueNumber: 1 }).expect(201);
     await request(server()).get(`/v1/lab-orders/${doctorOrderId}`).set(auth(patientAToken)).expect(200).expect((response) => expect(response.body.data.status).toBe('QUOTED'));
     await request(server()).get(`/v1/lab-orders/${doctorOrderId}`).set(auth(doctorAToken)).expect(200).expect((response) => expect(response.body.data.status).toBe('QUOTED'));
 
-    const assistantOrder = await request(server()).post('/v1/lab-orders/provider').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, labBranchId, collectionType: 'VISIT', testCodes: [testCode] }).expect(201);
+    const assistantOrder = await request(server()).post('/v1/lab-orders/provider').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId }).expect(201);
     expect(assistantOrder.body.data.status).toBe('REQUESTED');
     const batch = await request(server()).post('/v1/lab-orders/provider/batch').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ requests: [
-      { patientId: patientAId, labBranchId, collectionType: 'VISIT', testCodes: [testCode] },
-      { patientId: patientBId, labBranchId, collectionType: 'VISIT', testCodes: [testCode] },
+      { patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId },
+      { patientId: patientBId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralBId },
     ] }).expect(201);
     const ids = batch.body.data.results.map((result: any) => result.labOrderId);
     const persisted = await prisma.labOrder.findMany({ where: { id: { in: ids } }, select: { patient_id: true, batch_id: true, doctor_id: true, created_by_user_id: true } });
@@ -197,8 +203,8 @@ describe('Provider clinical requests (e2e)', () => {
     expect(persisted.every((row) => row.doctor_id === doctorAUserId && row.created_by_user_id !== doctorAUserId)).toBe(true);
     await request(server()).get(`/v1/lab-orders/${ids[1]}`).set(auth(patientAToken)).expect(404);
     await request(server()).post('/v1/lab-orders/provider/batch').set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ requests: [
-      { patientId: patientAId, labBranchId, collectionType: 'VISIT', testCodes: [testCode] },
-      { patientId: patientAId, labBranchId, collectionType: 'VISIT', testCodes: [testCode] },
+      { patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId },
+      { patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId },
     ] }).expect(422);
   });
 });

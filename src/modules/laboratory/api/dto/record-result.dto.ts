@@ -3,9 +3,8 @@ import { IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-
 
 export class RecordResultDto {
   /**
-   * Required for a catalog-based order (one result per registered
-   * `LabOrderItem`). Omitted for a freeform order (patient uploaded an
-   * image instead of picking catalog tests) — the whole order's result
+   * Required when attaching a result to a historical per-order item.
+   * Omitted for a referral order without item rows — the whole order's result
    * attaches directly, enforced in `RecordResultUseCase`, not here (a
    * cross-field rule against the order's own item count, File 12 Part 50).
    */
