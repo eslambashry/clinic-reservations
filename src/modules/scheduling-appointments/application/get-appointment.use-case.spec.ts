@@ -66,6 +66,26 @@ describe('GetAppointmentUseCase', () => {
       clinicAddressLine1: '12 Tahrir St',
       clinicCity: 'Cairo',
       clinicPhone: '+20 100 000 0000',
+      payment: null,
+    });
+  });
+
+  it('maps the payment intent into the same payment breakdown the doctor view uses', async () => {
+    const { appointments, useCase } = setup();
+    appointments.findByIdWithSlotTimes.mockResolvedValue({
+      ...appointment,
+      payment_intent: { method: 'CARD', amount: { toFixed: () => '150.00' }, full_amount: { toFixed: () => '300.00' }, currency: 'EGP' },
+      remaining_balance: { toFixed: () => '150.00' },
+    });
+
+    const result = await useCase.execute('appointment-1', actor);
+
+    expect(result.payment).toEqual({
+      method: 'CARD',
+      currency: 'EGP',
+      fullAmount: '300.00',
+      paidAmount: '150.00',
+      remainingBalance: '150.00',
     });
   });
 });

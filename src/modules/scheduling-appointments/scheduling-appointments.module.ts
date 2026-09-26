@@ -20,6 +20,7 @@ import { GetDoctorSlotsUseCase } from './application/get-doctor-slots.use-case';
 import { InitiateOnlineAppointmentPaymentUseCase } from './application/initiate-online-appointment-payment.use-case';
 import { ListDoctorAppointmentsUseCase } from './application/list-doctor-appointments.use-case';
 import { ListAppointmentsUseCase } from './application/list-appointments.use-case';
+import { LookupPatientByPhoneUseCase } from './application/lookup-patient-by-phone.use-case';
 import { ProcessPaymentWebhookUseCase } from './application/process-payment-webhook.use-case';
 import { ListMyScheduleTemplatesUseCase } from './application/list-my-schedule-templates.use-case';
 import { ListScheduleTemplatesUseCase } from './application/list-schedule-templates.use-case';
@@ -77,6 +78,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetDoctorSlotsUseCase,
     CreateHoldUseCase,
     CreateClinicStaffAppointmentUseCase,
+    LookupPatientByPhoneUseCase,
     ConfirmAppointmentUseCase,
     CancelAppointmentUseCase,
     RescheduleAppointmentUseCase,

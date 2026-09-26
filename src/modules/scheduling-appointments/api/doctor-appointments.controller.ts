@@ -15,7 +15,9 @@ import { CreateClinicStaffAppointmentDto } from './dto/create-clinic-staff-appoi
 import { ListDoctorAppointmentsQueryDto } from './dto/list-doctor-appointments-query.dto';
 import { RescheduleAppointmentDto } from './dto/reschedule-appointment.dto';
 import { CreateClinicStaffAppointmentResult, CreateClinicStaffAppointmentUseCase } from '../application/create-clinic-staff-appointment.use-case';
+import { LookupPatientByPhoneResult, LookupPatientByPhoneUseCase } from '../application/lookup-patient-by-phone.use-case';
 import { UpdateAppointmentVisitStatusUseCase } from '../application/update-appointment-visit-status.use-case';
+import { LookupPatientByPhoneQueryDto } from './dto/lookup-patient-by-phone-query.dto';
 import { UpdateVisitStatusDto } from './dto/update-visit-status.dto';
 
 /**
@@ -46,8 +48,19 @@ export class DoctorAppointmentsController {
     @Inject(CancelAppointmentUseCase) private readonly cancelAppointment: CancelAppointmentUseCase,
     @Inject(RescheduleAppointmentUseCase) private readonly rescheduleAppointment: RescheduleAppointmentUseCase,
     @Inject(CreateClinicStaffAppointmentUseCase) private readonly createClinicStaffAppointment: CreateClinicStaffAppointmentUseCase,
+    @Inject(LookupPatientByPhoneUseCase) private readonly lookupPatientByPhone: LookupPatientByPhoneUseCase,
     @Inject(UpdateAppointmentVisitStatusUseCase) private readonly updateAppointmentVisitStatus: UpdateAppointmentVisitStatusUseCase,
   ) {}
+
+  @Get('patients/lookup')
+  @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
+  @ApiOperation({
+    summary:
+      'Look up an existing patient account by phone before a walk-in booking — lets clinic staff confirm this is the intended patient instead of `create` silently reusing whichever account already has that phone',
+  })
+  lookupPatient(@Query() query: LookupPatientByPhoneQueryDto): Promise<LookupPatientByPhoneResult> {
+    return this.lookupPatientByPhone.execute(query.phone);
+  }
 
   @Post('branch/:clinicBranchId/create')
   @Roles(RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)

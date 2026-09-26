@@ -4,6 +4,7 @@ import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interf
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AppointmentRepository, AppointmentWithSlotTimes } from '../infrastructure/appointment.repository';
+import { DoctorAppointmentPayment, toAppointmentPayment } from './doctor-appointment.mapper';
 
 export interface AppointmentSummary {
   appointmentId: string;
@@ -23,6 +24,8 @@ export interface AppointmentSummary {
   clinicAddressLine1: string;
   clinicCity: string;
   clinicPhone: string;
+  /** What the patient owes/already paid for this appointment. `null` only when the appointment has no payment intent on record. */
+  payment: DoctorAppointmentPayment | null;
 }
 
 function fullName(user: { first_name: string | null; last_name: string | null }): string {
@@ -48,6 +51,7 @@ export function toAppointmentSummary(appointment: AppointmentWithSlotTimes): App
     clinicAddressLine1: affiliation.clinic_branch.address.line1,
     clinicCity: affiliation.clinic_branch.address.city,
     clinicPhone: affiliation.clinic_branch.phone,
+    payment: toAppointmentPayment(appointment),
   };
 }
 

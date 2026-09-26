@@ -18,6 +18,11 @@ export interface NewAppointment {
 
 const WITH_SLOT_TIMES = {
   slot: { select: { start_at: true, end_at: true } },
+  // The patient's own payment breakdown (what's due, what they already paid,
+  // what's left for the clinic to collect) — safe to expose on the patient
+  // surface unlike `WITH_DOCTOR_VIEW`'s `patient` include, since it is the
+  // caller's own money, not another person's identity.
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },

@@ -67,7 +67,13 @@ function fullName(user: { first_name: string | null; last_name: string | null })
   return [user.first_name, user.last_name].filter((part): part is string => !!part).join(' ');
 }
 
-function toDoctorAppointmentPayment(appointment: AppointmentWithDoctorView): DoctorAppointmentPayment | null {
+interface AppointmentPaymentSource {
+  payment_intent: { method: PaymentMethod; amount: { toFixed(digits: number): string }; full_amount: { toFixed(digits: number): string } | null; currency: string } | null;
+  remaining_balance: { toFixed(digits: number): string } | null;
+}
+
+/** Shared by both the doctor view and the patient-facing `AppointmentSummary` — same payment shape, same intent row, just exposed on two different response DTOs. */
+export function toAppointmentPayment(appointment: AppointmentPaymentSource): DoctorAppointmentPayment | null {
   const intent = appointment.payment_intent;
   if (!intent) return null;
 
@@ -113,7 +119,7 @@ export function toDoctorAppointmentSummary(appointment: AppointmentWithDoctorVie
     cancelledReason: appointment.cancelled_reason,
     cancelledBy: appointment.cancelled_by,
     rescheduledFromAppointmentId: appointment.rescheduled_from_appointment_id,
-    payment: toDoctorAppointmentPayment(appointment),
+    payment: toAppointmentPayment(appointment),
     createdAt: appointment.created_at,
   };
 }
