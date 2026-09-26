@@ -205,19 +205,19 @@ export class AppointmentRepository {
     });
   }
 
-  /** File 12 Part 35.8: version-guarded `CONFIRMED→CANCELLED`. `false` means the appointment was modified concurrently since the caller read its version. */
+  /** File 12 Part 35.8: version-guarded `CONFIRMED→CANCELLED`, only while the patient is still `WAITING`. `false` means the appointment was modified concurrently since the caller read its version. */
   async cancel(db: Prisma.TransactionClient, id: string, currentVersion: number, cancelledBy: string, cancelledReason: string): Promise<boolean> {
     const result = await db.appointment.updateMany({
-      where: { id, version: currentVersion, status: 'CONFIRMED' },
+      where: { id, version: currentVersion, status: 'CONFIRMED', visit_status: 'WAITING' },
       data: { status: 'CANCELLED', cancelled_by: cancelledBy, cancelled_reason: cancelledReason, version: { increment: 1 } },
     });
     return result.count === 1;
   }
 
-  /** File 12 Part 35.10: version-guarded `CONFIRMED→RESCHEDULED`, the old-appointment side of a reschedule. */
+  /** File 12 Part 35.10: version-guarded `CONFIRMED→RESCHEDULED`, the old-appointment side of a reschedule, only while the patient is still `WAITING`. */
   async markRescheduled(db: Prisma.TransactionClient, id: string, currentVersion: number): Promise<boolean> {
     const result = await db.appointment.updateMany({
-      where: { id, version: currentVersion, status: 'CONFIRMED' },
+      where: { id, version: currentVersion, status: 'CONFIRMED', visit_status: 'WAITING' },
       data: { status: 'RESCHEDULED', version: { increment: 1 } },
     });
     return result.count === 1;

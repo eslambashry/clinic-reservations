@@ -90,6 +90,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_NOT_RESCHEDULABLE: 'لا يمكن تغيير هذا الموعد إلا وهو مؤكَّد.',
   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
+  APPOINTMENT_VISIT_IN_PROGRESS: 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
   APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
