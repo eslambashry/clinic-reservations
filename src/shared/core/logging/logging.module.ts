@@ -18,12 +18,14 @@ import { RequestContextService } from '../context/request-context.service';
   imports: [
     LoggerModule.forRootAsync({
       inject: [ConfigService, RequestContextService],
-      useFactory: (config: ConfigService, context: RequestContextService) => ({
-        pinoHttp: {
-          level: config.get<string>('nodeEnv') === 'production' ? 'info' : 'debug',
-          ...(config.get<string>('nodeEnv') === 'production'
-            ? {}
-            : {
+      useFactory: (config: ConfigService, context: RequestContextService) => {
+        const isDevelopment = config.get<string>('nodeEnv') === 'development';
+
+        return {
+          pinoHttp: {
+            level: isDevelopment ? 'debug' : 'info',
+            ...(isDevelopment
+              ? {
                 transport: {
                   target: 'pino-pretty',
                   options: {
@@ -33,14 +35,16 @@ import { RequestContextService } from '../context/request-context.service';
                     ignore: 'pid,hostname,req,res',
                   },
                 },
-              }),
-          autoLogging: true,
-          customProps: () => ({
-            correlationId: context.correlationId,
-          }),
-          redact: ['req.headers.authorization', 'req.headers.cookie'],
-        },
-      }),
+              }
+              : {}),
+            autoLogging: true,
+            customProps: () => ({
+              correlationId: context.correlationId,
+            }),
+            redact: ['req.headers.authorization', 'req.headers.cookie'],
+          },
+        };
+      },
     }),
   ],
   exports: [LoggerModule],

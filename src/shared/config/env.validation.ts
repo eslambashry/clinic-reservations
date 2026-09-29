@@ -40,6 +40,11 @@ class EnvironmentVariables {
   @IsString()
   REDIS_URL: string;
 
+  /** Optional trusted Redis server CA certificate for managed TLS Redis. */
+  @IsString()
+  @IsOptional()
+  REDIS_CA_CERT?: string;
+
   @IsIn(['true', 'false'])
   REDIS_ENABLED: string;
 

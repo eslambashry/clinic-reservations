@@ -10,6 +10,7 @@ export interface AppConfig {
   redis: {
     url: string;
     enabled: boolean;
+    caCert: string | null;
   };
   jwt: {
     accessSecret: string;
@@ -71,6 +72,7 @@ export default (): AppConfig => ({
   redis: {
     url: process.env.REDIS_URL as string,
     enabled: process.env.REDIS_ENABLED === 'true',
+    caCert: process.env.REDIS_CA_CERT || null,
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET as string,
