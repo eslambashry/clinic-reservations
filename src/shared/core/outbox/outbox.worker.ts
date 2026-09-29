@@ -75,9 +75,29 @@ export class OutboxWorker {
 
   private async claimBatch(): Promise<OutboxEvent[]> {
     return this.prisma.$transaction(async (tx) => {
+      // A PROCESSING row nobody has touched for STALE_PROCESSING_MINUTES was
+      // claimed by a worker that crashed before recording an outcome; it is
+      // reclaimed here instead of being stranded forever. Each claim counts
+      // against the bounded attempt budget, including a crash after a handler
+      // performed an external side effect. The claim below
+      // bumps `updated_at` (Prisma `@updatedAt`), and every outcome write is
+      // fenced on that value, so a slow original worker cannot overwrite the
+      // reclaimer's result.
+      await tx.outboxEvent.updateMany({
+        where: {
+          attempts: { gte: OUTBOX_CONSTANTS.MAX_ATTEMPTS },
+          OR: [
+            { status: 'PENDING' },
+            { status: 'PROCESSING', updated_at: { lt: new Date(Date.now() - OUTBOX_CONSTANTS.STALE_PROCESSING_MINUTES * 60_000) } },
+          ],
+        },
+        data: { status: 'FAILED', last_error: 'Worker lease expired after maximum attempts.' },
+      });
       const claimed = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT "id" FROM "outbox_events"
-        WHERE "status" = 'PENDING'
+        WHERE ("status" = 'PENDING' AND "attempts" < ${OUTBOX_CONSTANTS.MAX_ATTEMPTS}::int)
+           OR ("status" = 'PROCESSING' AND "attempts" < ${OUTBOX_CONSTANTS.MAX_ATTEMPTS}::int
+             AND "updated_at" < NOW() - make_interval(mins => ${OUTBOX_CONSTANTS.STALE_PROCESSING_MINUTES}::int))
         ORDER BY "created_at" ASC
         LIMIT ${OUTBOX_CONSTANTS.BATCH_SIZE}
         FOR UPDATE SKIP LOCKED
@@ -90,7 +110,7 @@ export class OutboxWorker {
       const ids = claimed.map((row) => row.id);
       await tx.outboxEvent.updateMany({
         where: { id: { in: ids } },
-        data: { status: 'PROCESSING' },
+        data: { status: 'PROCESSING', attempts: { increment: 1 } },
       });
 
       return tx.outboxEvent.findMany({ where: { id: { in: ids } } });
@@ -115,9 +135,11 @@ export class OutboxWorker {
       // PENDING once a consumer exists) while taking it out of the claim set.
       // It is not a failure, so `attempts` is untouched and it never reaches
       // FAILED.
-      await this.prisma.outboxEvent.update({
-        where: { id: event.id },
-        data: { status: 'SKIPPED' },
+      await this.prisma.outboxEvent.updateMany({
+        where: { id: event.id, status: 'PROCESSING', updated_at: event.updated_at },
+        // No handler means no attempt occurred. Undo the claim accounting so
+        // SKIPPED rows remain outside the retry budget as before.
+        data: { status: 'SKIPPED', attempts: { decrement: 1 } },
       });
       // `warn`, not `debug`: a permanently unconsumed event is a wiring gap
       // someone needs to see, and the previous `debug` hid exactly the
@@ -130,10 +152,10 @@ export class OutboxWorker {
     }
 
     try {
-      await handler.handle(event.payload);
+      await handler.handle(event.payload, event.id);
 
-      await this.prisma.outboxEvent.update({
-        where: { id: event.id },
+      await this.prisma.outboxEvent.updateMany({
+        where: { id: event.id, status: 'PROCESSING', updated_at: event.updated_at },
         data: { status: 'PROCESSED', processed_at: new Date() },
       });
     } catch (error) {
@@ -142,12 +164,13 @@ export class OutboxWorker {
   }
 
   private async recordFailure(event: OutboxEvent, error: unknown): Promise<void> {
-    const attempts = event.attempts + 1;
+    // Claiming already consumed this attempt, including the crash case.
+    const attempts = event.attempts;
     const exhausted = attempts >= OUTBOX_CONSTANTS.MAX_ATTEMPTS;
     const message = error instanceof Error ? error.message : String(error);
 
-    await this.prisma.outboxEvent.update({
-      where: { id: event.id },
+    await this.prisma.outboxEvent.updateMany({
+      where: { id: event.id, status: 'PROCESSING', updated_at: event.updated_at },
       data: {
         status: exhausted ? 'FAILED' : 'PENDING',
         attempts,

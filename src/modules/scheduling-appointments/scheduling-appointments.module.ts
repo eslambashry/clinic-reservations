@@ -9,6 +9,7 @@ import { CancelAppointmentUseCase } from './application/cancel-appointment.use-c
 import { ConfirmAppointmentUseCase } from './application/confirm-appointment.use-case';
 import { CreateHoldUseCase } from './application/create-hold.use-case';
 import { AssertPatientInDoctorScopeUseCase } from './application/assert-patient-in-doctor-scope.use-case';
+import { GetPharmacyHandoverAppointmentUseCase } from './application/get-pharmacy-handover-appointment.use-case';
 import { CreateClinicStaffAppointmentUseCase } from './application/create-clinic-staff-appointment.use-case';
 import { CreateScheduleTemplateUseCase } from './application/create-schedule-template.use-case';
 import { DeleteScheduleTemplateUseCase } from './application/delete-schedule-template.use-case';
@@ -93,12 +94,13 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     InitiateOnlineAppointmentPaymentUseCase,
     ProcessPaymentWebhookUseCase,
     AssertPatientInDoctorScopeUseCase,
+    GetPharmacyHandoverAppointmentUseCase,
   ],
   // File 12 Part 51: `AssertPatientInDoctorScopeUseCase` is consumed by
   // `prescriptions`/`laboratory` for the provider clinical-requests
   // patient-relationship check, and `GetDoctorAppointmentUseCase` for
   // validating an optional `appointmentId` link belongs to the same doctor
   // scope and patient — never this module's `infrastructure/`.
-  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase],
+  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase, GetPharmacyHandoverAppointmentUseCase],
 })
 export class SchedulingAppointmentsModule {}

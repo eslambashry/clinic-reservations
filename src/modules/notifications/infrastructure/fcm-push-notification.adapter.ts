@@ -26,7 +26,7 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
 
   async send(tokens: string[], message: PushNotificationMessage): Promise<PushSendResult> {
     if (tokens.length === 0) {
-      return { invalidTokens: [] };
+      return { acceptedTokens: [], retryableTokens: [], invalidTokens: [] };
     }
 
     try {
@@ -37,12 +37,18 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
       });
 
       const invalidTokens: string[] = [];
+      const acceptedTokens: string[] = [];
+      const retryableTokens: string[] = [];
       response.responses.forEach((result, index) => {
-        if (!result.success && FcmPushNotificationAdapter.isUnrecoverableTokenError(result.error?.code)) {
+        if (result.success) {
+          acceptedTokens.push(tokens[index]);
+        } else if (FcmPushNotificationAdapter.isUnrecoverableTokenError(result.error?.code)) {
           invalidTokens.push(tokens[index]);
+        } else {
+          retryableTokens.push(tokens[index]);
         }
       });
-      return { invalidTokens };
+      return { acceptedTokens, retryableTokens, invalidTokens };
     } catch (error) {
       this.logger.error({ err: error }, 'FCM send failed');
       throw new ExternalProviderError('Firebase', 502, error);

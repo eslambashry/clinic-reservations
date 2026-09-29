@@ -1,18 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { SmsSenderPort } from '../application/ports/sms-sender.port';
+import { Injectable } from '@nestjs/common';
+import { SmsChannelUnavailableError, SmsSenderPort } from '../application/ports/sms-sender.port';
 
 /**
- * Placeholder `SmsSenderPort` implementation — mirrors `identity-auth`'s
- * `LoggingOtpSender` exactly, same reason: no SMS provider is chosen yet
- * (File 10 Part 4 `DEC-003`, still `Open`). Never enable this in production
- * — it would mean a `TRANSACTIONAL`/`SAFETY_CRITICAL` SMS never actually
- * reaches the patient.
+ * Placeholder `SmsSenderPort` binding while no SMS provider is chosen (File
+ * 10 Part 4 `DEC-003`, still `Open`). Unlike `identity-auth`'s dev-only
+ * `LoggingOtpSender`, it never pretends to deliver: a `TRANSACTIONAL`/
+ * `SAFETY_CRITICAL` SMS row must end `FAILED`, not `SENT`, when nothing
+ * reached the patient — and the phone number and clinical text stay out of
+ * application logs. Swap the `SMS_SENDER` binding once a provider exists.
  */
 @Injectable()
 export class LoggingSmsSender implements SmsSenderPort {
-  private readonly logger = new Logger(LoggingSmsSender.name);
-
-  async send(phone: string, message: string): Promise<void> {
-    this.logger.warn(`[DEV-ONLY SMS DELIVERY] No SMS provider configured (File 10 Part 4 DEC-003 OPEN DECISION) — SMS to ${phone}: ${message}`);
+  async send(_phone: string, _message: string): Promise<void> {
+    throw new SmsChannelUnavailableError();
   }
 }

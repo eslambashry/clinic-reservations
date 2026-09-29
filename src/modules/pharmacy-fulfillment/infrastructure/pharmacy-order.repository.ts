@@ -6,6 +6,8 @@ export interface NewPharmacyOrder {
   prescriptionId: string;
   patientId: string;
   fulfillmentType: FulfillmentType;
+  appointmentId?: string;
+  handoverClinicBranchId?: string;
   createdByUserId?: string;
   createdByRole?: RoleContextType;
 }
@@ -53,6 +55,8 @@ export class PharmacyOrderRepository {
         prescription_id: input.prescriptionId,
         patient_id: input.patientId,
         fulfillment_type: input.fulfillmentType,
+        appointment_id: input.appointmentId,
+        handover_clinic_branch_id: input.handoverClinicBranchId,
         created_by_user_id: input.createdByUserId,
         created_by_role: input.createdByRole,
       },

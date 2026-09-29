@@ -16,6 +16,11 @@ export class CreateProviderPharmacyOrderDto {
   @IsIn(['PICKUP', 'DELIVERY', 'CLINIC_HANDOVER'])
   fulfillmentType: FulfillmentType;
 
+  @ApiPropertyOptional({ format: 'uuid', description: 'Required for CLINIC_HANDOVER; must belong to this patient and provider scope.' })
+  @IsOptional()
+  @IsUUID()
+  appointmentId?: string;
+
   @ApiPropertyOptional({ format: 'uuid', description: 'Choose one verified branch, or provide coordinates to use the existing nearby-branch broadcast.' })
   @IsOptional()
   @IsUUID()

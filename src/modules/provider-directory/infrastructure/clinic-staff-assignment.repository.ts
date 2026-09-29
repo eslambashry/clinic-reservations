@@ -39,13 +39,20 @@ export class ClinicStaffAssignmentRepository {
    * revoked assistant's stale assignment row never resurfaces them as a
    * notification recipient.
    */
-  findActiveUserIdsByClinicBranchId(db: Prisma.TransactionClient, clinicBranchId: string): Promise<string[]> {
+  findActiveUserIdsByClinicBranchId(db: Prisma.TransactionClient, clinicBranchId: string, doctorId?: string): Promise<string[]> {
     return db.clinicStaffAssignment
       .findMany({
-        where: { clinic_branch_id: clinicBranchId, role_membership: { status: 'ACTIVE' } },
+        where: {
+          clinic_branch_id: clinicBranchId,
+          role_membership: {
+            status: 'ACTIVE', role_code: 'CLINIC_STAFF', context_type: 'CLINIC_STAFF',
+            ...(doctorId && { context_id: doctorId }),
+            user: { status: 'ACTIVE' },
+          },
+        },
         select: { role_membership: { select: { user_id: true } } },
       })
-      .then((rows) => rows.map((row) => row.role_membership.user_id));
+      .then((rows) => [...new Set(rows.map((row) => row.role_membership.user_id))]);
   }
 
   createMany(db: Prisma.TransactionClient, roleMembershipId: string, clinicBranchIds: string[]): Promise<Prisma.BatchPayload> {

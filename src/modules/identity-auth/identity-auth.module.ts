@@ -17,6 +17,7 @@ import { ProvisionStaffUserUseCase } from './application/provision-staff-user.us
 import { PruneDeviceTokensUseCase } from './application/prune-device-tokens.use-case';
 import { RefreshTokenUseCase } from './application/refresh-token.use-case';
 import { RegisterDeviceUseCase } from './application/register-device.use-case';
+import { UnregisterDeviceUseCase } from './application/unregister-device.use-case';
 import { RequestOtpUseCase } from './application/request-otp.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { RevokeStaffMembershipUseCase } from './application/revoke-staff-membership.use-case';
@@ -95,6 +96,7 @@ import { UserRepository } from './infrastructure/user.repository';
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
     RegisterDeviceUseCase,
+    UnregisterDeviceUseCase,
     ListUserDeviceTokensUseCase,
     PruneDeviceTokensUseCase,
     GetUserContactInfoUseCase,

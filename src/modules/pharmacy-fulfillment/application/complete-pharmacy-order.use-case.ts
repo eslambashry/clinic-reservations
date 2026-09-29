@@ -57,12 +57,14 @@ export class CompletePharmacyOrderUseCase {
       await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
         pharmacyOrderId,
         status: 'FULFILLED',
+        fulfillmentType: order.fulfillment_type,
         recipientUserId: order.patient_id,
       });
-      if (order.created_by_user_id) {
+      if (order.created_by_user_id && order.created_by_user_id !== order.patient_id) {
         await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
           pharmacyOrderId,
           status: 'FULFILLED',
+          fulfillmentType: order.fulfillment_type,
           recipientUserId: order.created_by_user_id,
         });
       }

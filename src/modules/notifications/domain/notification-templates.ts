@@ -103,7 +103,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'تم قبول طلبك',
-      body: `تم تسعير طلبك بمبلغ ${money(p.totalPrice, p.currency)}. أكمل الدفع لمتابعة التجهيز.`,
+      body: `حددت الصيدلية سعر طلبك بمبلغ ${money(p.totalPrice, p.currency)}، وستتابع تجهيزه.`,
       data: { pharmacyOrderId: p.pharmacyOrderId },
     }),
   },
@@ -143,7 +143,26 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
   },
   ProviderPharmacyOrderStatusChanged: {
     tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
-    render: (p) => ({ title: 'تحديث على طلب الدواء', body: 'تغيّرت حالة طلب الدواء. افتح التطبيق لمراجعة الحالة الحالية.', data: { pharmacyOrderId: p.pharmacyOrderId, status: p.status } }),
+    render: (p) => {
+      const statusText = p.status === 'READY_FOR_PICKUP'
+        ? { title: 'طلب الدواء جاهز', body: 'طلب الدواء جاهز للاستلام من الصيدلية.' }
+        : p.status === 'OUT_FOR_DELIVERY' && p.fulfillmentType === 'CLINIC_HANDOVER'
+          ? { title: 'طلب الدواء في الطريق إلى العيادة', body: 'خرج طلب الدواء من الصيدلية للتوصيل إلى العيادة المرتبطة بالموعد.' }
+          : p.status === 'OUT_FOR_DELIVERY' && p.fulfillmentType === 'DELIVERY'
+            ? { title: 'طلب الدواء في الطريق إليك', body: 'خرج طلب الدواء من الصيدلية للتوصيل إلى المريض.' }
+            : p.status === 'FULFILLED'
+              ? { title: 'اكتمل طلب الدواء', body: 'أُغلِق طلب الدواء في سجل الصيدلية. راجع التفاصيل داخل التطبيق.' }
+              : { title: 'تحديث على طلب الدواء', body: 'تغيّرت حالة طلب الدواء. افتح التطبيق لمراجعة الحالة الحالية.' };
+      return { ...statusText, data: { pharmacyOrderId: p.pharmacyOrderId, status: p.status, fulfillmentType: p.fulfillmentType } };
+    },
+  },
+  PharmacyOrderOnWayToClinicForStaff: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.clinicStaffUserId,
+    render: (p) => ({
+      title: 'طلب دواء في الطريق إلى العيادة',
+      body: 'خرج طلب دواء مرتبط بموعد في فرعك من الصيدلية. راجع الموعد داخل التطبيق.',
+      data: { appointmentId: p.appointmentId },
+    }),
   },
   PaymentCaptured: {
     tier: 'TRANSACTIONAL',
@@ -325,6 +344,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],
     extractUserId: (p) => p.adminUserId,
+    // The inbox row names the applicant; the lock screen must not.
     render: (p) => {
       // Falls back to the generic wording only when the applicant gave no
       // name — `full_name` is optional on the registration DTO.

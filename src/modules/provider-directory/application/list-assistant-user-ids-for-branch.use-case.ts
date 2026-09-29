@@ -12,7 +12,7 @@ import { ClinicStaffAssignmentRepository } from '../infrastructure/clinic-staff-
 export class ListAssistantUserIdsForBranchUseCase {
   constructor(@Inject(ClinicStaffAssignmentRepository) private readonly assignments: ClinicStaffAssignmentRepository) {}
 
-  execute(tx: Prisma.TransactionClient, clinicBranchId: string): Promise<string[]> {
-    return this.assignments.findActiveUserIdsByClinicBranchId(tx, clinicBranchId);
+  execute(tx: Prisma.TransactionClient, clinicBranchId: string, doctorId?: string): Promise<string[]> {
+    return this.assignments.findActiveUserIdsByClinicBranchId(tx, clinicBranchId, doctorId);
   }
 }

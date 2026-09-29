@@ -34,7 +34,7 @@ export class DispatchNotificationUseCase {
     @Inject(DeliverNotificationUseCase) private readonly deliver: DeliverNotificationUseCase,
   ) {}
 
-  async executeFromEvent(eventName: string, rawPayload: unknown): Promise<void> {
+  async executeFromEvent(eventName: string, rawPayload: unknown, sourceEventId?: string): Promise<void> {
     const template = NOTIFICATION_TEMPLATES[eventName];
     if (!template) {
       // Registrar only ever registers handlers for keys in the same map,
@@ -61,13 +61,16 @@ export class DispatchNotificationUseCase {
       const nowLocalHour = DateTime.now().setZone(PROVIDER_REGISTRATION_CONSTANTS.DEFAULT_IANA_TIMEZONE).hour;
 
       const created: { id: string; channel: NotificationChannel }[] = [];
+      let inboxRowChosen = false;
       for (const channel of template.channels) {
         if (!this.isChannelAllowed(template.tier, channel, preferenceRows)) {
           continue;
         }
 
-        const notification = await this.notifications.create(tx, {
+        const notification = await this.notifications.createOnce(tx, {
           userId,
+          sourceEventId,
+          visibleInInbox: !inboxRowChosen,
           tier: template.tier,
           channel,
           templateCode: eventName,
@@ -75,9 +78,10 @@ export class DispatchNotificationUseCase {
           body: rendered.body,
           data: rendered.data as Prisma.InputJsonValue | undefined,
         });
+        inboxRowChosen = true;
 
         const suppressedByQuietHours = respectsQuietHours(template.tier) && quietHours !== null && isWithinQuietHours(nowLocalHour, quietHours);
-        if (!suppressedByQuietHours) {
+        if (!suppressedByQuietHours && notification.status !== 'SENT') {
           created.push({ id: notification.id, channel });
         }
       }

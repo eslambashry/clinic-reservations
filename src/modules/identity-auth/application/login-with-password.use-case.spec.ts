@@ -7,17 +7,13 @@ jest.mock('@node-rs/argon2', () => ({
 
 const verifyMock = argon2.verify as jest.Mock;
 
-function buildTx() {
-  return {} as any;
-}
-
 describe('LoginWithPasswordUseCase', () => {
   beforeEach(() => {
     verifyMock.mockReset();
   });
 
   function setup() {
-    const tx = buildTx();
+    const tx = { user: { findUnique: jest.fn().mockResolvedValue({ password_hash: 'hashed', status: 'ACTIVE' }) } };
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const users = { findByPhone: jest.fn() };
     const roleMemberships = {
@@ -25,15 +21,17 @@ describe('LoginWithPasswordUseCase', () => {
       findActiveByUserRoleContextType: jest.fn(),
     };
     const tokens = { issue: jest.fn() };
+    const refreshTokens = { lockUserForAuthMutation: jest.fn() };
     const rateLimiter = { consume: jest.fn().mockResolvedValue(true) };
     const useCase = new LoginWithPasswordUseCase(
       prisma as any,
       users as any,
       roleMemberships as any,
+      refreshTokens as any,
       tokens as any,
       rateLimiter as any,
     );
-    return { tx, prisma, users, roleMemberships, tokens, rateLimiter, useCase };
+    return { tx, prisma, users, roleMemberships, tokens, refreshTokens, rateLimiter, useCase };
   }
 
   it('429s RATE_LIMITED and never looks up the user when the phone is over its login-attempt window', async () => {
@@ -113,8 +111,8 @@ describe('LoginWithPasswordUseCase', () => {
   });
 
   it('on a correct password: verifies against the stored hash, reuses the active membership, and issues tokens', async () => {
-    const { tx, users, roleMemberships, tokens, useCase } = setup();
-    const user = { id: 'user-1', phone: '+201001234567', password_hash: 'hashed' };
+    const { tx, users, roleMemberships, tokens, refreshTokens, useCase } = setup();
+    const user = { id: 'user-1', phone: '+201001234567', password_hash: 'hashed', status: 'ACTIVE' };
     users.findByPhone.mockResolvedValue(user);
     verifyMock.mockResolvedValue(true);
     const membership = { id: 'membership-1', user_id: 'user-1', role_code: 'PATIENT', context_type: 'PATIENT' };
@@ -125,8 +123,20 @@ describe('LoginWithPasswordUseCase', () => {
 
     expect(result).toEqual({ accessToken: 'access', refreshToken: 'refresh', expiresIn: 1800, userId: 'user-1', role: 'PATIENT' });
     expect(verifyMock).toHaveBeenCalledWith('hashed', 'NewPass1!');
+    expect(refreshTokens.lockUserForAuthMutation).toHaveBeenCalledWith(tx, 'user-1');
     expect(roleMemberships.findActiveByUser).toHaveBeenCalledWith(tx, 'user-1');
     expect(tokens.issue).toHaveBeenCalledWith(tx, membership);
+  });
+
+  it('does not issue a session from a password hash changed while login waited for the user lock', async () => {
+    const { tx, users, roleMemberships, tokens, useCase } = setup();
+    users.findByPhone.mockResolvedValue({ id: 'user-1', phone: '+201001234567', password_hash: 'old-hash', status: 'ACTIVE' });
+    (tx.user.findUnique as jest.Mock).mockResolvedValue({ password_hash: 'new-hash', status: 'ACTIVE' });
+    verifyMock.mockResolvedValue(true);
+
+    await expect(useCase.execute({ phone: '+201001234567', password: 'OldPass1!' })).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect(roleMemberships.findActiveByUser).not.toHaveBeenCalled();
+    expect(tokens.issue).not.toHaveBeenCalled();
   });
 
   it('selects the requested doctor membership instead of the oldest patient membership', async () => {

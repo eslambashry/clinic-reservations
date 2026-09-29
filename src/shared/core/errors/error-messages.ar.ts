@@ -39,6 +39,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   TOKEN_EXPIRED: 'انتهت صلاحية جلستك. سجّل الدخول مرة أخرى للمتابعة.',
   INVALID_REFRESH_TOKEN: 'لم تعد جلستك صالحة. سجّل الدخول مرة أخرى.',
   TOKEN_FAMILY_REVOKED: 'تم إنهاء هذه الجلسة لأسباب أمنية. سجّل الدخول مرة أخرى.',
+  SESSION_REFRESH_REQUIRED: 'يلزم تحديث الجلسة قبل تفعيل الإشعارات.',
+  DEVICE_SESSION_ENDED: 'انتهت الجلسة التي طلبت تفعيل الإشعارات على هذا الجهاز.',
 
   // ── Authorization (403) ─────────────────────────────────────────────────
   FORBIDDEN: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
@@ -142,6 +144,10 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED:
     'تحتوي الروشتة على دواء خاضع للرقابة. يلزم تأكيد صريح من الصيدلي قبل المتابعة.',
   PRESCRIPTION_NEEDS_ITEMS: 'أضف دواءً واحدًا على الأقل لإصدار الروشتة.',
+  PRESCRIPTION_NEEDS_FILES: 'أرفق صورة واحدة على الأقل للطلب.',
+  PRESCRIPTION_HAS_NO_CONTENT: 'أضف دواءً أو أرفق صورة للروشتة قبل إرسالها للصيدلية.',
+  DOCUMENT_NOT_A_PRESCRIPTION: 'لا يمكن إرسال إحالة المعمل إلى الصيدلية.',
+  PAYMENT_BILLING_DATA_REQUIRED: 'بيانات الفوترة مطلوبة لطريقة الدفع المحددة.',
   DUPLICATE_BATCH_PATIENT: 'لا يمكن إضافة المريض نفسه أكثر من مرة في نفس الدفعة.',
   BATCH_NEEDS_REQUESTS: 'أضف طلب مريض واحد على الأقل إلى الدفعة.',
 
@@ -151,6 +157,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   NO_PHARMACY_BRANCHES_AVAILABLE: 'لا توجد فروع صيدليات موثَّقة قريبة من الموقع المحدَّد.',
   PHARMACY_ORDER_LOCATION_REQUIRED: 'حدِّد موقعك أو اختر فرع صيدلية لإتمام الطلب.',
   PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE: 'فرع الصيدلية المختار لا يوفّر خدمة التوصيل.',
+  PHARMACY_HANDOVER_APPOINTMENT_REQUIRED: 'اختر موعد العيادة المرتبط بطلب الدواء.',
+  PHARMACY_HANDOVER_APPOINTMENT_UNEXPECTED: 'اربط الموعد فقط عند اختيار التسليم إلى العيادة.',
+  PHARMACY_HANDOVER_APPOINTMENT_INACTIVE: 'الموعد المختار غير صالح لتسليم الدواء إلى العيادة.',
   ORDER_ALREADY_CLAIMED: 'استلم فرع صيدلية آخر هذا الطلب قبلك.',
   BROADCAST_ALREADY_RESPONDED: 'سبق لهذا الفرع الرد على هذا الطلب.',
   PHARMACY_ORDER_NOT_UNDER_REVIEW: 'هذا الطلب ليس في انتظار تسعير.',

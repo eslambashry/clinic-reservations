@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
+import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
+import { GetPharmacyHandoverAppointmentUseCase } from '../../scheduling-appointments/application/get-pharmacy-handover-appointment.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -30,6 +32,8 @@ export class FulfillPharmacyOrderUseCase {
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(ListAssistantUserIdsForBranchUseCase) private readonly listClinicAssistants: ListAssistantUserIdsForBranchUseCase,
+    @Inject(GetPharmacyHandoverAppointmentUseCase) private readonly getHandoverAppointment: GetPharmacyHandoverAppointmentUseCase,
   ) {}
 
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<FulfillPharmacyOrderResult> {
@@ -56,16 +60,43 @@ export class FulfillPharmacyOrderUseCase {
         resourceType: 'pharmacy_order',
         resourceId: pharmacyOrderId,
       });
+
+      let clinicAssistantIds: string[] = [];
+      if (order.fulfillment_type === 'CLINIC_HANDOVER' && order.appointment_id && order.handover_clinic_branch_id) {
+        const appointment = await this.getHandoverAppointment.execute(tx, order.appointment_id, order.patient_id);
+        // Older or subsequently cancelled/rescheduled appointments must not
+        // fan out to a guessed destination. The status transition still runs.
+        if (['CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED'].includes(appointment.status) &&
+            appointment.clinicBranchId === order.handover_clinic_branch_id) {
+          clinicAssistantIds = await this.listClinicAssistants.execute(tx, appointment.clinicBranchId, appointment.doctorId);
+        }
+      }
+
       await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
         pharmacyOrderId,
         status: nextStatus,
+        fulfillmentType: order.fulfillment_type,
         recipientUserId: order.patient_id,
       });
-      if (order.created_by_user_id) {
+      // A clinic assistant who created the order receives the clinic
+      // handover event below. Do not also enqueue the same status change as
+      // a generic provider notice for that same account.
+      if (order.created_by_user_id && order.created_by_user_id !== order.patient_id && !clinicAssistantIds.includes(order.created_by_user_id)) {
         await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
           pharmacyOrderId,
           status: nextStatus,
+          fulfillmentType: order.fulfillment_type,
           recipientUserId: order.created_by_user_id,
+        });
+      }
+
+      const staffRecipients = new Set(clinicAssistantIds);
+      staffRecipients.delete(order.patient_id);
+      for (const assistantUserId of staffRecipients) {
+        await this.outbox.emit(tx, 'PharmacyOrderOnWayToClinicForStaff', {
+          pharmacyOrderId,
+          appointmentId: order.appointment_id!,
+          clinicStaffUserId: assistantUserId,
         });
       }
 

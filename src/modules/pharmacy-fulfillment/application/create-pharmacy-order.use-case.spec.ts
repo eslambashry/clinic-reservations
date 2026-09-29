@@ -24,6 +24,9 @@ describe('CreatePharmacyOrderUseCase', () => {
     const listStaffByContext = { execute: jest.fn().mockResolvedValue([]) };
     const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1', affiliationIds: ['aff-1'] }) };
     const assertPatientInScope = { execute: jest.fn().mockResolvedValue(undefined) };
+    const getHandoverAppointment = {
+      execute: jest.fn().mockResolvedValue({ status: 'CONFIRMED', doctorClinicAffiliationId: 'aff-1', clinicBranchId: 'clinic-branch-1', doctorId: 'doctor-1' }),
+    };
     const useCase = new CreatePharmacyOrderUseCase(
       prisma as any,
       pharmacyOrders as any,
@@ -37,8 +40,9 @@ describe('CreatePharmacyOrderUseCase', () => {
       listStaffByContext as any,
       resolveDoctorScope as any,
       assertPatientInScope as any,
+      getHandoverAppointment as any,
     );
-    return { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, audit, outbox, listStaffByContext, resolveDoctorScope, assertPatientInScope, useCase };
+    return { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, audit, outbox, listStaffByContext, resolveDoctorScope, assertPatientInScope, getHandoverAppointment, useCase };
   }
 
   it('creates the order, its items, and one broadcast per nearby branch', async () => {
@@ -126,9 +130,81 @@ describe('CreatePharmacyOrderUseCase', () => {
     getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
     pharmacyOrders.create.mockResolvedValue({ id: 'order-1', status: 'RECEIVED' });
 
-    await useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER' }, actor);
+    await useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER', appointmentId: 'appointment-1' }, actor);
 
     expect(searchPharmacyBranches.execute).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: true }));
+  });
+
+  describe('CLINIC_HANDOVER appointment linkage', () => {
+    function readyToCreate(ctx: ReturnType<typeof setup>) {
+      ctx.searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
+      ctx.pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
+      ctx.getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
+      ctx.getAcceptedPrescription.executeForProvider.mockResolvedValue(acceptedPrescription);
+      ctx.pharmacyOrders.create.mockResolvedValue({ id: 'order-1', status: 'RECEIVED' });
+    }
+
+    it('stores the verified appointment and snapshots its clinic branch as the only handover destination', async () => {
+      const ctx = setup();
+      readyToCreate(ctx);
+
+      await ctx.useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER', appointmentId: 'appointment-1' }, actor);
+
+      expect(ctx.getHandoverAppointment.execute).toHaveBeenCalledWith(ctx.tx, 'appointment-1', 'patient-1');
+      expect(ctx.pharmacyOrders.create).toHaveBeenCalledWith(ctx.tx, expect.objectContaining({
+        fulfillmentType: 'CLINIC_HANDOVER', appointmentId: 'appointment-1', handoverClinicBranchId: 'clinic-branch-1',
+      }));
+    });
+
+    it('422s before any write when CLINIC_HANDOVER has no appointment', async () => {
+      const ctx = setup();
+      readyToCreate(ctx);
+
+      await expect(ctx.useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER' }, actor))
+        .rejects.toMatchObject({ code: 'PHARMACY_HANDOVER_APPOINTMENT_REQUIRED', httpStatus: 422 });
+      expect(ctx.pharmacyOrders.create).not.toHaveBeenCalled();
+    });
+
+    it('422s when an appointment is attached to a non-handover order', async () => {
+      const ctx = setup();
+      readyToCreate(ctx);
+
+      await expect(ctx.useCase.execute({ ...input, fulfillmentType: 'DELIVERY', appointmentId: 'appointment-1' }, actor))
+        .rejects.toMatchObject({ code: 'PHARMACY_HANDOVER_APPOINTMENT_UNEXPECTED', httpStatus: 422 });
+      expect(ctx.pharmacyOrders.create).not.toHaveBeenCalled();
+    });
+
+    it('422s for an appointment that is not an active or completed visit', async () => {
+      const ctx = setup();
+      readyToCreate(ctx);
+      ctx.getHandoverAppointment.execute.mockResolvedValue({ status: 'CANCELLED', doctorClinicAffiliationId: 'aff-1', clinicBranchId: 'clinic-branch-1', doctorId: 'doctor-1' });
+
+      await expect(ctx.useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER', appointmentId: 'appointment-1' }, actor))
+        .rejects.toMatchObject({ code: 'PHARMACY_HANDOVER_APPOINTMENT_INACTIVE', httpStatus: 422 });
+      expect(ctx.pharmacyOrders.create).not.toHaveBeenCalled();
+    });
+
+    it("propagates the scheduling 404 for another patient's appointment (no existence oracle)", async () => {
+      const ctx = setup();
+      readyToCreate(ctx);
+      ctx.getHandoverAppointment.execute.mockRejectedValue(Object.assign(new Error('not found'), { code: 'NOT_FOUND', httpStatus: 404 }));
+
+      await expect(ctx.useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER', appointmentId: 'appointment-x' }, actor))
+        .rejects.toMatchObject({ httpStatus: 404 });
+      expect(ctx.pharmacyOrders.create).not.toHaveBeenCalled();
+    });
+
+    it("404s when a provider links an appointment outside their own affiliations", async () => {
+      const ctx = setup();
+      readyToCreate(ctx);
+      const doctor = { sub: 'doctor-user-1', roleMembershipId: 'm-doctor', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+      ctx.getHandoverAppointment.execute.mockResolvedValue({ status: 'CONFIRMED', doctorClinicAffiliationId: 'other-doctor-aff', clinicBranchId: 'clinic-branch-9', doctorId: 'doctor-9' });
+
+      await expect(ctx.useCase.executeForProvider(
+        { ...input, fulfillmentType: 'CLINIC_HANDOVER', appointmentId: 'appointment-1', patientId: 'patient-1' }, doctor,
+      )).rejects.toMatchObject({ httpStatus: 404 });
+      expect(ctx.pharmacyOrders.create).not.toHaveBeenCalled();
+    });
   });
 
   it('broadcasts to exactly the chosen branch when pharmacyBranchId is given, skipping the nearest-branch search', async () => {

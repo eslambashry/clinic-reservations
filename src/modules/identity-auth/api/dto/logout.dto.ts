@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class LogoutDto {
   @IsString()
@@ -8,4 +8,10 @@ export class LogoutDto {
   @IsOptional()
   @IsBoolean()
   allDevices?: boolean = false;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  fcmToken?: string;
 }

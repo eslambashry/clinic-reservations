@@ -59,6 +59,7 @@ model OutboxEvent {
   version      Int               @default(1)
 
   @@index([status, created_at])
+  @@index([status, updated_at])
   @@map("outbox_events")
 }
 

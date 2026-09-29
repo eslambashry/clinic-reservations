@@ -16,4 +16,11 @@ export interface AccessTokenPayload {
   roleCode: string;
   contextType: RoleContextType;
   permissions: string[];
+  /**
+   * Login-session family (`refresh_tokens.session_id`, 2026-09-26). Optional
+   * only because access tokens minted before that date lack it; endpoints
+   * that bind state to a session (FCM device registration) reject a token
+   * without it so the client refreshes once.
+   */
+  sid?: string;
 }

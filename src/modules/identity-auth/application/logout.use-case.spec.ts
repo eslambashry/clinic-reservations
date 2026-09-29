@@ -6,49 +6,72 @@ jest.mock('../domain/refresh-token.util', () => ({
 
 describe('LogoutUseCase', () => {
   const rawToken = 'raw-refresh-token';
-  const existing = { id: 'token-1', user_id: 'user-1', revoked_at: null as Date | null };
+  const existing = { id: 'token-1', user_id: 'user-1', session_id: 'session-1', revoked_at: null as Date | null };
 
   function setup() {
-    const prisma = {};
-    const refreshTokens = { findByTokenHash: jest.fn(), revoke: jest.fn(), revokeAllActiveForUser: jest.fn() };
-    const useCase = new LogoutUseCase(prisma as any, refreshTokens as any);
-    return { prisma, refreshTokens, useCase };
+    const tx = { tx: true };
+    const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
+    const refreshTokens = { findByTokenHash: jest.fn(), lockUserForAuthMutation: jest.fn(), revokeSession: jest.fn(), revokeAllActiveForUser: jest.fn() };
+    const devices = { deleteForSession: jest.fn(), deleteAllForUser: jest.fn() };
+    const useCase = new LogoutUseCase(prisma as any, refreshTokens as any, devices as any);
+    return { tx, prisma, refreshTokens, devices, useCase };
   }
 
   it('is a no-op success for an unrecognized token — logout must never reveal whether a token value is valid', async () => {
-    const { refreshTokens, useCase } = setup();
+    const { refreshTokens, devices, useCase } = setup();
     refreshTokens.findByTokenHash.mockResolvedValue(null);
 
-    await expect(useCase.execute({ refreshToken: rawToken })).resolves.toBeUndefined();
-    expect(refreshTokens.revoke).not.toHaveBeenCalled();
+    await expect(useCase.execute({ refreshToken: rawToken, fcmToken: 'fcm-1' })).resolves.toBeUndefined();
+    expect(refreshTokens.revokeSession).not.toHaveBeenCalled();
+    expect(devices.deleteForSession).not.toHaveBeenCalled();
   });
 
-  it('is a no-op for a token that is already revoked', async () => {
-    const { refreshTokens, useCase } = setup();
-    refreshTokens.findByTokenHash.mockResolvedValue({ ...existing, revoked_at: new Date() });
-
-    await useCase.execute({ refreshToken: rawToken });
-
-    expect(refreshTokens.revoke).not.toHaveBeenCalled();
-  });
-
-  it('revokes only the presented token by default (single-device logout)', async () => {
-    const { prisma, refreshTokens, useCase } = setup();
+  it('ends the whole session and releases its devices plus the presented FCM token, inside one transaction', async () => {
+    const { tx, prisma, refreshTokens, devices, useCase } = setup();
     refreshTokens.findByTokenHash.mockResolvedValue(existing);
 
-    await useCase.execute({ refreshToken: rawToken });
+    await useCase.execute({ refreshToken: rawToken, fcmToken: 'fcm-1' });
 
-    expect(refreshTokens.revoke).toHaveBeenCalledWith(prisma, 'token-1');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(refreshTokens.findByTokenHash).toHaveBeenCalledWith(tx, 'hashed:raw-refresh-token');
+    expect(refreshTokens.lockUserForAuthMutation).toHaveBeenCalledWith(tx, 'user-1');
+    expect(refreshTokens.revokeSession).toHaveBeenCalledWith(tx, 'user-1', 'session-1');
+    expect(devices.deleteForSession).toHaveBeenCalledWith(tx, 'user-1', 'session-1', 'fcm-1');
     expect(refreshTokens.revokeAllActiveForUser).not.toHaveBeenCalled();
   });
 
-  it('revokes every active token for the user when allDevices is set', async () => {
-    const { prisma, refreshTokens, useCase } = setup();
+  it('revokes the session before releasing devices, so an in-flight registration serializes ahead of the delete', async () => {
+    const { refreshTokens, devices, useCase } = setup();
+    refreshTokens.findByTokenHash.mockResolvedValue(existing);
+    const order: string[] = [];
+    refreshTokens.revokeSession.mockImplementation(async () => { order.push('revoke'); });
+    devices.deleteForSession.mockImplementation(async () => { order.push('delete'); });
+
+    await useCase.execute({ refreshToken: rawToken });
+
+    expect(order).toEqual(['revoke', 'delete']);
+  });
+
+  it('still ends the session a rotated-out token belongs to, without honoring allDevices for it', async () => {
+    const { tx, refreshTokens, devices, useCase } = setup();
+    refreshTokens.findByTokenHash.mockResolvedValue({ ...existing, revoked_at: new Date() });
+
+    await useCase.execute({ refreshToken: rawToken, allDevices: true });
+
+    expect(refreshTokens.revokeAllActiveForUser).not.toHaveBeenCalled();
+    expect(devices.deleteAllForUser).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeSession).toHaveBeenCalledWith(tx, 'user-1', 'session-1');
+    expect(devices.deleteForSession).toHaveBeenCalledWith(tx, 'user-1', 'session-1', undefined);
+  });
+
+  it('revokes every active token and releases every device for the user when allDevices is set', async () => {
+    const { tx, refreshTokens, devices, useCase } = setup();
     refreshTokens.findByTokenHash.mockResolvedValue(existing);
 
     await useCase.execute({ refreshToken: rawToken, allDevices: true });
 
-    expect(refreshTokens.revokeAllActiveForUser).toHaveBeenCalledWith(prisma, 'user-1');
-    expect(refreshTokens.revoke).not.toHaveBeenCalled();
+    expect(refreshTokens.revokeAllActiveForUser).toHaveBeenCalledWith(tx, 'user-1');
+    expect(devices.deleteAllForUser).toHaveBeenCalledWith(tx, 'user-1');
+    expect(refreshTokens.revokeSession).not.toHaveBeenCalled();
   });
 });

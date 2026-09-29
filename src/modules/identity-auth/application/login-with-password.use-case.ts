@@ -6,6 +6,7 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { PASSWORD_CONSTANTS } from '../domain/password.constants';
 import { PhoneRateLimiterService } from '../infrastructure/phone-rate-limiter.service';
 import { RoleMembershipRepository } from '../infrastructure/role-membership.repository';
+import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository';
 import { TokenService } from '../infrastructure/token.service';
 import { UserRepository } from '../infrastructure/user.repository';
 
@@ -31,6 +32,7 @@ export class LoginWithPasswordUseCase {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
     @Inject(TokenService) private readonly tokens: TokenService,
     @Inject(PhoneRateLimiterService) private readonly rateLimiter: PhoneRateLimiterService,
   ) {}
@@ -70,6 +72,15 @@ export class LoginWithPasswordUseCase {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // Serialize login against password reset/logout/reuse revocation. The
+      // password was verified before opening the transaction; if a reset won
+      // the lock meanwhile, do not mint a session from the stale hash.
+      await this.refreshTokens.lockUserForAuthMutation(tx, user.id);
+      const current = await tx.user.findUnique({ where: { id: user.id }, select: { password_hash: true, status: true } });
+      if (!current || current.password_hash !== user.password_hash || current.status !== 'ACTIVE') {
+        throw new UnauthenticatedError('UNAUTHENTICATED', 'رقم الهاتف أو كلمة المرور غير صحيحة.');
+      }
+
       const memberships = input.role
         ? await this.roleMemberships.findActiveByUserRoleContextType(tx, {
             userId: user.id,

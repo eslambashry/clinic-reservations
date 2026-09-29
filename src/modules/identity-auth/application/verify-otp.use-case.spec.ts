@@ -39,9 +39,10 @@ describe('VerifyOtpUseCase', () => {
     const users = { findByPhone: jest.fn(), create: jest.fn() };
     const roleMemberships = { findActiveByUser: jest.fn(), create: jest.fn() };
     const tokens = { issue: jest.fn() };
+    const refreshTokens = { lockUserForAuthMutation: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const useCase = new VerifyOtpUseCase(prisma as any, otpRequests as any, users as any, roleMemberships as any, tokens as any, outbox as any);
-    return { tx, prisma, otpRequests, users, roleMemberships, tokens, outbox, useCase };
+    const useCase = new VerifyOtpUseCase(prisma as any, otpRequests as any, users as any, roleMemberships as any, tokens as any, refreshTokens as any, outbox as any);
+    return { tx, prisma, otpRequests, users, roleMemberships, tokens, refreshTokens, outbox, useCase };
   }
 
   it('400s INVALID_CODE when the requestId does not exist', async () => {
@@ -96,7 +97,7 @@ describe('VerifyOtpUseCase', () => {
   });
 
   it('on a correct code for an existing user: consumes the OTP, reuses the existing PATIENT membership, issues tokens, and emits UserLoggedIn — all in one transaction', async () => {
-    const { tx, otpRequests, users, roleMemberships, tokens, outbox, useCase } = setup();
+    const { tx, otpRequests, users, roleMemberships, tokens, refreshTokens, outbox, useCase } = setup();
     otpRequests.findById.mockResolvedValue(otpRequest);
     verifyOtpCodeMock.mockResolvedValue(true);
     const existingUser = { id: 'user-1', phone: otpRequest.phone };
@@ -112,11 +113,12 @@ describe('VerifyOtpUseCase', () => {
     expect(users.create).not.toHaveBeenCalled();
     expect(roleMemberships.create).not.toHaveBeenCalled();
     expect(tokens.issue).toHaveBeenCalledWith(tx, membership);
+    expect(refreshTokens.lockUserForAuthMutation).toHaveBeenCalledWith(tx, 'user-1');
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'UserLoggedIn', { userId: 'user-1', phone: otpRequest.phone });
   });
 
   it('on a correct code for a brand-new phone number: creates the User, provisions a PATIENT membership, and emits UserRegistered', async () => {
-    const { tx, otpRequests, users, roleMemberships, tokens, outbox, useCase } = setup();
+    const { tx, otpRequests, users, roleMemberships, tokens, refreshTokens, outbox, useCase } = setup();
     otpRequests.findById.mockResolvedValue(otpRequest);
     verifyOtpCodeMock.mockResolvedValue(true);
     users.findByPhone.mockResolvedValue(null);
@@ -132,6 +134,7 @@ describe('VerifyOtpUseCase', () => {
     expect(result.isNewUser).toBe(true);
     expect(users.create).toHaveBeenCalledWith(tx, otpRequest.phone);
     expect(roleMemberships.create).toHaveBeenCalledWith(tx, { userId: 'user-2', roleCode: 'PATIENT', contextType: 'PATIENT' });
+    expect(refreshTokens.lockUserForAuthMutation).toHaveBeenCalledWith(tx, 'user-2');
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'UserRegistered', { userId: 'user-2', phone: otpRequest.phone });
   });
 });
