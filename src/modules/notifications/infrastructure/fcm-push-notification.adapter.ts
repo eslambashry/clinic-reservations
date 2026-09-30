@@ -34,6 +34,12 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
         tokens,
         notification: { title: message.title, body: message.body },
         data: message.data ? this.stringifyData(message.data) : undefined,
+        // Android replaces a tray item with the same tag. Using the stable
+        // inbox notification ID collapses an at-least-once retry of the same
+        // event without merging distinct notifications for the user.
+        ...(typeof message.data?.notificationId === 'string'
+          ? { android: { notification: { tag: message.data.notificationId } } }
+          : {}),
       });
 
       const invalidTokens: string[] = [];

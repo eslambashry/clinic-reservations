@@ -64,7 +64,7 @@ describe('DeliverNotificationUseCase', () => {
     expect(push.send).toHaveBeenCalledWith(['token-1', 'token-2'], {
       title: 'لديك إشعار جديد',
       body: 'افتح التطبيق للاطلاع على التحديث.',
-      data: { appointmentId: 'appt-1', templateCode: 'AppointmentConfirmed', tier: 'TRANSACTIONAL' },
+      data: { appointmentId: 'appt-1', notificationId: 'notif-1', templateCode: 'AppointmentConfirmed', tier: 'TRANSACTIONAL' },
     });
     expect(notifications.markSent).toHaveBeenCalledWith(prisma, 'notif-1', lease, 2);
     expect(notifications.markFailed).not.toHaveBeenCalled();

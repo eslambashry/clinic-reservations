@@ -26,7 +26,7 @@ export interface DeliverableNotification {
  * authenticated inbox row.
  */
 const PUSH_DATA_KEYS = new Set([
-  'appointmentId', 'pharmacyOrderId', 'labOrderId', 'prescriptionId',
+  'notificationId', 'appointmentId', 'pharmacyOrderId', 'labOrderId', 'prescriptionId',
   'paymentIntentId', 'walletId', 'doctorId', 'clinicId',
 ]);
 
@@ -174,6 +174,11 @@ export class DeliverNotificationUseCase {
       Object.entries(notification.data ?? {}).filter(([key, value]) => PUSH_DATA_KEYS.has(key) && (typeof value === 'string' || typeof value === 'number')),
     );
     const tier = NOTIFICATION_TEMPLATES[notification.templateCode]?.tier;
-    return { ...data, templateCode: notification.templateCode, ...(tier ? { tier } : {}) };
+    return {
+      ...data,
+      notificationId: notification.id,
+      templateCode: notification.templateCode,
+      ...(tier ? { tier } : {}),
+    };
   }
 }
