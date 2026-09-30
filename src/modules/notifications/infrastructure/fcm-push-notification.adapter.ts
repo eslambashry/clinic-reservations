@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { App, initializeApp, getApps, cert } from 'firebase-admin/app';
+import { App, applicationDefault, initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getMessaging, Messaging } from 'firebase-admin/messaging';
 import { DomainError, ExternalProviderError } from '../../../shared/core/errors/domain-errors';
 import { AppConfig } from '../../../shared/config/configuration';
@@ -50,6 +50,9 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
       });
       return { acceptedTokens, retryableTokens, invalidTokens };
     } catch (error) {
+      if (error instanceof DomainError && error.code === 'PUSH_PROVIDER_NOT_CONFIGURED') {
+        throw error;
+      }
       this.logger.error({ err: error }, 'FCM send failed');
       throw new ExternalProviderError('Firebase', 502, error);
     }
@@ -75,22 +78,34 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
     if (this.messaging) {
       return this.messaging;
     }
-    if (!this.config.projectId || !this.config.clientEmail || !this.config.privateKey) {
+    const hasClientEmail = Boolean(this.config.clientEmail);
+    const hasPrivateKey = Boolean(this.config.privateKey);
+    if (!this.config.projectId || hasClientEmail !== hasPrivateKey) {
       throw new DomainError(500, 'PUSH_PROVIDER_NOT_CONFIGURED', 'خدمة الإشعارات غير مُهيّأة حاليًا.', {
-        missingEnvVars: ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'].filter(
-          (name) => !process.env[name],
-        ),
+        missingEnvVars: [
+          ...(!this.config.projectId ? ['FIREBASE_PROJECT_ID'] : []),
+          ...(hasClientEmail !== hasPrivateKey
+            ? [hasClientEmail ? 'FIREBASE_PRIVATE_KEY' : 'FIREBASE_CLIENT_EMAIL']
+            : []),
+        ],
       });
     }
+
+    // Cloud Run should use its attached service identity and ADC. Service-account
+    // keys remain supported for non-Google hosts, but are not needed in GCP.
+    const credential = hasClientEmail && hasPrivateKey
+      ? cert({
+          projectId: this.config.projectId,
+          clientEmail: this.config.clientEmail!,
+          privateKey: this.config.privateKey!,
+        })
+      : applicationDefault();
 
     const app: App =
       getApps()[0] ??
       initializeApp({
-        credential: cert({
-          projectId: this.config.projectId,
-          clientEmail: this.config.clientEmail,
-          privateKey: this.config.privateKey,
-        }),
+        projectId: this.config.projectId,
+        credential,
       });
     this.messaging = getMessaging(app);
     return this.messaging;

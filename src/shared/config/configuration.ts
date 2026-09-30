@@ -104,7 +104,7 @@ export default (): AppConfig => ({
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID ?? null,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
-    // `.env` files can't hold a literal multi-line PEM, so the private key is stored with escaped `\n` sequences and unescaped here — the one place this needs to happen.
+    // Non-Google hosts may use an escaped PEM; Cloud Run uses its attached service identity through ADC.
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
   },
 });

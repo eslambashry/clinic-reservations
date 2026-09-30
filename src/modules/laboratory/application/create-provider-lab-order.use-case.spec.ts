@@ -19,7 +19,14 @@ describe('CreateProviderLabOrderUseCase', () => {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const labOrders = { create: jest.fn().mockResolvedValue({ id: 'lab-order-1' }) };
     const labBranches = { findById: jest.fn().mockResolvedValue(verifiedBranch) };
-    const getPrescriptionSummary = { execute: jest.fn().mockResolvedValue({ id: 'prescription-1', patientId: 'patient-1' }) };
+    const getPrescriptionSummary = {
+      execute: jest.fn().mockResolvedValue({
+        id: 'prescription-1',
+        patientId: 'patient-1',
+        source: 'DOCTOR_ISSUED',
+        documentType: 'LAB_REFERRAL',
+      }),
+    };
     const doctorScope = { execute: jest.fn().mockResolvedValue(scope) };
     const patientAccess = { execute: jest.fn().mockResolvedValue(undefined) };
     const getDoctorAppointment = { execute: jest.fn() };
@@ -128,12 +135,21 @@ describe('CreateProviderLabOrderUseCase', () => {
   });
 
   it('atomically creates an independent lab order for every authorized patient', async () => {
-    const { prisma, labOrders, useCase } = setup();
+    const { prisma, labOrders, getPrescriptionSummary, useCase } = setup();
+    getPrescriptionSummary.execute.mockImplementation(async (_client, prescriptionId) => ({
+      id: prescriptionId,
+      patientId: prescriptionId === 'prescription-2' ? 'patient-2' : 'patient-1',
+      source: 'DOCTOR_ISSUED',
+      documentType: 'LAB_REFERRAL',
+    }));
     labOrders.create
       .mockResolvedValueOnce({ id: 'lab-order-1' })
       .mockResolvedValueOnce({ id: 'lab-order-2' });
 
-    const result = await useCase.executeBatch([baseInput, { ...baseInput, patientId: 'patient-2' }], doctorActor);
+    const result = await useCase.executeBatch([
+      baseInput,
+      { ...baseInput, patientId: 'patient-2', prescriptionId: 'prescription-2' },
+    ], doctorActor);
 
     expect(result.results).toEqual([
       { patientId: 'patient-1', labOrderId: 'lab-order-1', status: 'REQUESTED' },
