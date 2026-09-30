@@ -17,11 +17,8 @@ const DEFAULT_REGION = REGION_CONSTANTS.DEFAULT_REGION_CODE;
  * locally; the fallback here is fine for a throwaway local Postgres.
  */
 const DEMO_STAFF_PASSWORD = process.env.SEED_DEMO_STAFF_PASSWORD ?? 'DevPass123!';
-
-/** Same derivation the original specialtiesData loop used inline — factored out so doctor seed blocks below can resolve a specialty's code from its English name without a second literal. */
-function specialtyCode(nameEn: string): string {
-  return nameEn.toUpperCase().replace(/[^A-Z]+/g, '_');
-}
+const DEMO_PHARMACY_PASSWORD = process.env.SEED_DEMO_PHARMACY_PASSWORD ?? DEMO_STAFF_PASSWORD;
+const DEMO_LAB_PASSWORD = process.env.SEED_DEMO_LAB_PASSWORD ?? DEMO_STAFF_PASSWORD;
 
 async function main() {
   console.log('🌱 Starting database seed verification...');
@@ -50,6 +47,61 @@ async function main() {
     });
   }
   console.log(`✅ Seeded ${rolesData.length} roles`);
+
+  // File 12 Part 51 — provider clinical requests. `@Permissions()`/
+  // `role_permissions` existed as pure scaffolding until now (zero rows,
+  // zero `@Permissions()` call sites anywhere in this codebase before this
+  // pass — verified). These two codes are role-wide, not per-assistant: a
+  // `CLINIC_STAFF` membership's permissions are resolved once at token
+  // issuance (`TokenService`, from `role_code`), so every assistant
+  // provisioned under a doctor gets the same capability — there is no
+  // per-assignment grant/revoke mechanism yet, and permissions embedded in
+  // an already-issued token do not change until that token is refreshed.
+  // Both are flagged as a known limitation in the Part 51 write-up, not
+  // silently assumed away.
+  const permissionsData = [
+    {
+      code: 'prescriptions:create:assistant',
+      module: 'prescriptions',
+      action: 'create:assistant',
+      description: 'CLINIC_STAFF may prepare a doctor-issued prescription draft, pending the supervising doctor’s approval.',
+    },
+    {
+      code: 'lab-orders:create:assistant',
+      module: 'lab-orders',
+      action: 'create:assistant',
+      description: 'CLINIC_STAFF may create a lab order on behalf of the supervising doctor.',
+    },
+    {
+      code: 'pharmacy-orders:create:assistant',
+      module: 'pharmacy-orders',
+      action: 'create:assistant',
+      description: 'CLINIC_STAFF may submit an already approved doctor-issued prescription to pharmacy fulfillment.',
+    },
+  ];
+
+  for (const permission of permissionsData) {
+    await prisma.permission.upsert({
+      where: { code: permission.code },
+      update: {},
+      create: permission,
+    });
+  }
+
+  const rolePermissionsData = [
+    { role_code: 'CLINIC_STAFF', permission_code: 'prescriptions:create:assistant' },
+    { role_code: 'CLINIC_STAFF', permission_code: 'lab-orders:create:assistant' },
+    { role_code: 'CLINIC_STAFF', permission_code: 'pharmacy-orders:create:assistant' },
+  ];
+
+  for (const rolePermission of rolePermissionsData) {
+    await prisma.rolePermission.upsert({
+      where: { role_code_permission_code: rolePermission },
+      update: {},
+      create: rolePermission,
+    });
+  }
+  console.log(`✅ Seeded ${permissionsData.length} permissions / ${rolePermissionsData.length} role_permissions`);
 
   // Seed default cancellation-fee policy (File 11 Part 12: cancellation fee
   // is computed server-side from policy_configs, never hardcoded).
@@ -137,43 +189,43 @@ async function main() {
   // the test doctor below depends on; the rest exist so the doctor roster
   // further down has real variety to search/filter across.
   const specialtiesData = [
-    { name_en: 'General Practice', name_ar: 'طب عام' },
-    { name_en: 'Cardiology', name_ar: 'أمراض القلب' },
-    { name_en: 'Dermatology', name_ar: 'أمراض الجلدية' },
-    { name_en: 'Pediatrics', name_ar: 'طب الأطفال' },
-    { name_en: 'Orthopedics', name_ar: 'جراحة العظام' },
-    { name_en: 'Otolaryngology', name_ar: 'أنف وأذن وحنجرة' },
-    { name_en: 'Ophthalmology', name_ar: 'طب وجراحة العيون' },
-    { name_en: 'Neurology', name_ar: 'طب المخ والأعصاب' },
-    { name_en: 'Psychiatry', name_ar: 'الطب النفسي' },
-    { name_en: 'Obstetrics and Gynecology', name_ar: 'أمراض النساء والتوليد' },
-    { name_en: 'Urology', name_ar: 'المسالك البولية' },
-    { name_en: 'Endocrinology', name_ar: 'الغدد الصماء' },
-    { name_en: 'Gastroenterology', name_ar: 'الجهاز الهضمي' },
-    { name_en: 'Pulmonology', name_ar: 'الصدر' },
-    { name_en: 'Dentistry', name_ar: 'طب الأسنان' },
-    { name_en: 'Family Medicine', name_ar: 'طب الأسرة' },
-    { name_en: 'Rheumatology', name_ar: 'أمراض الروماتيزم' },
-    { name_en: 'Hematology', name_ar: 'أمراض الدم' },
-    { name_en: 'Nephrology', name_ar: 'أمراض الكلى' },
-    { name_en: 'Allergy and Immunology', name_ar: 'الحساسية والمناعة' },
-    { name_en: 'Internal Medicine', name_ar: 'الباطنة العامة' },
+    { name_ar: 'طب عام' },
+    { name_ar: 'أمراض القلب' },
+    { name_ar: 'أمراض الجلدية' },
+    { name_ar: 'طب الأطفال' },
+    { name_ar: 'جراحة العظام' },
+    { name_ar: 'أنف وأذن وحنجرة' },
+    { name_ar: 'طب وجراحة العيون' },
+    { name_ar: 'طب المخ والأعصاب' },
+    { name_ar: 'الطب النفسي' },
+    { name_ar: 'أمراض النساء والتوليد' },
+    { name_ar: 'المسالك البولية' },
+    { name_ar: 'الغدد الصماء' },
+    { name_ar: 'الجهاز الهضمي' },
+    { name_ar: 'الصدر' },
+    { name_ar: 'طب الأسنان' },
+    { name_ar: 'طب الأسرة' },
+    { name_ar: 'أمراض الروماتيزم' },
+    { name_ar: 'أمراض الدم' },
+    { name_ar: 'أمراض الكلى' },
+    { name_ar: 'الحساسية والمناعة' },
+    { name_ar: 'الباطنة العامة' },
     
   ];
 
+  // `code` is a generated UUID, so it cannot be written here and cannot
+  // identify a row across environments — `name_ar` is the seed's natural
+  // key, and the doctor roster below resolves specialties by it too.
   for (const spec of specialtiesData) {
     const existing = await prisma.specialty.findFirst({
-      where: { name_en: spec.name_en },
+      where: { name_ar: spec.name_ar },
     });
 
     if (!existing) {
-      // `code` is Specialty's primary key (no separate `id`) — derived from
-      // the English name, following the schema's snake_case convention.
-      const code = specialtyCode(spec.name_en);
       const created = await prisma.specialty.create({
-        data: { code, name_en: spec.name_en, name_ar: spec.name_ar },
+        data: { name_ar: spec.name_ar },
       });
-      console.log(`✅ Seeded specialty: ${created.name_en} / ${created.name_ar}`);
+      console.log(`✅ Seeded specialty: ${created.name_ar} (${created.code})`);
     }
   }
 
@@ -185,24 +237,32 @@ async function main() {
   // `SetPasswordUseCase`/`LoginWithPasswordUseCase` use, same pattern as
   // the lab-staff seed below: an Admin has no legitimate reason to depend
   // on OTP-over-SMS (still undeliverable, P0-1) just to review a doctor.
-  const adminPassword = 'DevPass123!';
+  const adminPassword = process.env.SEED_DEMO_ADMIN_PASSWORD ?? 'DevPass123!';
   let adminUser = await prisma.user.findUnique({ where: { phone: '+201000000001' } });
   if (!adminUser) {
     adminUser = await prisma.user.create({
       data: {
         phone: '+201000000001',
-        first_name: 'مسؤول',
-        last_name: 'المنصة',
+        first_name: 'Platform',
+        last_name: 'Admin',
+        status: 'ACTIVE',
         password_hash: await argon2.hash(adminPassword),
       },
     });
-    console.log(`✅ Seeded admin user: ${adminUser.phone} (password: ${adminPassword})`);
-  } else if (!adminUser.password_hash) {
+    console.log(`✅ Seeded admin user: ${adminUser.phone}`);
+  } else {
     adminUser = await prisma.user.update({
       where: { id: adminUser.id },
-      data: { password_hash: await argon2.hash(adminPassword) },
+      data: {
+        first_name: 'Platform',
+        last_name: 'Admin',
+        status: 'ACTIVE',
+        ...(!adminUser.password_hash || process.env.SEED_DEMO_ADMIN_PASSWORD
+          ? { password_hash: await argon2.hash(adminPassword) }
+          : {}),
+      },
     });
-    console.log(`✅ Backfilled password for existing admin user: ${adminUser.phone} (password: ${adminPassword})`);
+    console.log(`✅ Ensured demo admin account: ${adminUser.phone}`);
   }
   const adminMembership = await prisma.roleMembership.findFirst({
     where: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
@@ -212,6 +272,11 @@ async function main() {
       data: { user_id: adminUser.id, role_code: 'ADMIN', context_type: 'ADMIN' },
     });
     console.log(`✅ Granted ADMIN role_membership to ${adminUser.phone}`);
+  } else if (adminMembership.status !== 'ACTIVE') {
+    await prisma.roleMembership.update({
+      where: { id: adminMembership.id },
+      data: { status: 'ACTIVE' },
+    });
   }
 
   // A seeded test doctor, PENDING, at an already-VERIFIED clinic branch —
@@ -219,7 +284,7 @@ async function main() {
   // (File 11 Part 28 Phase 2 exit criterion): once an Admin verifies this
   // doctor, it becomes visible via `GET /v1/doctors/search` because its
   // affiliation/branch/clinic are already in good standing.
-  const generalPractice = await prisma.specialty.findFirst({ where: { name_en: 'General Practice' } });
+  const generalPractice = await prisma.specialty.findFirst({ where: { name_ar: 'طب عام' } });
   let testDoctorUser = await prisma.user.findUnique({ where: { phone: '+201000000002' } });
   if (!testDoctorUser) {
     testDoctorUser = await prisma.user.create({
@@ -412,18 +477,26 @@ async function main() {
     pharmacyStaffUser = await prisma.user.create({
       data: {
         phone: '+201000000003',
-        first_name: 'Youssef',
+        first_name: 'Yousef',
         last_name: 'Adel',
-        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
+        status: 'ACTIVE',
+        password_hash: await argon2.hash(DEMO_PHARMACY_PASSWORD),
       },
     });
-    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
-  } else if (!pharmacyStaffUser.password_hash) {
+    console.log(`✅ Seeded pharmacy staff user: ${pharmacyStaffUser.phone}`);
+  } else {
     pharmacyStaffUser = await prisma.user.update({
       where: { id: pharmacyStaffUser.id },
-      data: { password_hash: await argon2.hash(DEMO_STAFF_PASSWORD) },
+      data: {
+        first_name: 'Yousef',
+        last_name: 'Adel',
+        status: 'ACTIVE',
+        ...(!pharmacyStaffUser.password_hash || process.env.SEED_DEMO_PHARMACY_PASSWORD
+          ? { password_hash: await argon2.hash(DEMO_PHARMACY_PASSWORD) }
+          : {}),
+      },
     });
-    console.log(`✅ Backfilled password for existing pharmacy staff user: ${pharmacyStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+    console.log(`✅ Ensured demo pharmacy staff account: ${pharmacyStaffUser.phone}`);
   }
   let pharmacyStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: pharmacyStaffUser.id, role_code: 'PHARMACY_STAFF', context_type: 'PHARMACY_STAFF' },
@@ -439,12 +512,17 @@ async function main() {
       },
     });
     console.log(`✅ Granted PHARMACY_STAFF role_membership to ${pharmacyStaffUser.phone} (branch ${demoPharmacyBranchId})`);
-  } else if (!pharmacyStaffMembership.context_id) {
+  } else if (pharmacyStaffMembership.context_id !== demoPharmacyBranchId || pharmacyStaffMembership.status !== 'ACTIVE') {
     pharmacyStaffMembership = await prisma.roleMembership.update({
       where: { id: pharmacyStaffMembership.id },
-      data: { context_id: demoPharmacyBranchId },
+      data: { context_id: demoPharmacyBranchId, status: 'ACTIVE' },
     });
     console.log(`✅ Assigned branch ${demoPharmacyBranchId} to existing PHARMACY_STAFF membership for ${pharmacyStaffUser.phone}`);
+  } else if (pharmacyStaffMembership.status !== 'ACTIVE') {
+    pharmacyStaffMembership = await prisma.roleMembership.update({
+      where: { id: pharmacyStaffMembership.id },
+      data: { status: 'ACTIVE' },
+    });
   }
   // FK-verified mirror of the membership above (`PharmacyStaffAssignment`) —
   // real referential integrity to `pharmacy_branches`/`users`, kept 1:1 with
@@ -523,10 +601,24 @@ async function main() {
         phone: '+201000000004',
         first_name: 'Amina',
         last_name: 'Tarek',
-        password_hash: await argon2.hash(DEMO_STAFF_PASSWORD),
+        status: 'ACTIVE',
+        password_hash: await argon2.hash(DEMO_LAB_PASSWORD),
       },
     });
-    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone} (password: ${DEMO_STAFF_PASSWORD})`);
+    console.log(`✅ Seeded lab staff user: ${labStaffUser.phone}`);
+  } else {
+    labStaffUser = await prisma.user.update({
+      where: { id: labStaffUser.id },
+      data: {
+        first_name: 'Amina',
+        last_name: 'Tarek',
+        status: 'ACTIVE',
+        ...(!labStaffUser.password_hash || process.env.SEED_DEMO_LAB_PASSWORD
+          ? { password_hash: await argon2.hash(DEMO_LAB_PASSWORD) }
+          : {}),
+      },
+    });
+    console.log(`✅ Ensured demo lab staff account: ${labStaffUser.phone}`);
   }
   let labStaffMembership = await prisma.roleMembership.findFirst({
     where: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF' },
@@ -536,6 +628,11 @@ async function main() {
       data: { user_id: labStaffUser.id, role_code: 'LAB_STAFF', context_type: 'LAB_STAFF', context_id: demoLabBranchId },
     });
     console.log(`✅ Granted LAB_STAFF role_membership to ${labStaffUser.phone} (branch ${demoLabBranchId})`);
+  } else if (labStaffMembership.context_id !== demoLabBranchId || labStaffMembership.status !== 'ACTIVE') {
+    labStaffMembership = await prisma.roleMembership.update({
+      where: { id: labStaffMembership.id },
+      data: { context_id: demoLabBranchId, status: 'ACTIVE' },
+    });
   }
   // FK-verified mirror, same rationale as the pharmacy staff block above.
   await prisma.labStaffAssignment.upsert({
@@ -642,49 +739,6 @@ async function main() {
     if (result) drugCount++;
   }
   console.log(`✅ Seeded ${drugCount} drug catalog entries`);
-
-  // ---------------------------------------------------------------------
-  // Test catalog — reference data for Laboratory (`lab_order_items.catalog_code`).
-  const testCatalogData: { code: string; display_name: string }[] = [
-    { code: 'CBC', display_name: 'Complete Blood Count (CBC)' },
-    { code: 'ESR', display_name: 'Erythrocyte Sedimentation Rate (ESR)' },
-    { code: 'CRP', display_name: 'C-Reactive Protein (CRP)' },
-    { code: 'FBS', display_name: 'Fasting Blood Sugar (FBS)' },
-    { code: 'RBS', display_name: 'Random Blood Sugar (RBS)' },
-    { code: 'HBA1C', display_name: 'Glycated Hemoglobin (HbA1c)' },
-    { code: 'LIPID_PROFILE', display_name: 'Lipid Profile' },
-    { code: 'LFT', display_name: 'Liver Function Test (LFT)' },
-    { code: 'KFT', display_name: 'Kidney Function Test (KFT)' },
-    { code: 'URINALYSIS', display_name: 'Complete Urinalysis' },
-    { code: 'STOOL_ANALYSIS', display_name: 'Stool Analysis' },
-    { code: 'TSH', display_name: 'Thyroid Stimulating Hormone (TSH)' },
-    { code: 'FREE_T3', display_name: 'Free Triiodothyronine (Free T3)' },
-    { code: 'FREE_T4', display_name: 'Free Thyroxine (Free T4)' },
-    { code: 'VIT_D', display_name: 'Vitamin D (25-OH)' },
-    { code: 'VIT_B12', display_name: 'Vitamin B12' },
-    { code: 'IRON_STUDIES', display_name: 'Iron Studies (Serum Iron, TIBC, Ferritin)' },
-    { code: 'ELECTROLYTES', display_name: 'Electrolytes Panel (Na/K/Cl)' },
-    { code: 'COAG_PROFILE', display_name: 'Coagulation Profile (PT/PTT/INR)' },
-    { code: 'BETA_HCG', display_name: 'Beta hCG (Pregnancy Test)' },
-    { code: 'HBSAG', display_name: 'Hepatitis B Surface Antigen (HBsAg)' },
-    { code: 'HCV_AB', display_name: 'Hepatitis C Antibody (HCV Ab)' },
-    { code: 'HIV_SCREEN', display_name: 'HIV Screening Test' },
-    { code: 'PSA', display_name: 'Prostate Specific Antigen (PSA)' },
-    { code: 'BLOOD_GROUP', display_name: 'Blood Group & Rh Factor' },
-    { code: 'URINE_CULTURE', display_name: 'Urine Culture & Sensitivity' },
-    { code: 'C_PEPTIDE', display_name: 'C-Peptide' },
-  ];
-
-  let testCount = 0;
-  for (const test of testCatalogData) {
-    await prisma.testCatalog.upsert({
-      where: { code: test.code },
-      update: {},
-      create: { code: test.code, display_name: test.display_name },
-    });
-    testCount++;
-  }
-  console.log(`✅ Seeded ${testCount} test catalog entries`);
 
   // ---------------------------------------------------------------------
   // More demo pharmacy chains + branches + PHARMACY_STAFF accounts — same
@@ -852,7 +906,7 @@ async function main() {
         create: { user_id: staffUser.id, pharmacy_branch_id: branch.id, role_membership_id: staffMembership.id },
       });
       console.log(
-        `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
+        `✅ Seeded pharmacy branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone}`,
       );
     }
   }
@@ -1031,7 +1085,7 @@ async function main() {
         create: { user_id: staffUser.id, lab_branch_id: branch.id, role_membership_id: staffMembership.id },
       });
       console.log(
-        `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone} (password: ${DEMO_STAFF_PASSWORD})`,
+        `✅ Seeded lab branch: ${chain.brandName} — ${branch.addressLine1} (${branch.id}), staff ${branch.staffPhone}`,
       );
     }
   }
@@ -1161,7 +1215,7 @@ async function main() {
     phone: string;
     firstName: string;
     lastName: string;
-    specialtyNameEn: string;
+    specialtyName: string;
     licenseNumber: string;
     degree: string;
     bio: string;
@@ -1176,7 +1230,7 @@ async function main() {
       phone: '+201000000030',
       firstName: 'Ahmed',
       lastName: 'Hassan',
-      specialtyNameEn: 'Cardiology',
+      specialtyName: 'أمراض القلب',
       licenseNumber: 'EG-MED-2012-00101',
       degree: 'MBBCh, MD Cardiology',
       bio: 'Consultant cardiologist with a focus on hypertension and preventive heart care.',
@@ -1194,7 +1248,7 @@ async function main() {
       phone: '+201000000031',
       firstName: 'Heba',
       lastName: 'Magdy',
-      specialtyNameEn: 'Cardiology',
+      specialtyName: 'أمراض القلب',
       licenseNumber: 'EG-MED-2014-00102',
       degree: 'MBBCh, MSc Cardiology',
       bio: 'Cardiologist specializing in echocardiography and heart failure management.',
@@ -1212,7 +1266,7 @@ async function main() {
       phone: '+201000000032',
       firstName: 'Sara',
       lastName: 'Youssef',
-      specialtyNameEn: 'Dermatology',
+      specialtyName: 'أمراض الجلدية',
       licenseNumber: 'EG-MED-2015-00103',
       degree: 'MBBCh, MSc Dermatology',
       bio: 'Dermatologist covering general skin conditions, acne, and cosmetic dermatology.',
@@ -1230,7 +1284,7 @@ async function main() {
       phone: '+201000000033',
       firstName: 'Khaled',
       lastName: 'Mostafa',
-      specialtyNameEn: 'Pediatrics',
+      specialtyName: 'طب الأطفال',
       licenseNumber: 'EG-MED-2010-00104',
       degree: 'MBBCh, MD Pediatrics',
       bio: 'Pediatrician with two decades of experience in newborn and child care.',
@@ -1248,7 +1302,7 @@ async function main() {
       phone: '+201000000034',
       firstName: 'Nourhan',
       lastName: 'Adel',
-      specialtyNameEn: 'Orthopedics',
+      specialtyName: 'جراحة العظام',
       licenseNumber: 'EG-MED-2013-00105',
       degree: 'MBBCh, MSc Orthopedic Surgery',
       bio: 'Orthopedic surgeon specializing in sports injuries and joint pain.',
@@ -1266,7 +1320,7 @@ async function main() {
       phone: '+201000000035',
       firstName: 'Omar',
       lastName: 'Farouk',
-      specialtyNameEn: 'Otolaryngology',
+      specialtyName: 'أنف وأذن وحنجرة',
       licenseNumber: 'EG-MED-2016-00106',
       degree: 'MBBCh, MSc ENT Surgery',
       bio: 'ENT specialist treating sinus, ear, and throat conditions in adults and children.',
@@ -1284,7 +1338,7 @@ async function main() {
       phone: '+201000000036',
       firstName: 'Dina',
       lastName: 'Samir',
-      specialtyNameEn: 'Ophthalmology',
+      specialtyName: 'طب وجراحة العيون',
       licenseNumber: 'EG-MED-2011-00107',
       degree: 'MBBCh, MD Ophthalmology',
       bio: 'Ophthalmologist with a focus on cataract surgery and general eye care.',
@@ -1302,7 +1356,7 @@ async function main() {
       phone: '+201000000037',
       firstName: 'Tarek',
       lastName: 'Ibrahim',
-      specialtyNameEn: 'Neurology',
+      specialtyName: 'طب المخ والأعصاب',
       licenseNumber: 'EG-MED-2009-00108',
       degree: 'MBBCh, MD Neurology',
       bio: 'Neurologist managing migraines, epilepsy, and general neurological disorders.',
@@ -1320,7 +1374,7 @@ async function main() {
       phone: '+201000000038',
       firstName: 'Rana',
       lastName: 'Elshamy',
-      specialtyNameEn: 'Psychiatry',
+      specialtyName: 'الطب النفسي',
       licenseNumber: 'EG-MED-2017-00109',
       degree: 'MBBCh, MSc Psychiatry',
       bio: 'Psychiatrist focusing on anxiety, depression, and stress-related disorders.',
@@ -1338,7 +1392,7 @@ async function main() {
       phone: '+201000000039',
       firstName: 'Mahmoud',
       lastName: 'Saeed',
-      specialtyNameEn: 'Obstetrics and Gynecology',
+      specialtyName: 'أمراض النساء والتوليد',
       licenseNumber: 'EG-MED-2008-00110',
       degree: 'MBBCh, MD Obstetrics and Gynecology',
       bio: 'OB/GYN consultant covering prenatal care, deliveries, and women\'s health.',
@@ -1356,7 +1410,7 @@ async function main() {
       phone: '+201000000040',
       firstName: 'Yara',
       lastName: 'Kamal',
-      specialtyNameEn: 'Urology',
+      specialtyName: 'المسالك البولية',
       licenseNumber: 'EG-MED-2014-00111',
       degree: 'MBBCh, MSc Urology',
       bio: 'Urologist treating kidney stones, urinary tract conditions, and general urology.',
@@ -1374,7 +1428,7 @@ async function main() {
       phone: '+201000000041',
       firstName: 'Hossam',
       lastName: 'Aly',
-      specialtyNameEn: 'Endocrinology',
+      specialtyName: 'الغدد الصماء',
       licenseNumber: 'EG-MED-2013-00112',
       degree: 'MBBCh, MD Endocrinology',
       bio: 'Endocrinologist specializing in diabetes, thyroid disorders, and hormonal health.',
@@ -1392,7 +1446,7 @@ async function main() {
       phone: '+201000000042',
       firstName: 'Mai',
       lastName: 'Reda',
-      specialtyNameEn: 'Gastroenterology',
+      specialtyName: 'الجهاز الهضمي',
       licenseNumber: 'EG-MED-2015-00113',
       degree: 'MBBCh, MSc Gastroenterology',
       bio: 'Gastroenterologist managing digestive disorders and endoscopic procedures.',
@@ -1410,7 +1464,7 @@ async function main() {
       phone: '+201000000043',
       firstName: 'Amr',
       lastName: 'Nabil',
-      specialtyNameEn: 'Pulmonology',
+      specialtyName: 'الصدر',
       licenseNumber: 'EG-MED-2012-00114',
       degree: 'MBBCh, MD Pulmonology',
       bio: 'Pulmonologist treating asthma, COPD, and general respiratory conditions.',
@@ -1428,7 +1482,7 @@ async function main() {
       phone: '+201000000044',
       firstName: 'Salma',
       lastName: 'Zaki',
-      specialtyNameEn: 'Dentistry',
+      specialtyName: 'طب الأسنان',
       licenseNumber: 'EG-DEN-2016-00115',
       degree: 'BDS, MSc Dentistry',
       bio: 'General dentist offering checkups, fillings, and cosmetic dentistry.',
@@ -1446,7 +1500,7 @@ async function main() {
       phone: '+201000000045',
       firstName: 'Karim',
       lastName: 'Adly',
-      specialtyNameEn: 'Family Medicine',
+      specialtyName: 'طب الأسرة',
       licenseNumber: 'EG-MED-2018-00116',
       degree: 'MBBCh',
       bio: 'Family medicine physician for general checkups and everyday health concerns.',
@@ -1463,7 +1517,7 @@ async function main() {
   ];
 
   for (const doc of demoDoctors) {
-    const specialty = await prisma.specialty.findUnique({ where: { code: specialtyCode(doc.specialtyNameEn) } });
+    const specialty = await prisma.specialty.findFirst({ where: { name_ar: doc.specialtyName } });
     const branchId = demoClinicBranchIdByKey.get(doc.clinicKey);
     if (!specialty || !branchId) {
       console.warn(`⚠️ Skipping doctor ${doc.firstName} ${doc.lastName}: missing specialty or clinic branch`);
@@ -1527,7 +1581,7 @@ async function main() {
         });
       }
     }
-    console.log(`✅ Seeded doctor: Dr. ${doc.firstName} ${doc.lastName} (${doc.specialtyNameEn}) at ${doc.clinicKey}`);
+    console.log(`✅ Seeded doctor: Dr. ${doc.firstName} ${doc.lastName} (${doc.specialtyName}) at ${doc.clinicKey}`);
   }
   // Slots aren't generated here — same as the single test doctor above,
   // `HoldExpiryJob`'s sibling `SlotGenerationJob` (worker process cron)

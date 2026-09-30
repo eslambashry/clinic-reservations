@@ -16,7 +16,7 @@ function doctor(overrides: Partial<any> = {}) {
     region_code: 'CAI',
     created_at: new Date('2026-09-01T00:00:00.000Z'),
     user: { first_name: 'Mona', last_name: 'Hassan', phone: '+201000000000' },
-    specialty: { code: 'CARDIOLOGY', name_en: 'Cardiology' },
+    specialty: { code: 'CARDIOLOGY', name_ar: 'أمراض القلب' },
     ...overrides,
   };
 }

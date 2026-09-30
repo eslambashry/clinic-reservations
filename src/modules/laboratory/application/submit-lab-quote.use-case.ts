@@ -4,6 +4,7 @@ import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { assertStatus } from '../domain/lab-order.rules';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { LabOrderItemRepository } from '../infrastructure/lab-order-item.repository';
@@ -31,11 +32,11 @@ const CURRENCY = 'EGP';
  * pricing; `unit_price` split across items is presentational only, same
  * "not specified anywhere" reasoning the mock's own comment gives).
  *
- * No item-count gate (File 12 Part 50): a freeform order (patient uploaded
- * an image instead of picking catalog tests) has zero `LabOrderItem` rows by
+ * No item-count gate (File 12 Part 50): a referral order without historical
+ * item rows has zero `LabOrderItem` rows by
  * design — the image is what told the lab which analysis to run, staff
  * price the whole request after reading it, the same way this method
- * already prices a catalog-based order as one flat total rather than
+ * already prices orders with item rows as one flat total rather than
  * per-line. The per-item price split below is simply skipped when there are
  * no items to split across.
  */
@@ -47,6 +48,7 @@ export class SubmitLabQuoteUseCase {
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(labOrderId: string, input: SubmitLabQuoteInput, actor: AccessTokenPayload): Promise<SubmitLabQuoteResult> {
@@ -104,6 +106,19 @@ export class SubmitLabQuoteUseCase {
         resourceId: labOrderId,
         reasonCode: `#${input.queueNumber}`,
       });
+
+      await this.outbox.emit(tx, 'LabOrderStatusChanged', {
+        labOrderId,
+        status: 'QUOTED',
+        recipientUserId: order.patient_id,
+      });
+      if (order.doctor_id) {
+        await this.outbox.emit(tx, 'LabOrderStatusChanged', {
+          labOrderId,
+          status: 'QUOTED',
+          recipientUserId: order.created_by_user_id ?? order.doctor_id,
+        });
+      }
 
       return { labOrderId, status: 'QUOTED' as const };
     });

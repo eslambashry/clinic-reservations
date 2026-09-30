@@ -5,7 +5,11 @@ import {
   InitiateOnlinePaymentUseCase,
   OnlinePaymentMethod,
 } from '../../payments/application/initiate-online-payment.use-case';
-import { PaymentCustomerInfo } from '../../payments/application/ports/payment-gateway.port';
+import {
+  PaymentBillingInfo,
+  PaymentCustomerInfo,
+  PaymentPhoneInfo,
+} from '../../payments/application/ports/payment-gateway.port';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -18,7 +22,8 @@ import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-pa
 
 export interface InitiateOnlineAppointmentPaymentInput {
   method: OnlinePaymentMethod;
-  customer: PaymentCustomerInfo;
+  customer: PaymentPhoneInfo;
+  billingData?: PaymentBillingInfo;
   /** Optional partial amount (>= configured minimum, <= consult fee). Omitted = pay in full. Validated server-side against the real fee. */
   paymentAmount?: string;
   walletProvider?: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
@@ -31,6 +36,13 @@ export interface InitiateOnlineAppointmentPaymentResult {
   redirectUrl?: string;
   referenceCode?: string;
   expiresAt: string;
+  /**
+   * What the gateway will actually charge, e.g. `"50.00"`. On a retry this is
+   * the FIRST attempt's amount (a different `paymentAmount` sent again is
+   * ignored), so the app must show this value, not the one it sent.
+   */
+  amount: string;
+  currency: string;
 }
 
 function holdExpired(holdId: string): DomainError {
@@ -117,6 +129,24 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         consultFee: billing.consultFee,
       });
 
+      // Appointment Fawry checkout collects only the patient's phone. Names
+      // and email are neither accepted from that client payload nor forwarded
+      // to Fawry; Paymob methods still require explicit billing data.
+      const billingData = input.method === 'FAWRY' ? undefined : input.billingData;
+      if (input.method !== 'FAWRY' && !billingData) {
+        throw new DomainError(
+          400,
+          'PAYMENT_BILLING_DATA_REQUIRED',
+          'بيانات الفوترة مطلوبة لطريقة الدفع المحددة.',
+        );
+      }
+      const customer: PaymentCustomerInfo = {
+        firstName: billingData?.firstName ?? '',
+        lastName: billingData?.lastName ?? '',
+        email: billingData?.email ?? '',
+        phone: input.customer.phone,
+      };
+
       const prepared = await this.initiatePayment.prepare(tx, {
         payerUserId: actor.sub,
         payableType: 'APPOINTMENT',
@@ -126,7 +156,7 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         currency: billing.currency,
         method: input.method,
         idempotencyKey: `hold:${hold.id}`,
-        customer: input.customer,
+        customer,
         walletProvider: input.walletProvider,
         walletMobileNumber: input.walletMobileNumber,
         existingPaymentIntentId: hold.payment_intent_id ?? undefined,
@@ -180,6 +210,8 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         redirectUrl: gatewayResult.redirectUrl,
         referenceCode: gatewayResult.referenceCode,
         expiresAt: expiresAt.toISOString(),
+        amount: prepared.gatewayInput.amount,
+        currency: prepared.gatewayInput.currency,
       };
     });
   }

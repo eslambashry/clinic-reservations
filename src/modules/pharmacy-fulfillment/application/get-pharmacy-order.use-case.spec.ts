@@ -6,8 +6,9 @@ function setup() {
   const getActiveRoleMembership = { execute: jest.fn() };
   const getUserSummary = { execute: jest.fn() };
   const getPrescriptionSummary = { execute: jest.fn() };
-  const useCase = new GetPharmacyOrderUseCase(prisma, pharmacyOrders as any, getActiveRoleMembership as any, getUserSummary as any, getPrescriptionSummary as any);
-  return { pharmacyOrders, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, useCase };
+  const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
+  const useCase = new GetPharmacyOrderUseCase(prisma, pharmacyOrders as any, getActiveRoleMembership as any, getUserSummary as any, getPrescriptionSummary as any, resolveDoctorScope as any);
+  return { pharmacyOrders, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, resolveDoctorScope, useCase };
 }
 
 describe('GetPharmacyOrderUseCase', () => {
@@ -39,6 +40,8 @@ describe('GetPharmacyOrderUseCase', () => {
   };
   const patient = { id: 'patient-1', firstName: 'Sara', lastName: 'Ali', phoneMasked: '***1234' };
   const prescription = { id: 'presc-1', source: 'PATIENT_UPLOADED', status: 'ACCEPTED', expiresAt: null, doctorId: null, notes: 'Take with food', images: [] };
+  const doctorActor = { sub: 'doctor-user-1', roleMembershipId: 'm-3', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+  const assistantActor = { sub: 'assistant-user-1', roleMembershipId: 'm-4', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF', permissions: [] } as any;
 
   it('returns the order for the owning patient, with a quote block', async () => {
     const { pharmacyOrders, getUserSummary, getPrescriptionSummary, useCase } = setup();
@@ -79,6 +82,24 @@ describe('GetPharmacyOrderUseCase', () => {
     pharmacyOrders.findById.mockResolvedValue({ ...order, patient_id: 'someone-else' });
 
     await expect(useCase.execute('order-1', patientActor)).rejects.toMatchObject({ httpStatus: 404 });
+  });
+
+  it('allows the prescribing doctor and submitting assistant to view the request', async () => {
+    const { pharmacyOrders, getUserSummary, getPrescriptionSummary, useCase } = setup();
+    pharmacyOrders.findById.mockResolvedValue({ ...order, created_by_user_id: 'assistant-user-1' });
+    getUserSummary.execute.mockResolvedValue(patient);
+    getPrescriptionSummary.execute.mockResolvedValue({ ...prescription, source: 'DOCTOR_ISSUED', doctorId: 'doctor-user-1' });
+
+    await expect(useCase.execute('order-1', doctorActor)).resolves.toMatchObject({ id: 'order-1' });
+    await expect(useCase.execute('order-1', assistantActor)).resolves.toMatchObject({ id: 'order-1' });
+  });
+
+  it('404s for a different assistant in the same provider domain', async () => {
+    const { pharmacyOrders, getPrescriptionSummary, useCase } = setup();
+    pharmacyOrders.findById.mockResolvedValue({ ...order, created_by_user_id: 'another-assistant' });
+    getPrescriptionSummary.execute.mockResolvedValue({ ...prescription, source: 'DOCTOR_ISSUED', doctorId: 'doctor-user-1' });
+
+    await expect(useCase.execute('order-1', assistantActor)).rejects.toMatchObject({ httpStatus: 404 });
   });
 
   it('returns a null quote before one has been submitted', async () => {

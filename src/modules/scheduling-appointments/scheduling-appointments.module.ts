@@ -8,6 +8,7 @@ import { ScheduleTemplatesController } from './api/schedule-templates.controller
 import { CancelAppointmentUseCase } from './application/cancel-appointment.use-case';
 import { ConfirmAppointmentUseCase } from './application/confirm-appointment.use-case';
 import { CreateHoldUseCase } from './application/create-hold.use-case';
+import { AssertPatientInDoctorScopeUseCase } from './application/assert-patient-in-doctor-scope.use-case';
 import { CreateClinicStaffAppointmentUseCase } from './application/create-clinic-staff-appointment.use-case';
 import { CreateScheduleTemplateUseCase } from './application/create-schedule-template.use-case';
 import { DeleteScheduleTemplateUseCase } from './application/delete-schedule-template.use-case';
@@ -19,6 +20,7 @@ import { GetDoctorSlotsUseCase } from './application/get-doctor-slots.use-case';
 import { InitiateOnlineAppointmentPaymentUseCase } from './application/initiate-online-appointment-payment.use-case';
 import { ListDoctorAppointmentsUseCase } from './application/list-doctor-appointments.use-case';
 import { ListAppointmentsUseCase } from './application/list-appointments.use-case';
+import { LookupPatientByPhoneUseCase } from './application/lookup-patient-by-phone.use-case';
 import { ProcessPaymentWebhookUseCase } from './application/process-payment-webhook.use-case';
 import { ListMyScheduleTemplatesUseCase } from './application/list-my-schedule-templates.use-case';
 import { ListScheduleTemplatesUseCase } from './application/list-schedule-templates.use-case';
@@ -76,6 +78,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetDoctorSlotsUseCase,
     CreateHoldUseCase,
     CreateClinicStaffAppointmentUseCase,
+    LookupPatientByPhoneUseCase,
     ConfirmAppointmentUseCase,
     CancelAppointmentUseCase,
     RescheduleAppointmentUseCase,
@@ -89,6 +92,13 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     ResolveAppointmentPaymentAmountUseCase,
     InitiateOnlineAppointmentPaymentUseCase,
     ProcessPaymentWebhookUseCase,
+    AssertPatientInDoctorScopeUseCase,
   ],
+  // File 12 Part 51: `AssertPatientInDoctorScopeUseCase` is consumed by
+  // `prescriptions`/`laboratory` for the provider clinical-requests
+  // patient-relationship check, and `GetDoctorAppointmentUseCase` for
+  // validating an optional `appointmentId` link belongs to the same doctor
+  // scope and patient — never this module's `infrastructure/`.
+  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase],
 })
 export class SchedulingAppointmentsModule {}

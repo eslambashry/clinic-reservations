@@ -12,6 +12,7 @@ import { AppConfigModule } from '../../../shared/config/config.module';
 import { RequestContextModule } from '../../../shared/core/context/request-context.module';
 import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxModule } from '../../../shared/core/outbox/outbox.module';
+import { WebhookEventModule } from '../../../shared/core/webhooks/webhook-event.module';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { PolicyConfigModule } from '../../../shared/kernel/policy-config/policy-config.module';
 import { PrismaModule } from '../../../shared/kernel/prisma/prisma.module';
@@ -69,6 +70,14 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
         RequestContextModule,
         RedisModule,
         MediaStorageModule,
+        // File 12 Part 51: `PharmacyFulfillmentModule` now transitively pulls
+        // in `SchedulingAppointmentsModule` (via `PrescriptionsModule`, which
+        // it already imported, now importing `SchedulingAppointmentsModule`
+        // for the provider clinical-requests patient-relationship check) —
+        // `ProcessPaymentWebhookUseCase` there needs the globally-provided
+        // `WebhookEventRepository`, which only exists in this standalone
+        // test's DI graph if its owning module is listed explicitly.
+        WebhookEventModule,
         PharmacyFulfillmentModule,
       ],
     }).compile();

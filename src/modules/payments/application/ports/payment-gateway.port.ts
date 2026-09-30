@@ -32,6 +32,12 @@ export interface PaymentCustomerInfo {
   phone: string;
 }
 
+export type PaymentBillingInfo = Pick<PaymentCustomerInfo, 'firstName' | 'lastName' | 'email'>;
+
+export interface PaymentPhoneInfo {
+  phone: string;
+}
+
 export interface InitiatePaymentInput {
   /**
    * Our own `PaymentAttempt.id` (not the intent's id — a retried payment

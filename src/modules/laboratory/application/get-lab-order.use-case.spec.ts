@@ -33,8 +33,8 @@ function setup() {
   const labOrderItems = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labResults = { findByOrderId: jest.fn().mockResolvedValue([]) };
   const labOrderNotes = { findByOrderId: jest.fn().mockResolvedValue([]) };
-  const testCatalog = { findByCodes: jest.fn().mockResolvedValue([]) };
   const getActiveRoleMembership = { execute: jest.fn() };
+  const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
   const getPrescriptionSummary = { execute: jest.fn() };
   const getCustodyEvents = { executeForOrders: jest.fn().mockResolvedValue(new Map()) };
@@ -45,19 +45,21 @@ function setup() {
     labOrderItems as any,
     labResults as any,
     labOrderNotes as any,
-    testCatalog as any,
     getActiveRoleMembership as any,
+    resolveDoctorScope as any,
     getUserSummary as any,
     getPrescriptionSummary as any,
     getCustodyEvents as any,
     mediaStorage as any,
   );
-  return { labOrders, labOrderItems, labResults, labOrderNotes, testCatalog, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, getCustodyEvents, mediaStorage, useCase };
+  return { labOrders, labOrderItems, labResults, labOrderNotes, getActiveRoleMembership, resolveDoctorScope, getUserSummary, getPrescriptionSummary, getCustodyEvents, mediaStorage, useCase };
 }
 
 describe('GetLabOrderUseCase', () => {
   const patientActor = { sub: 'patient-1', roleMembershipId: 'm-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const staffActor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'LAB_STAFF', contextType: 'LAB_STAFF', permissions: [] } as any;
+  const doctorActor = { sub: 'doctor-user-1', roleMembershipId: 'm-3', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+  const assistantActor = { sub: 'assistant-user-1', roleMembershipId: 'm-4', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF', permissions: [] } as any;
 
   it('returns the order to its owning patient', async () => {
     const { labOrders, useCase } = setup();
@@ -101,6 +103,21 @@ describe('GetLabOrderUseCase', () => {
     await expect(useCase.execute('order-1', patientActor)).rejects.toMatchObject({ httpStatus: 404 });
   });
 
+  it('allows the originating doctor and assistant who created the order to read it', async () => {
+    const { labOrders, useCase } = setup();
+    labOrders.findById.mockResolvedValue(order({ doctor_id: 'doctor-user-1', created_by_user_id: 'assistant-user-1' }));
+
+    await expect(useCase.execute('order-1', doctorActor)).resolves.toMatchObject({ id: 'order-1' });
+    await expect(useCase.execute('order-1', assistantActor)).resolves.toMatchObject({ id: 'order-1' });
+  });
+
+  it('hides another provider assistant\'s request', async () => {
+    const { labOrders, useCase } = setup();
+    labOrders.findById.mockResolvedValue(order({ doctor_id: 'doctor-user-1', created_by_user_id: 'different-assistant' }));
+
+    await expect(useCase.execute('order-1', assistantActor)).rejects.toMatchObject({ httpStatus: 404 });
+  });
+
   it('enriches with the linked prescription\'s images when prescription_id is set', async () => {
     const { labOrders, getPrescriptionSummary, useCase } = setup();
     labOrders.findById.mockResolvedValue(order({ prescription_id: 'presc-1' }));
@@ -111,7 +128,7 @@ describe('GetLabOrderUseCase', () => {
     expect(result.prescriptionImages).toEqual([{ id: 'img-1', fileUrl: 'https://x/1.jpg' }]);
   });
 
-  it('leaves prescriptionImages empty for a direct catalog-selection order', async () => {
+  it('leaves prescriptionImages empty when the order has no linked uploaded referral', async () => {
     const { labOrders, getPrescriptionSummary, useCase } = setup();
     labOrders.findById.mockResolvedValue(order());
 

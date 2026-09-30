@@ -134,30 +134,45 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
     expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
   });
 
-  it('rejects a transition before the current slot arrival window', async () => {
-    jest.setSystemTime(new Date('2026-09-17T08:29:59.999Z'));
+  it('allows a transition before the appointment starts', async () => {
+    jest.setSystemTime(new Date('2026-09-17T06:00:00.000Z'));
     const { appointments, useCase } = setup();
 
-    await expect(
-      useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor),
-    ).rejects.toMatchObject({ code: 'VISIT_STATUS_TOO_EARLY', httpStatus: 422 });
-    expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+    const result = await useCase.execute(
+      'appointment-1',
+      { status: 'IN_DOCTOR_ROOM', version: 3 },
+      actor,
+    );
+
+    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'appointment-1',
+      3,
+      'IN_DOCTOR_ROOM',
+    );
+    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
   });
 
-  it('rejects a transition after the current slot appointment window', async () => {
-    jest.setSystemTime(new Date('2026-09-17T09:30:00.001Z'));
+  it('allows a transition after the appointment ends', async () => {
+    jest.setSystemTime(new Date('2026-09-17T18:00:00.000Z'));
     const { appointments, useCase } = setup();
 
-    await expect(
-      useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor),
-    ).rejects.toMatchObject({
-      code: 'VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW',
-      httpStatus: 422,
-    });
-    expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+    const result = await useCase.execute(
+      'appointment-1',
+      { status: 'IN_DOCTOR_ROOM', version: 3 },
+      actor,
+    );
+
+    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'appointment-1',
+      3,
+      'IN_DOCTOR_ROOM',
+    );
+    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
   });
 
-  it('evaluates timing from the appointment current slot, not the old rescheduled time', async () => {
+  it('allows a transition independently of the current slot after reschedule', async () => {
     const rescheduled = {
       ...appointment,
       slot: {
@@ -167,9 +182,18 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
     };
     const { appointments, useCase } = setup(rescheduled);
 
-    await expect(
-      useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor),
-    ).rejects.toMatchObject({ code: 'VISIT_STATUS_TOO_EARLY', httpStatus: 422 });
-    expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+    const result = await useCase.execute(
+      'appointment-1',
+      { status: 'IN_DOCTOR_ROOM', version: 3 },
+      actor,
+    );
+
+    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'appointment-1',
+      3,
+      'IN_DOCTOR_ROOM',
+    );
+    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
   });
 });

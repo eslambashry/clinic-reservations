@@ -200,7 +200,7 @@ export class SelfRegisterProviderUseCase {
           // captured here is unrecoverable at read time — and "a doctor
           // applied" alone tells an admin nothing about which one.
           doctorName: dto.full_name ?? null,
-          specialtyLabel: specialty.name_ar ?? specialty.name_en,
+          specialtyLabel: specialty.name_ar,
           doctorPhone: dto.phone,
         });
       }

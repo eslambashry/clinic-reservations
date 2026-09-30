@@ -75,7 +75,7 @@ const ACTION_SUFFIX_MAP: Partial<Record<string, PharmacyAuditAction>> = {
 function resolveAction(rawAction: string, order: PharmacyOrder): PharmacyAuditAction | null {
   const suffix = rawAction.replace(/^pharmacy-fulfillment\./, '');
   if (suffix === 'pharmacy-order.fulfill') {
-    return order.fulfillment_type === 'DELIVERY' ? 'HANDED_TO_COURIER' : 'MARKED_READY';
+    return order.fulfillment_type === 'PICKUP' ? 'MARKED_READY' : 'HANDED_TO_COURIER';
   }
   return ACTION_SUFFIX_MAP[suffix] ?? null;
 }

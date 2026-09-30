@@ -6,7 +6,6 @@ import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/do
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { isValidVisitStatusTransition } from '../domain/visit-status.rules';
-import { visitStatusWindowResult } from '../domain/visit-status-window.rules';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { DoctorAppointmentSummary, toDoctorAppointmentSummary } from './doctor-appointment.mapper';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
@@ -47,26 +46,6 @@ export class UpdateAppointmentVisitStatusUseCase {
           'APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE',
           'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
           { appointmentStatus: appointment.status },
-        );
-      }
-
-      const windowResult = visitStatusWindowResult(
-        appointment.slot.start_at,
-        appointment.slot.end_at,
-        new Date(),
-      );
-      if (windowResult === 'TOO_EARLY') {
-        throw new BusinessRuleError(
-          'VISIT_STATUS_TOO_EARLY',
-          'لا يمكن تغيير حالة الزيارة قبل موعد المريض المسموح به.',
-          { startAt: appointment.slot.start_at },
-        );
-      }
-      if (windowResult === 'OUTSIDE_WINDOW') {
-        throw new BusinessRuleError(
-          'VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW',
-          'تغيير حالة الزيارة متاح فقط خلال وقت الموعد المحدد.',
-          { startAt: appointment.slot.start_at, endAt: appointment.slot.end_at },
         );
       }
 

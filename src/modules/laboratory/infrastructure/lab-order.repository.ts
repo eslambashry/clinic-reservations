@@ -7,6 +7,11 @@ export interface NewLabOrder {
   labBranchId: string;
   prescriptionId?: string;
   collectionType: 'VISIT' | 'HOME_COLLECTION';
+  /** File 12 Part 51 — provider clinical requests, all optional/null for the existing patient-originated path. */
+  doctorId?: string;
+  createdByUserId?: string;
+  appointmentId?: string;
+  batchId?: string;
 }
 
 export interface FlatLabQuote {
@@ -54,12 +59,37 @@ export class LabOrderRepository {
         lab_branch_id: input.labBranchId,
         prescription_id: input.prescriptionId,
         collection_type: input.collectionType,
+        doctor_id: input.doctorId,
+        created_by_user_id: input.createdByUserId,
+        appointment_id: input.appointmentId,
+        batch_id: input.batchId,
       },
     });
   }
 
   findById(db: Prisma.TransactionClient, id: string): Promise<LabOrder | null> {
     return db.labOrder.findUnique({ where: { id } });
+  }
+
+  /** File 12 Part 51: the ordering doctor's provider-originated lab orders, scoped/paginated for provider history. */
+  findByDoctorId(
+    db: Prisma.TransactionClient,
+    doctorUserId: string,
+    page: ListOrdersPage,
+    createdByUserId?: string,
+  ): Promise<LabOrder[]> {
+    return db.labOrder.findMany({
+      where: {
+        AND: [
+          { doctor_id: doctorUserId },
+          ...(createdByUserId ? [{ created_by_user_id: createdByUserId }] : []),
+          ...(page.status ? [{ status: page.status }] : []),
+          ...cursorFilter(page.cursor, page.sortDirection),
+        ],
+      },
+      orderBy: [{ created_at: page.sortDirection }, { id: page.sortDirection }],
+      take: page.limit,
+    });
   }
 
   findForPatient(db: Prisma.TransactionClient, patientId: string, page: ListOrdersPage): Promise<LabOrder[]> {

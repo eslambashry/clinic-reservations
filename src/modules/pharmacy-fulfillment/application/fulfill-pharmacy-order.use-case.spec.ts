@@ -6,7 +6,8 @@ function setup() {
   const pharmacyOrders = { findById: jest.fn(), setStatus: jest.fn() };
   const getActiveRoleMembership = { execute: jest.fn() };
   const audit = { record: jest.fn() };
-  const useCase = new FulfillPharmacyOrderUseCase(prisma as any, pharmacyOrders as any, getActiveRoleMembership as any, audit as any);
+  const outbox = { emit: jest.fn() };
+  const useCase = new FulfillPharmacyOrderUseCase(prisma as any, pharmacyOrders as any, getActiveRoleMembership as any, audit as any, outbox as any);
   return { tx, pharmacyOrders, getActiveRoleMembership, useCase };
 }
 

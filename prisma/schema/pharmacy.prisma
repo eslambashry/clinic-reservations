@@ -6,6 +6,9 @@ model PharmacyOrder {
   status                   PharmacyOrderStatus           @default(RECEIVED)
   payment_intent_id        String?                       @db.Uuid
   fulfillment_type         FulfillmentType               @default(PICKUP)
+  /// Null for the legacy patient-originated order path. Provider orders keep the submitting doctor/assistant for scoped history and intake provenance.
+  created_by_user_id       String?                       @db.Uuid
+  created_by_role          RoleContextType?
   /// Flat quote fields (2026-08-29 decision, see File 12 Part 39 follow-up):
   /// the pharmacist types one total for the whole order instead of pricing
   /// `PharmacyOrderItem` rows individually — `medsuper-pharmacy-dashboard`'s
@@ -29,6 +32,7 @@ model PharmacyOrder {
   broadcasts               PharmacyOrderBroadcast[]
   items                    PharmacyOrderItem[]
   patient                  User                          @relation(fields: [patient_id], references: [id])
+  created_by               User?                         @relation("PharmacyOrderCreatedBy", fields: [created_by_user_id], references: [id], onDelete: SetNull)
   payment_intent           PaymentIntent?                @relation(fields: [payment_intent_id], references: [id])
   pharmacy_branch          PharmacyBranch?               @relation(fields: [pharmacy_branch_id], references: [id])
   prescription              Prescription                 @relation(fields: [prescription_id], references: [id])
@@ -37,6 +41,7 @@ model PharmacyOrder {
   @@index([patient_id, status])
   /// Backs `PharmacyOrderRepository.findForBranch` (branch queue, 2026-08-29).
   @@index([pharmacy_branch_id, status])
+  @@index([created_by_user_id, status])
   @@map("pharmacy_orders")
 }
 

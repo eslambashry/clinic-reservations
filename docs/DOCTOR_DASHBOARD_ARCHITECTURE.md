@@ -10,16 +10,16 @@ either yet, and the client still mocks them.
 
 ## Live visit timing policy
 
-`PATCH /v1/doctors/me/appointments/{id}/visit-status` is evaluated against
-the `start_at`/`end_at` of the slot attached to the appointment being updated;
-timestamps remain UTC instants and are never compared as a device-local date.
-The only fixed policy is a 30-minute early-arrival period: changes are accepted
-from `start_at - 30 minutes` through `end_at`, rejected before it with
-`VISIT_STATUS_TOO_EARLY`, and rejected afterwards with
-`VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW`. A rescheduled appointment is a new
-appointment row with its new slot, so no old scheduled time can grant visit
-access. Cancel/reschedule remain blocked once status is `IN_DOCTOR_ROOM` or
-`LEFT` (`APPOINTMENT_VISIT_IN_PROGRESS`).
+As of 2026-09-25, `PATCH /v1/doctors/me/appointments/{id}/visit-status` has no
+slot-time gate. The doctor or an assistant assigned to that branch may record
+an early consultation or a visit that ran past its planned end. Each update is
+still limited to the caller's resolved scope and a confirmed appointment, and
+must advance exactly one step: `WAITING → IN_DOCTOR_ROOM → LEFT`. The request
+must carry the latest optimistic-lock `version`; every successful change is
+audited. Cancel/reschedule remain blocked once status is `IN_DOCTOR_ROOM` or
+`LEFT` (`APPOINTMENT_VISIT_IN_PROGRESS`). The former
+`VISIT_STATUS_TOO_EARLY` and `VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW` errors
+are no longer emitted.
 
 ---
 

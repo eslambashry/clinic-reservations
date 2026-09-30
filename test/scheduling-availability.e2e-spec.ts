@@ -24,7 +24,8 @@ describe('Scheduling Availability (e2e)', () => {
   let generateSlots: GenerateSlotsUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `E2E_SCHED_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   let adminUserId: string;
   let adminMembershipId: string;
@@ -67,7 +68,7 @@ describe('Scheduling Availability (e2e)', () => {
     adminToken = jwt.sign({ sub: adminUserId, roleMembershipId: adminMembershipId, roleCode: 'ADMIN', contextType: 'ADMIN', permissions: [] });
     patientToken = jwt.sign({ sub: patientUserId, roleMembershipId: patientMembershipId, roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] });
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'E2E Sched Specialty', name_ar: 'تخصص' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص' } });
 
     const clinic = await prisma.clinic.create({ data: { legal_name: `E2E Sched Clinic ${suffix}`, brand_name: `E2E Sched Clinic ${suffix}`, status: 'VERIFIED' } });
     clinicId = clinic.id;

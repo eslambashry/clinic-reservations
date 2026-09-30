@@ -48,13 +48,14 @@ describe('ResolveDoctorScopeUseCase', () => {
 
   it('resolves the doctor from the JWT subject, never from a client-supplied id', async () => {
     const { doctors, affiliations, useCase } = setup();
-    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', deleted_at: null });
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', user_id: 'user-1', deleted_at: null });
     affiliations.findByDoctorId.mockResolvedValue([affiliationRow()]);
 
     const scope = await useCase.execute(actor);
 
     expect(doctors.findByUserId).toHaveBeenCalledWith(expect.anything(), 'user-1');
     expect(scope.doctorId).toBe('doctor-1');
+    expect(scope.doctorUserId).toBe('user-1');
     expect(scope.affiliationIds).toEqual(['aff-1']);
     expect(scope.clinicBranchIds).toEqual(['branch-1']);
     expect(scope.affiliations[0]).toMatchObject({
@@ -93,7 +94,7 @@ describe('ResolveDoctorScopeUseCase', () => {
     const { doctors, affiliations, staffAssignments, memberships, useCase } = setup();
     const assistant = { ...actor, contextType: 'CLINIC_STAFF', roleCode: 'CLINIC_STAFF' };
     memberships.executeByRoleMembershipId.mockResolvedValue({ roleMembershipId: 'membership-1', contextId: 'doctor-1' });
-    doctors.findById.mockResolvedValue({ id: 'doctor-1', deleted_at: null });
+    doctors.findById.mockResolvedValue({ id: 'doctor-1', user_id: 'doctor-user-1', deleted_at: null });
     affiliations.findByDoctorId.mockResolvedValue([affiliationRow()]);
     staffAssignments.findClinicBranchIdsByRoleMembership.mockResolvedValue(['branch-1']);
 
@@ -103,6 +104,10 @@ describe('ResolveDoctorScopeUseCase', () => {
     expect(doctors.findById).toHaveBeenCalledWith(expect.anything(), 'doctor-1');
     expect(doctors.findByUserId).not.toHaveBeenCalled();
     expect(scope.affiliationIds).toEqual(['aff-1']);
+    // The assistant's own `actor.sub` must never leak into `doctorUserId` —
+    // it always resolves to the *supervising doctor's* `User.id` (File 12
+    // Part 51 depends on this for `Prescription.doctor_id`/`LabOrder.doctor_id`).
+    expect(scope.doctorUserId).toBe('doctor-user-1');
   });
 
   it("scopes an assistant down to only their assigned branches, excluding the doctor's other branches", async () => {

@@ -31,7 +31,8 @@ describe('GenerateSlotsUseCase (integration)', () => {
   let generateSlots: GenerateSlotsUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_SCHED_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   const TIMEZONE = 'Africa/Cairo';
 
   let clinicId: string;
@@ -63,7 +64,7 @@ describe('GenerateSlotsUseCase (integration)', () => {
     prisma = moduleRef.get(PrismaService);
     generateSlots = moduleRef.get(GenerateSlotsUseCase);
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'Test Specialty', name_ar: 'تخصص اختبار' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص اختبار' } });
 
     const clinic = await prisma.clinic.create({
       data: { legal_name: `Test Clinic ${suffix}`, brand_name: `Test Clinic ${suffix}`, status: 'VERIFIED' },

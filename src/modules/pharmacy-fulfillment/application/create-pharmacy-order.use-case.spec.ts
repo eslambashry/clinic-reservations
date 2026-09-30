@@ -8,7 +8,7 @@ describe('CreatePharmacyOrderUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const input = { prescriptionId: 'prescription-1', fulfillmentType: 'PICKUP' as const, lat: 30.0444, lng: 31.2357 };
   const branchSearchResult = { items: [{ branchId: 'branch-1' }, { branchId: 'branch-2' }], nextCursor: null };
-  const acceptedPrescription = { prescriptionId: 'prescription-1', items: [{ id: 'item-1', drugCode: 'PARA500', quantity: 20 }] };
+  const acceptedPrescription = { prescriptionId: 'prescription-1', items: [{ id: 'item-1', drugCode: 'PARA500', quantity: 20 }], imageCount: 1 };
 
   function setup() {
     const tx = buildTx();
@@ -16,12 +16,14 @@ describe('CreatePharmacyOrderUseCase', () => {
     const pharmacyOrders = { create: jest.fn(), findLatestByPrescriptionId: jest.fn() };
     const pharmacyOrderItems = { createMany: jest.fn() };
     const broadcasts = { createMany: jest.fn() };
-    const getAcceptedPrescription = { execute: jest.fn() };
+    const getAcceptedPrescription = { execute: jest.fn(), executeForProvider: jest.fn() };
     const searchPharmacyBranches = { execute: jest.fn() };
     const getPharmacyBranch = { execute: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
     const listStaffByContext = { execute: jest.fn().mockResolvedValue([]) };
+    const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1', affiliationIds: ['aff-1'] }) };
+    const assertPatientInScope = { execute: jest.fn().mockResolvedValue(undefined) };
     const useCase = new CreatePharmacyOrderUseCase(
       prisma as any,
       pharmacyOrders as any,
@@ -33,8 +35,10 @@ describe('CreatePharmacyOrderUseCase', () => {
       audit as any,
       outbox as any,
       listStaffByContext as any,
+      resolveDoctorScope as any,
+      assertPatientInScope as any,
     );
-    return { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, audit, outbox, listStaffByContext, useCase };
+    return { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, audit, outbox, listStaffByContext, resolveDoctorScope, assertPatientInScope, useCase };
   }
 
   it('creates the order, its items, and one broadcast per nearby branch', async () => {
@@ -55,6 +59,34 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(outbox.emit).toHaveBeenCalledWith(tx, 'PharmacyOrderCreated', expect.objectContaining({ pharmacyOrderId: 'order-1' }));
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'pharmacy-fulfillment.pharmacy-order.create' }));
     expect(result).toEqual({ pharmacyOrderId: 'order-1', status: 'RECEIVED', broadcastedBranchIds: ['branch-1', 'branch-2'] });
+  });
+
+  it('routes a provider request through the same branch broadcasts and stores the submitting provider', async () => {
+    const { tx, pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, outbox, listStaffByContext, useCase } = setup();
+    const doctor = { sub: 'doctor-user-1', roleMembershipId: 'm-doctor', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+    searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
+    pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
+    getAcceptedPrescription.executeForProvider.mockResolvedValue(acceptedPrescription);
+    pharmacyOrders.create.mockResolvedValue({ id: 'order-1', status: 'RECEIVED' });
+    listStaffByContext.execute.mockResolvedValue([{ userId: 'pharmacy-staff-1' }]);
+
+    const result = await useCase.executeForProvider({ ...input, patientId: 'patient-1' }, doctor);
+
+    expect(getAcceptedPrescription.executeForProvider).toHaveBeenCalledWith(tx, 'prescription-1', 'patient-1', 'doctor-user-1');
+    expect(pharmacyOrders.create).toHaveBeenCalledWith(tx, expect.objectContaining({ patientId: 'patient-1', createdByUserId: 'doctor-user-1', createdByRole: 'DOCTOR' }));
+    expect(pharmacyOrderItems.createMany).toHaveBeenCalledWith(tx, 'order-1', [{ prescriptionItemId: 'item-1', quantity: 20 }]);
+    expect(broadcasts.createMany).toHaveBeenCalledWith(tx, 'order-1', ['branch-1', 'branch-2']);
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'PharmacyOrderCreated', expect.objectContaining({ patientId: 'patient-1' }));
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'NewPharmacyOrderForStaff', { pharmacyOrderId: 'order-1', pharmacyStaffUserId: 'pharmacy-staff-1' });
+    expect(result.status).toBe('RECEIVED');
+  });
+
+  it('requires the dedicated permission before an assistant can submit a pharmacy order', async () => {
+    const { pharmacyOrders, useCase } = setup();
+    const assistant = { sub: 'assistant-1', roleMembershipId: 'm-assistant', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF', permissions: [] } as any;
+
+    await expect(useCase.executeForProvider({ ...input, patientId: 'patient-1' }, assistant)).rejects.toMatchObject({ httpStatus: 403 });
+    expect(pharmacyOrders.create).not.toHaveBeenCalled();
   });
 
   it('notifies every PHARMACY_STAFF member at each broadcast branch, one event per (branch, staff member)', async () => {
@@ -87,7 +119,7 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(searchPharmacyBranches.execute).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: true }));
   });
 
-  it('treats CLINIC_HANDOVER as a PICKUP alias — no delivery-capable requirement', async () => {
+  it('requires delivery-capable branches for CLINIC_HANDOVER', async () => {
     const { pharmacyOrders, getAcceptedPrescription, searchPharmacyBranches, useCase } = setup();
     searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
@@ -96,11 +128,11 @@ describe('CreatePharmacyOrderUseCase', () => {
 
     await useCase.execute({ ...input, fulfillmentType: 'CLINIC_HANDOVER' }, actor);
 
-    expect(searchPharmacyBranches.execute).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: undefined }));
+    expect(searchPharmacyBranches.execute).toHaveBeenCalledWith(expect.objectContaining({ deliveryCapable: true }));
   });
 
   it('broadcasts to exactly the chosen branch when pharmacyBranchId is given, skipping the nearest-branch search', async () => {
-    const { pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
+    const { pharmacyOrders, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
     getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: true });
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
     getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
@@ -115,7 +147,7 @@ describe('CreatePharmacyOrderUseCase', () => {
   });
 
   it('broadcasts to the chosen branch without lat/lng at all — File 12 Part 46, a chosen branch does not need the caller\'s GPS location', async () => {
-    const { pharmacyOrders, pharmacyOrderItems, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
+    const { pharmacyOrders, broadcasts, getAcceptedPrescription, searchPharmacyBranches, getPharmacyBranch, useCase } = setup();
     getPharmacyBranch.execute.mockResolvedValue({ id: 'branch-9', delivery_capable: true });
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
     getAcceptedPrescription.execute.mockResolvedValue(acceptedPrescription);
@@ -183,13 +215,13 @@ describe('CreatePharmacyOrderUseCase', () => {
     expect(result.pharmacyOrderId).toBe('order-1');
   });
 
-  it('422s with NO_FULFILLABLE_ITEMS when the accepted prescription has no fulfillable items', async () => {
+  it('422s when the accepted prescription has neither fulfillable items nor an image', async () => {
     const { pharmacyOrders, getAcceptedPrescription, searchPharmacyBranches, useCase } = setup();
     searchPharmacyBranches.execute.mockResolvedValue(branchSearchResult);
     pharmacyOrders.findLatestByPrescriptionId.mockResolvedValue(null);
-    getAcceptedPrescription.execute.mockResolvedValue({ prescriptionId: 'prescription-1', items: [] });
+    getAcceptedPrescription.execute.mockResolvedValue({ prescriptionId: 'prescription-1', items: [], imageCount: 0 });
 
-    await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'NO_FULFILLABLE_ITEMS', httpStatus: 422 });
+    await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'PRESCRIPTION_HAS_NO_CONTENT', httpStatus: 422 });
   });
 
   it('propagates PRESCRIPTION_NOT_ACCEPTED from the prescriptions module read', async () => {

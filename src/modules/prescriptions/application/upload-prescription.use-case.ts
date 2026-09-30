@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { PrescriptionDocumentType, PrescriptionStatus, RoleContextType } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
+import { BusinessRuleError, ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { MEDIA_STORAGE, MediaStoragePort, UploadedMediaFile } from '../../../shared/kernel/storage/media-storage.port';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
@@ -9,6 +11,9 @@ import { QUALITY_CHECKER, QualityCheckerPort } from './ports/quality-checker.por
 import { PrescriptionImageRepository } from '../infrastructure/prescription-image.repository';
 import { PrescriptionItemRepository } from '../infrastructure/prescription-item.repository';
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
+import { AssertPatientInDoctorScopeUseCase } from '../../scheduling-appointments/application/assert-patient-in-doctor-scope.use-case';
+import { GetDoctorAppointmentUseCase } from '../../scheduling-appointments/application/get-doctor-appointment.use-case';
 
 export interface UploadPrescriptionInput {
   files: UploadedMediaFile[];
@@ -17,7 +22,13 @@ export interface UploadPrescriptionInput {
 
 export interface UploadPrescriptionResult {
   prescriptionId: string;
-  status: 'QUALITY_CHECK_PASSED' | 'QUALITY_CHECK_FAILED';
+  status: 'QUALITY_CHECK_PASSED' | 'QUALITY_CHECK_FAILED' | 'ACCEPTED' | 'PENDING_DOCTOR_APPROVAL';
+}
+
+export interface UploadProviderClinicalDocumentInput extends UploadPrescriptionInput {
+  patientId: string;
+  documentType: PrescriptionDocumentType;
+  appointmentId?: string;
 }
 
 /**
@@ -49,6 +60,9 @@ export class UploadPrescriptionUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(MEDIA_STORAGE) private readonly mediaStorage: MediaStoragePort,
+    @Inject(ResolveDoctorScopeUseCase) private readonly doctorScope: ResolveDoctorScopeUseCase,
+    @Inject(AssertPatientInDoctorScopeUseCase) private readonly patientAccess: AssertPatientInDoctorScopeUseCase,
+    @Inject(GetDoctorAppointmentUseCase) private readonly getDoctorAppointment: GetDoctorAppointmentUseCase,
   ) {}
 
   async execute(input: UploadPrescriptionInput, actor: AccessTokenPayload): Promise<UploadPrescriptionResult> {
@@ -94,6 +108,101 @@ export class UploadPrescriptionUseCase {
       });
 
       await this.outbox.emit(tx, 'PrescriptionUploaded', { prescriptionId: prescription.id, patientId: actor.sub, status });
+
+      return { prescriptionId: prescription.id, status };
+    });
+  }
+
+  /**
+   * Provider counterpart to the patient multipart upload. It stores the same
+   * private ImageKit files and quality metadata, but binds each document to a
+   * patient in the caller's doctor scope. Medication images retain the
+   * assistant-to-doctor approval gate; lab referrals use the already
+   * authorized lab-order workflow and do not acquire an unrelated Rx signoff.
+   */
+  async executeForProvider(
+    input: UploadProviderClinicalDocumentInput,
+    actor: AccessTokenPayload,
+  ): Promise<UploadPrescriptionResult> {
+    if (actor.contextType !== RoleContextType.DOCTOR && actor.contextType !== RoleContextType.CLINIC_STAFF) {
+      throw new ForbiddenError();
+    }
+    const isAssistant = actor.contextType === RoleContextType.CLINIC_STAFF;
+    const requiredPermission = input.documentType === PrescriptionDocumentType.LAB_REFERRAL
+      ? 'lab-orders:create:assistant'
+      : 'prescriptions:create:assistant';
+    if (isAssistant && !actor.permissions.includes(requiredPermission)) {
+      throw new ForbiddenError('ROLE_NOT_PERMITTED', 'ليس لديك صلاحية إرسال هذا الطلب نيابةً عن الطبيب.');
+    }
+
+    const scope = await this.doctorScope.execute(actor);
+    await this.patientAccess.execute(input.patientId, scope.affiliationIds);
+    if (input.appointmentId) {
+      const appointment = await this.getDoctorAppointment.execute(input.appointmentId, actor);
+      if (appointment.patientId !== input.patientId) {
+        throw new BusinessRuleError('APPOINTMENT_PATIENT_MISMATCH', 'هذا الموعد لا يخص هذا المريض.');
+      }
+    }
+
+    const uploaded = await Promise.all(
+      input.files.map((file) => this.mediaStorage.upload(file, { folder: `prescriptions/${input.patientId}`, isPrivate: true })),
+    );
+    const fileUrls = uploaded.map((stored) => stored.url);
+    const qualityResults = await Promise.all(fileUrls.map((fileUrl) => this.qualityChecker.check(fileUrl)));
+    const allPassed = qualityResults.every((result) => result.passed);
+    const ocrSuggestions = allPassed && input.documentType === PrescriptionDocumentType.PRESCRIPTION
+      ? (await Promise.all(fileUrls.map((fileUrl) => this.ocrExtractor.extract(fileUrl)))).flat()
+      : [];
+
+    return this.prisma.$transaction(async (tx) => {
+      const pendingMedicationApproval = isAssistant && input.documentType === PrescriptionDocumentType.PRESCRIPTION && allPassed;
+      const status: PrescriptionStatus = !allPassed
+        ? 'QUALITY_CHECK_FAILED'
+        : pendingMedicationApproval
+          ? 'PENDING_DOCTOR_APPROVAL'
+          : input.documentType === PrescriptionDocumentType.LAB_REFERRAL
+            ? 'QUALITY_CHECK_PASSED'
+            : 'ACCEPTED';
+      const prescription = await this.prescriptions.create(tx, {
+        patientId: input.patientId,
+        source: 'DOCTOR_ISSUED',
+        documentType: input.documentType,
+        notes: input.notes,
+        doctorId: scope.doctorUserId,
+        createdByUserId: actor.sub,
+        createdByRole: actor.contextType,
+        appointmentId: input.appointmentId,
+        status,
+      });
+
+      await this.images.createMany(
+        tx,
+        fileUrls.map((fileUrl, index) => ({ prescriptionId: prescription.id, fileUrl, qualityCheck: qualityResults[index] })),
+      );
+      if (ocrSuggestions.length > 0) {
+        await this.items.createManySuggested(tx, prescription.id, ocrSuggestions);
+      }
+
+      await this.audit.record(tx, {
+        actorUserId: actor.sub,
+        actorRoleMembershipId: actor.roleMembershipId,
+        action: input.documentType === PrescriptionDocumentType.LAB_REFERRAL
+          ? 'prescriptions.lab_referral.upload_by_provider'
+          : isAssistant
+            ? 'prescriptions.prescription.upload_by_assistant'
+            : 'prescriptions.prescription.upload_by_doctor',
+        resourceType: 'prescription',
+        resourceId: prescription.id,
+        subjectPatientId: input.patientId,
+      });
+
+      if (input.documentType === PrescriptionDocumentType.PRESCRIPTION) {
+        await this.outbox.emit(
+          tx,
+          pendingMedicationApproval ? 'ProviderPrescriptionPendingApproval' : 'ProviderPrescriptionCreated',
+          { prescriptionId: prescription.id, patientId: input.patientId, doctorUserId: scope.doctorUserId, createdByUserId: actor.sub },
+        );
+      }
 
       return { prescriptionId: prescription.id, status };
     });

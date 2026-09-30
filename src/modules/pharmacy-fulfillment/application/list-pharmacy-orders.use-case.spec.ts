@@ -5,18 +5,20 @@ const prescription = { id: 'presc-1', source: 'PATIENT_UPLOADED', status: 'ACCEP
 
 function setup() {
   const prisma = {} as any;
-  const pharmacyOrders = { findForPatient: jest.fn(), findForBranch: jest.fn() };
+  const pharmacyOrders = { findForPatient: jest.fn(), findForBranch: jest.fn(), findForDoctor: jest.fn() };
   const getActiveRoleMembership = { execute: jest.fn() };
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
   const getPrescriptionSummary = { execute: jest.fn().mockResolvedValue(prescription) };
+  const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
   const useCase = new ListPharmacyOrdersUseCase(
     prisma,
     pharmacyOrders as any,
     getActiveRoleMembership as any,
     getUserSummary as any,
     getPrescriptionSummary as any,
+    resolveDoctorScope as any,
   );
-  return { prisma, pharmacyOrders, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, useCase };
+  return { prisma, pharmacyOrders, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, resolveDoctorScope, useCase };
 }
 
 function row(id: string, createdAt: string) {
@@ -42,6 +44,8 @@ function row(id: string, createdAt: string) {
 describe('ListPharmacyOrdersUseCase', () => {
   const patientActor = { sub: 'patient-1', roleMembershipId: 'm-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const staffActor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'PHARMACY_STAFF', contextType: 'PHARMACY_STAFF', permissions: [] } as any;
+  const doctorActor = { sub: 'doctor-user-1', roleMembershipId: 'm-3', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
+  const assistantActor = { sub: 'assistant-user-1', roleMembershipId: 'm-4', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF', permissions: [] } as any;
 
   it("lists and enriches the caller's own orders for a PATIENT actor", async () => {
     const { pharmacyOrders, useCase } = setup();
@@ -93,5 +97,17 @@ describe('ListPharmacyOrdersUseCase', () => {
     const result = await useCase.execute({ limit: 20 }, patientActor);
 
     expect(result.nextCursor).toBeNull();
+  });
+
+  it('lists provider-originated pharmacy orders and scopes assistants to their own submissions', async () => {
+    const { pharmacyOrders, resolveDoctorScope, useCase } = setup();
+    pharmacyOrders.findForDoctor.mockResolvedValue([]);
+
+    await useCase.execute({}, doctorActor);
+    await useCase.execute({}, assistantActor);
+
+    expect(resolveDoctorScope.execute).toHaveBeenCalledWith(doctorActor);
+    expect(pharmacyOrders.findForDoctor).toHaveBeenNthCalledWith(1, expect.anything(), 'doctor-user-1', expect.objectContaining({ limit: 21 }), undefined);
+    expect(pharmacyOrders.findForDoctor).toHaveBeenNthCalledWith(2, expect.anything(), 'doctor-user-1', expect.objectContaining({ limit: 21 }), 'assistant-user-1');
   });
 });

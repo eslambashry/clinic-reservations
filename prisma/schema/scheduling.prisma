@@ -92,6 +92,9 @@ model Appointment {
   rescheduled_to                  Appointment[]           @relation("RescheduledFrom")
   slot                            AppointmentSlot         @relation(fields: [slot_id], references: [id])
   encounters                      Encounter[]
+  /// File 12 Part 51 — optional provider clinical requests written during this visit.
+  prescriptions                   Prescription[]
+  lab_orders                      LabOrder[]
 
   @@index([patient_id, status])
   @@map("appointments")

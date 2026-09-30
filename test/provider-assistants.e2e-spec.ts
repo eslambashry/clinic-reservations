@@ -22,7 +22,8 @@ describe('Provider Assistants (e2e)', () => {
   let jwt: JwtService;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `E2E_ASSISTANT_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   // E.164 phone numbers must be all-digits — `suffix` above is hex (can
   // contain a-f), so phone numbers use this purely numeric suffix instead.
   const numericSuffix = (Date.now() % 10000000).toString().padStart(7, '0');
@@ -53,7 +54,7 @@ describe('Provider Assistants (e2e)', () => {
     prisma = app.get(PrismaService);
     jwt = app.get(JwtService);
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'E2E Assistant Specialty', name_ar: 'تخصص' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص' } });
 
     const doctorAUser = await prisma.user.create({ data: { phone: `+2012${numericSuffix}1`, first_name: 'Doctor', last_name: 'A' } });
     doctorAUserId = doctorAUser.id;
@@ -372,6 +373,7 @@ describe('Provider Assistants (e2e)', () => {
         data: { user_id: patient.id, role_code: 'PATIENT', context_type: 'PATIENT' },
       });
 
+      // A visit transition can be recorded before its scheduled slot starts.
       const startAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const slot = await prisma.appointmentSlot.create({
         data: {

@@ -25,7 +25,8 @@ describe('Provider Directory (e2e)', () => {
   let jwt: JwtService;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `E2E_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   let adminUserId: string;
   let adminMembershipId: string;
@@ -85,7 +86,7 @@ describe('Provider Directory (e2e)', () => {
       permissions: [],
     });
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'E2E Specialty', name_ar: 'تخصص' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص' } });
 
     const clinic = await prisma.clinic.create({
       data: { legal_name: `E2E Clinic ${suffix}`, brand_name: `E2E Clinic ${suffix}`, status: 'VERIFIED' },

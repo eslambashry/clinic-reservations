@@ -18,6 +18,11 @@ export interface NewAppointment {
 
 const WITH_SLOT_TIMES = {
   slot: { select: { start_at: true, end_at: true } },
+  // The patient's own payment breakdown (what's due, what they already paid,
+  // what's left for the clinic to collect) — safe to expose on the patient
+  // surface unlike `WITH_DOCTOR_VIEW`'s `patient` include, since it is the
+  // caller's own money, not another person's identity.
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
@@ -51,10 +56,13 @@ export type AppointmentWithSlotTimes = Prisma.AppointmentGetPayload<{ include: t
  * number must not become reachable from a response shape a patient can ask
  * for. `iana_timezone` is added here because the Doctor Dashboard renders a
  * clinic-local day view and would otherwise have to guess the offset.
+ * `payment_intent` is read so the doctor can see what the patient already
+ * paid and what is left to collect at the clinic.
  */
 const WITH_DOCTOR_VIEW = {
   slot: { select: { start_at: true, end_at: true } },
   patient: { select: { id: true, first_name: true, last_name: true, phone: true } },
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
@@ -213,6 +221,26 @@ export class AppointmentRepository {
       data: { status: 'RESCHEDULED', version: { increment: 1 } },
     });
     return result.count === 1;
+  }
+
+  /**
+   * File 12 Part 51 — the only doctor↔patient relationship this codebase can
+   * currently prove: has this patient ever had an `Appointment` under one of
+   * the caller's own `affiliationIds`? Backs the provider clinical-requests
+   * authorization check (a doctor/assistant may only write a prescription or
+   * lab order for a patient they've actually seen). `affiliationIds` is
+   * always server-resolved from the caller's JWT via
+   * `ResolveDoctorScopeUseCase`, never client-supplied.
+   */
+  async existsForPatientAndAffiliations(db: Prisma.TransactionClient, patientId: string, affiliationIds: string[]): Promise<boolean> {
+    if (affiliationIds.length === 0) {
+      return false;
+    }
+    const match = await db.appointment.findFirst({
+      where: { patient_id: patientId, doctor_clinic_affiliation_id: { in: affiliationIds } },
+      select: { id: true },
+    });
+    return match !== null;
   }
 
   /** Version-guarded live clinic-flow update; transition policy stays in the application/domain layers. */

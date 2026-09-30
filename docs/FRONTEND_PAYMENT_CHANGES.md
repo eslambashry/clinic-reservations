@@ -50,7 +50,9 @@ Nothing else was renamed or removed. Old clients that never send `paymentAmount`
     "paymentIntentId": "uuid",
     "method": "FAWRY",
     "referenceCode": "963455678",
-    "expiresAt": "2026-09-21T10:15:00.000Z"
+    "expiresAt": "2026-09-21T10:15:00.000Z",
+    "amount": "50.00",
+    "currency": "EGP"
   }
 }
 ```
@@ -61,7 +63,7 @@ Nothing else was renamed or removed. Old clients that never send `paymentAmount`
 | `FAWRY` | `referenceCode` (no `redirectUrl`) | Show the code |
 
 - **Fawry:** show "Fawry code: {referenceCode}". The patient pays at any Fawry outlet or in the myFawry app.
-- **The response does not echo the amount.** Show the amount your UI sent (or the full fee if none was sent).
+- **`amount` is what the gateway will actually charge.** Show this value, not the one your UI sent: on a retry it is the first attempt's amount.
 - **Payment confirmation is asynchronous:** the appointment is created only when the gateway confirms payment, never by this call. Track it by polling the appointment or by the `PaymentCaptured` / `PaymentFailed` push notifications.
 - **Unpaid Fawry code:** when `expiresAt` passes with no payment, the hold is released and the code is cancelled on Fawry's side. Fawry's hold window is 15 minutes, mobile wallet 10, card 5.
 - **Retry:** call the same endpoint again on the same hold. The amount of the first attempt is kept, and any different `paymentAmount` sent on a retry is ignored.
@@ -98,7 +100,7 @@ The client only proposes an amount. The fee and the minimum always come from the
 - Also rejected: `0`, negative values, non-numeric text, more than 2 decimals.
 - `paymentAmount` omitted, or equal to the fee: paid in full.
 - Do not send the fee or a "remaining balance" from the client. Extra fields are rejected with `400`.
-- You can read the current minimum from the admin policy, but the backend does not expose it to patients yet. **If the app needs to display or pre-validate the 50 EGP minimum, ask the backend team for a patient-readable value** rather than hardcoding it.
+- **The minimum is on the hold response.** `POST /v1/appointments/hold` now also returns `fullAmount` (the consult fee), `currency`, and `minPaymentAmount` (`min(policy, fee)`, e.g. `"50.00"`). Use it to show and pre-validate the minimum; don't hardcode 50. `minPaymentAmount: null` means the policy isn't configured, so only offer a full payment.
 
 ## 4. Errors to handle
 
@@ -122,9 +124,18 @@ Messages come back in Arabic in `error.message`. Show them as-is.
 - **Wallet endpoints, notifications endpoints:** unchanged. `PaymentCaptured` and refund notifications show the amount actually paid.
 - **Fee display:** the doctor's consultation fee on search and detail screens is still the full fee.
 
-## 6. Remaining balance: not visible yet
+## 6. Remaining balance: on the doctor's appointment responses
 
-The backend now stores, for each appointment, the unpaid part of the fee (500 fee, 50 paid gives 450). **No GET endpoint returns it yet.** It is tracking only, and there is no flow for the clinic to collect it. If a screen needs it, ask backend to add it to the appointment response.
+Every doctor/clinic-staff appointment response (`GET /v1/doctors/me/appointments`, `GET /v1/doctors/me/appointments/{id}`, and `PATCH .../{id}/visit-status`) now carries a `payment` object, so the doctor knows what to collect:
+
+```json
+"payment": { "method": "FAWRY", "currency": "EGP", "fullAmount": "500.00", "paidAmount": "50.00", "remainingBalance": "450.00" }
+```
+- `PAY_AT_CLINIC` (including walk-ins): `paidAmount: "0.00"`, `remainingBalance` = the whole fee.
+- Paid in full online: `remainingBalance: "0.00"`.
+- `payment: null`: no payment on record.
+
+There is still no endpoint to mark the balance as collected.
 
 ## 7. Admin dashboard
 

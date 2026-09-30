@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
-import { PaymentCustomerInfoDto } from '../../../payments/api/dto/payment-customer-info.dto';
+import { IsDefined, IsIn, IsOptional, IsString, MaxLength, ValidateIf, ValidateNested } from 'class-validator';
+import { AppointmentPaymentBillingDto } from './appointment-payment-billing.dto';
+import { AppointmentPaymentPhoneDto } from './appointment-payment-phone.dto';
 
 const ONLINE_METHODS = ['CARD', 'FAWRY', 'MOBILE_WALLET'] as const;
 const WALLET_PROVIDERS = ['VODAFONE_CASH', 'ETISALAT_CASH', 'ORANGE_CASH'] as const;
@@ -12,10 +13,20 @@ export class InitiateOnlineAppointmentPaymentDto {
   @IsIn(ONLINE_METHODS)
   method: (typeof ONLINE_METHODS)[number];
 
-  @ApiProperty({ type: PaymentCustomerInfoDto })
+  @ApiProperty({ type: AppointmentPaymentPhoneDto })
   @ValidateNested()
-  @Type(() => PaymentCustomerInfoDto)
-  customer: PaymentCustomerInfoDto;
+  @Type(() => AppointmentPaymentPhoneDto)
+  customer: AppointmentPaymentPhoneDto;
+
+  @ApiPropertyOptional({
+    type: AppointmentPaymentBillingDto,
+    description: 'Required for CARD/MOBILE_WALLET Paymob payments; omitted for Fawry.',
+  })
+  @ValidateIf((dto: InitiateOnlineAppointmentPaymentDto) => dto.method !== 'FAWRY')
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => AppointmentPaymentBillingDto)
+  billingData?: AppointmentPaymentBillingDto;
 
   @ApiPropertyOptional({ example: '50.00', description: 'Optional partial amount, from the configured minimum (50 EGP) up to the consult fee. Omit to pay in full. Validated server-side; the client never sends the fee or the remaining balance.' })
   @IsOptional()

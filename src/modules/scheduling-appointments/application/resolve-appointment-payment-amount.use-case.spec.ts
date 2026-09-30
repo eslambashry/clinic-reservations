@@ -58,4 +58,27 @@ describe('ResolveAppointmentPaymentAmountUseCase', () => {
 
     await expect(useCase.execute(tx, { requestedAmount: '40.00', consultFee: '40.00' })).resolves.toMatchObject({ paymentAmount: '40.00', remainingBalance: '0.00' });
   });
+
+  describe('findMinimum', () => {
+    it('returns the policy minimum for a fee above it', async () => {
+      const { useCase } = setup({ minAmount: '50.00' });
+
+      await expect(useCase.findMinimum(tx, '500.00')).resolves.toBe('50.00');
+    });
+
+    it('caps the minimum at the fee, matching what execute accepts', async () => {
+      const { useCase } = setup({ minAmount: '50.00' });
+
+      await expect(useCase.findMinimum(tx, '40.00')).resolves.toBe('40.00');
+    });
+
+    it.each([['policy row missing', null], ['minAmount "abc"', { minAmount: 'abc' }], ['minAmount "0"', { minAmount: '0' }]])(
+      'returns null instead of throwing when %s',
+      async (_label, policyValue) => {
+        const { useCase } = setup(policyValue);
+
+        await expect(useCase.findMinimum(tx, '500.00')).resolves.toBeNull();
+      },
+    );
+  });
 });

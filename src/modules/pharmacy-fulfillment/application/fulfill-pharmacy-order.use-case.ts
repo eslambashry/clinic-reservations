@@ -4,6 +4,7 @@ import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { assertOrderCanBeginFulfillment, nextStatusAfterFulfill } from '../domain/pharmacy-order.rules';
 import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.repository';
 
@@ -28,6 +29,7 @@ export class FulfillPharmacyOrderUseCase {
     @Inject(PharmacyOrderRepository) private readonly pharmacyOrders: PharmacyOrderRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(pharmacyOrderId: string, actor: AccessTokenPayload): Promise<FulfillPharmacyOrderResult> {
@@ -54,6 +56,18 @@ export class FulfillPharmacyOrderUseCase {
         resourceType: 'pharmacy_order',
         resourceId: pharmacyOrderId,
       });
+      await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
+        pharmacyOrderId,
+        status: nextStatus,
+        recipientUserId: order.patient_id,
+      });
+      if (order.created_by_user_id) {
+        await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
+          pharmacyOrderId,
+          status: nextStatus,
+          recipientUserId: order.created_by_user_id,
+        });
+      }
 
       return { pharmacyOrderId, status: nextStatus as 'READY_FOR_PICKUP' | 'OUT_FOR_DELIVERY' };
     });

@@ -47,6 +47,9 @@ export class GetPrescriptionUseCase {
     if (!prescription || (!isOwner && !isStaff)) {
       throw new NotFoundError('Prescription', prescriptionId);
     }
+    if (prescription.status === 'PENDING_DOCTOR_APPROVAL' && actor.contextType !== 'ADMIN') {
+      throw new NotFoundError('Prescription', prescriptionId);
+    }
 
     const [images, items, reviews] = await Promise.all([
       this.images.findByPrescriptionId(this.prisma, prescriptionId),

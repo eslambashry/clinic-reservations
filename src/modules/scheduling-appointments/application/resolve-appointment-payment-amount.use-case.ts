@@ -32,16 +32,8 @@ export class ResolveAppointmentPaymentAmountUseCase {
       return { paymentAmount: fullAmount, fullAmount, remainingBalance: '0.00' };
     }
 
-    const policy = await this.policyConfig.getValue<{ minAmount: string }>(
-      tx,
-      REGION_CONSTANTS.DEFAULT_REGION_CODE,
-      'MIN_APPOINTMENT_PAYMENT',
-    );
-    // A missing OR malformed value (no minAmount, "abc", "0", negative, more
-    // than 2 decimals) counts as not configured — never silently skips the
-    // minimum check (a NaN minimum would otherwise let any amount through).
-    const minAmount: unknown = policy?.minAmount;
-    if (typeof minAmount !== 'string' || !/^\d+(\.\d{1,2})?$/.test(minAmount) || Number(minAmount) <= 0) {
+    const minAmount = await this.readPolicyMinimum(tx);
+    if (minAmount === null) {
       throw new DomainError(500, 'MIN_APPOINTMENT_PAYMENT_NOT_CONFIGURED', 'الحد الأدنى للدفع غير مُهيّأ لهذه المنطقة. تواصل مع الدعم.');
     }
 
@@ -64,5 +56,36 @@ export class ResolveAppointmentPaymentAmountUseCase {
 
     const paymentAmount = Number(input.requestedAmount).toFixed(2);
     return { paymentAmount, fullAmount, remainingBalance: computeRemainingBalance(fullAmount, paymentAmount) };
+  }
+
+  /**
+   * The smallest amount [execute] would accept for this fee —
+   * `min(policy minimum, consultFee)` — so the patient app can show it and
+   * pre-validate before paying. `null` when the policy is not configured
+   * (only full payment works then). Read-only: never throws for a missing
+   * policy, unlike [execute].
+   */
+  async findMinimum(tx: Prisma.TransactionClient, consultFee: string): Promise<string | null> {
+    const minAmount = await this.readPolicyMinimum(tx);
+    if (minAmount === null) return null;
+    return Math.min(Number(minAmount), Number(consultFee)).toFixed(2);
+  }
+
+  /**
+   * A missing OR malformed value (no minAmount, "abc", "0", negative, more
+   * than 2 decimals) counts as not configured — never silently skips the
+   * minimum check (a NaN minimum would otherwise let any amount through).
+   */
+  private async readPolicyMinimum(tx: Prisma.TransactionClient): Promise<string | null> {
+    const policy = await this.policyConfig.getValue<{ minAmount: string }>(
+      tx,
+      REGION_CONSTANTS.DEFAULT_REGION_CODE,
+      'MIN_APPOINTMENT_PAYMENT',
+    );
+    const minAmount: unknown = policy?.minAmount;
+    if (typeof minAmount !== 'string' || !/^\d+(\.\d{1,2})?$/.test(minAmount) || Number(minAmount) <= 0) {
+      return null;
+    }
+    return minAmount;
   }
 }

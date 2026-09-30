@@ -11,7 +11,7 @@ function row(overrides: Partial<DoctorSearchRow> = {}): DoctorSearchRow {
     last_name: 'Fahmy',
     photo_url: null,
     specialty_code: 'GENERAL_PRACTICE',
-    specialty_name_en: 'General Practice',
+    specialty_name_ar: 'طب عام',
     clinic_branch_id: 'branch-1',
     clinic_name: 'Nile Clinic',
     consult_fee: new Prisma.Decimal('350.00'),

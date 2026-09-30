@@ -128,6 +128,13 @@ export class RejectPharmacyOrderUseCase {
         patientId: order.patient_id,
         reason,
       });
+      if (order.created_by_user_id) {
+        await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
+          pharmacyOrderId,
+          status: 'REJECTED',
+          recipientUserId: order.created_by_user_id,
+        });
+      }
 
       return { pharmacyOrderId, status: 'REJECTED' as const };
     });

@@ -146,6 +146,13 @@ export class SubmitPharmacyOrderQuoteUseCase {
         currency,
         patientId: order.patient_id,
       });
+      if (order.created_by_user_id) {
+        await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
+          pharmacyOrderId,
+          status: 'ACCEPTED',
+          recipientUserId: order.created_by_user_id,
+        });
+      }
 
       return { pharmacyOrderId, status: 'ACCEPTED' as const, totalPrice: input.totalPrice, currency };
     });

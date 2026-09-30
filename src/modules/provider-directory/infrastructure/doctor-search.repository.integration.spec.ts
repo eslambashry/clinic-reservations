@@ -17,7 +17,8 @@ describe('DoctorSearchRepository (integration)', () => {
   const repository = new DoctorSearchRepository(prisma as any);
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
 
   // Cairo-ish coordinates a few km apart, so radius filtering is meaningful.
   const NEAR = { lat: 30.0444, lng: 31.2357 };
@@ -49,7 +50,7 @@ describe('DoctorSearchRepository (integration)', () => {
   }
 
   beforeAll(async () => {
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'Test Specialty', name_ar: 'تخصص اختبار' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص اختبار' } });
 
     const clinic = await prisma.clinic.create({
       data: { legal_name: `Test Clinic ${suffix}`, brand_name: `Test Clinic ${suffix}`, status: 'VERIFIED' },

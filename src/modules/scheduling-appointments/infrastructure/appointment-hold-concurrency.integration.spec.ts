@@ -10,6 +10,7 @@ import { CreateHoldUseCase } from '../application/create-hold.use-case';
 import { GetAppointmentUseCase } from '../application/get-appointment.use-case';
 import { ListAppointmentsUseCase } from '../application/list-appointments.use-case';
 import { RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
+import { ResolveAppointmentPaymentAmountUseCase } from '../application/resolve-appointment-payment-amount.use-case';
 import { ResolveAppointmentScopeUseCase } from '../application/resolve-appointment-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AuditLogRepository } from '../../audit/infrastructure/audit-log.repository';
@@ -57,7 +58,8 @@ describe('Appointment booking loop (integration)', () => {
   let getAppointment: GetAppointmentUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_HOLD_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   const CONCURRENT_PATIENTS = 5;
 
   let clinicId: string;
@@ -88,6 +90,7 @@ describe('Appointment booking loop (integration)', () => {
         // this instead of hard-coding `patient_id === actor.sub`.
         ResolveDoctorScopeUseCase,
         ResolveAppointmentScopeUseCase,
+        ResolveAppointmentPaymentAmountUseCase,
         PaymentIntentRepository,
         PaymentSplitRepository,
         RefundRepository,
@@ -114,7 +117,7 @@ describe('Appointment booking loop (integration)', () => {
     listAppointments = moduleRef.get(ListAppointmentsUseCase);
     getAppointment = moduleRef.get(GetAppointmentUseCase);
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'Test Specialty', name_ar: 'تخصص اختبار' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص اختبار' } });
 
     const clinic = await prisma.clinic.create({ data: { legal_name: `Test Clinic ${suffix}`, brand_name: `Test Clinic ${suffix}`, status: 'VERIFIED' } });
     clinicId = clinic.id;

@@ -41,6 +41,11 @@ import { ListDoctorsUseCase } from './application/list-doctors.use-case';
 import { ListMyDoctorClinicsUseCase } from './application/list-my-doctor-clinics.use-case';
 import { ListSchedulableAffiliationsUseCase } from './application/list-schedulable-affiliations.use-case';
 import { ListSpecialtiesUseCase } from './application/list-specialties.use-case';
+import { ListSpecialtiesForAdminUseCase } from './application/list-specialties-for-admin.use-case';
+import { GetSpecialtyForAdminUseCase } from './application/get-specialty-for-admin.use-case';
+import { CreateSpecialtyUseCase } from './application/create-specialty.use-case';
+import { UpdateSpecialtyUseCase } from './application/update-specialty.use-case';
+import { DeleteSpecialtyUseCase } from './application/delete-specialty.use-case';
 import { ManageAddressUseCase } from './application/manage-address.use-case';
 import { ListVerificationDocumentsUseCase } from './application/list-verification-documents.use-case';
 import { RejectVerificationDocumentUseCase } from './application/reject-verification-document.use-case';
@@ -177,6 +182,11 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     ApproveVerificationDocumentUseCase,
     RejectVerificationDocumentUseCase,
     ListSpecialtiesUseCase,
+    ListSpecialtiesForAdminUseCase,
+    GetSpecialtyForAdminUseCase,
+    CreateSpecialtyUseCase,
+    UpdateSpecialtyUseCase,
+    DeleteSpecialtyUseCase,
     ResolveAffiliationForSchedulingUseCase,
     ListSchedulableAffiliationsUseCase,
     SelfRegisterProviderUseCase,

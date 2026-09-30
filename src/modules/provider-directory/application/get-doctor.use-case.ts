@@ -98,7 +98,7 @@ export class GetDoctorUseCase {
     return {
       id: doctor.id,
       name,
-      specialty: doctor.specialty.name_en,
+      specialty: doctor.specialty.name_ar,
       specialtyKey: doctor.specialty.code,
       rating: Number(doctor.rating_avg),
       reviewCount: doctor.rating_count,
@@ -115,7 +115,7 @@ export class GetDoctorUseCase {
       ianaTimezone: primary?.ianaTimezone ?? null,
       affiliations,
       ...(isAdmin && {
-        specialtyAr: doctor.specialty.name_ar ?? doctor.specialty.name_en,
+        specialtyAr: doctor.specialty.name_ar,
         licenseNumber: doctor.license_number,
         phone: doctor.user.phone,
         regionCode: doctor.region_code,
