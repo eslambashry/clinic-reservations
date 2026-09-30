@@ -1,0 +1,49 @@
+# Connected to the staging branch with a Cloud Build GitHub trigger.
+# Runtime secrets stay in Secret Manager and are not part of this build.
+steps:
+  - id: build-backend-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+      - .
+
+  - id: push-backend-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+
+  # Update the background worker before routing the API to this image. If the
+  # worker update fails, the currently serving API revision remains untouched.
+  - id: deploy-worker
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    entrypoint: gcloud
+    args:
+      - run
+      - worker-pools
+      - update
+      - medsuper-worker
+      - --project=$PROJECT_ID
+      - --region=europe-west1
+      - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+      - --quiet
+
+  - id: deploy-api
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - medsuper-api
+      - --project=$PROJECT_ID
+      - --region=europe-west1
+      - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+      - --quiet
+
+images:
+  - europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
