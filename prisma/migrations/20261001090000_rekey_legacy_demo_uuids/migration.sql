@@ -5,6 +5,8 @@
 -- (such as role_memberships.context_id) are covered by the second pass.
 -- The migration is atomic and a no-op on databases seeded with UUIDv4 IDs.
 
+BEGIN;
+
 CREATE TEMP TABLE legacy_demo_id_map (
   old_id uuid PRIMARY KEY,
   new_id uuid NOT NULL UNIQUE
@@ -46,3 +48,5 @@ BEGIN
     );
   END LOOP;
 END $$;
+
+COMMIT;
