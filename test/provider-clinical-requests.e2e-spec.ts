@@ -139,6 +139,10 @@ describe('Provider clinical requests (e2e)', () => {
 
     const order = await request(server()).post('/v1/pharmacy-orders/provider').set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, prescriptionId, fulfillmentType: 'PICKUP', pharmacyBranchId }).expect(201);
     const orderId = order.body.data.pharmacyOrderId;
+    const staffQueue = await request(server()).get('/v1/pharmacy-orders').set(auth(pharmacyStaffToken)).expect(200);
+    expect(staffQueue.body.data.orders.some((row: { id: string }) => row.id === orderId)).toBe(true);
+    await request(server()).get(`/v1/pharmacy-orders/${orderId}`).set(auth(patientBToken)).expect(404);
+    await request(server()).get('/v1/pharmacy-orders').set(auth(labStaffToken)).expect(403);
     await request(server()).post(`/v1/pharmacy-orders/${orderId}/quote`).set(auth(pharmacyStaffToken)).set('Idempotency-Key', idempotencyKey()).send({ totalPrice: '125.00', note: 'Ready today' }).expect(201);
     await request(server()).post(`/v1/pharmacy-orders/${orderId}/fulfill`).set(auth(pharmacyStaffToken)).set('Idempotency-Key', idempotencyKey()).send({}).expect(201);
     await request(server()).post(`/v1/pharmacy-orders/${orderId}/complete`).set(auth(pharmacyStaffToken)).set('Idempotency-Key', idempotencyKey()).send({}).expect(201);
@@ -153,16 +157,37 @@ describe('Provider clinical requests (e2e)', () => {
     expect(created.body.data.status).toBe('PENDING_DOCTOR_APPROVAL');
     await request(server()).get(`/v1/prescriptions/${prescriptionId}`).set(auth(patientAToken)).expect(404);
     await request(server()).post('/v1/pharmacy-orders/provider').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, prescriptionId, fulfillmentType: 'PICKUP', pharmacyBranchId }).expect(422);
+    const pendingQueue = await request(server()).get('/v1/pharmacy-orders').set(auth(pharmacyStaffToken)).expect(200);
+    expect(pendingQueue.body.data.orders.some((row: { prescription: { id: string } }) => row.prescription.id === prescriptionId)).toBe(false);
     await request(server()).post(`/v1/prescriptions/provider/${prescriptionId}/approve`).set(auth(doctorBToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 1 }).expect(404);
     await request(server()).post(`/v1/prescriptions/provider/${prescriptionId}/approve`).set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 99 }).expect(409);
     await request(server()).post(`/v1/prescriptions/provider/${prescriptionId}/approve`).set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 1 }).expect(201);
     await request(server()).get(`/v1/prescriptions/${prescriptionId}`).set(auth(patientAToken)).expect(200);
     const order = await request(server()).post('/v1/pharmacy-orders/provider').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, prescriptionId, fulfillmentType: 'PICKUP', pharmacyBranchId }).expect(201);
     const orderId = order.body.data.pharmacyOrderId;
+    const approvedQueue = await request(server()).get('/v1/pharmacy-orders').set(auth(pharmacyStaffToken)).expect(200);
+    expect(approvedQueue.body.data.orders.some((row: { id: string }) => row.id === orderId)).toBe(true);
     await request(server()).post(`/v1/pharmacy-orders/${orderId}/quote`).set(auth(pharmacyStaffToken)).set('Idempotency-Key', idempotencyKey()).send({ totalPrice: '85.00' }).expect(201);
     await request(server()).post(`/v1/pharmacy-orders/${orderId}/fulfill`).set(auth(pharmacyStaffToken)).set('Idempotency-Key', idempotencyKey()).send({}).expect(201);
     await request(server()).post(`/v1/pharmacy-orders/${orderId}/complete`).set(auth(pharmacyStaffToken)).set('Idempotency-Key', idempotencyKey()).send({}).expect(201);
     await request(server()).get(`/v1/pharmacy-orders/${orderId}`).set(auth(patientAToken)).expect(200).expect((response) => expect(response.body.data.status).toBe('FULFILLED'));
+  });
+
+  it('lets only the supervising doctor reject an assistant draft and keeps it out of fulfillment', async () => {
+    const created = await request(server()).post('/v1/prescriptions/provider').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send(prescriptionBody(patientBId)).expect(201);
+    const prescriptionId = created.body.data.prescriptionId;
+    const decisionUrl = `/v1/prescriptions/provider/${prescriptionId}/reject`;
+
+    await request(server()).post(decisionUrl).set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 1, reason: 'Needs correction' }).expect(403);
+    await request(server()).post(decisionUrl).set(auth(doctorBToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 1, reason: 'Needs correction' }).expect(404);
+    await request(server()).post(decisionUrl).set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 99, reason: 'Needs correction' }).expect(409);
+
+    const rejected = await request(server()).post(decisionUrl).set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ expectedVersion: 1, reason: 'Needs correction' }).expect(201);
+    expect(rejected.body.data.status).toBe('REJECTED');
+    const providerDetail = await request(server()).get(`/v1/prescriptions/provider/${prescriptionId}`).set(auth(assistantToken)).expect(200);
+    expect(providerDetail.body.data.rejectionReason).toBe('Needs correction');
+    await request(server()).get(`/v1/prescriptions/${prescriptionId}`).set(auth(patientBToken)).expect(200).expect((response) => expect(response.body.data.status).toBe('REJECTED'));
+    await request(server()).post('/v1/pharmacy-orders/provider').set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientBId, prescriptionId, fulfillmentType: 'PICKUP', pharmacyBranchId }).expect(422);
   });
 
   it('enforces provider-patient scope, safe retries, and independent batch rows', async () => {
@@ -186,12 +211,18 @@ describe('Provider clinical requests (e2e)', () => {
   it('runs doctor/assistant lab requests through the existing lab branch queue and batches independently', async () => {
     const doctorOrder = await request(server()).post('/v1/lab-orders/provider').set(auth(doctorAToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId }).expect(201);
     const doctorOrderId = doctorOrder.body.data.labOrderId;
+    const staffQueue = await request(server()).get('/v1/lab-orders').set(auth(labStaffToken)).expect(200);
+    expect(staffQueue.body.data.orders.some((row: { id: string; origin: string }) => row.id === doctorOrderId && row.origin === 'PROVIDER')).toBe(true);
+    await request(server()).get(`/v1/lab-orders/${doctorOrderId}`).set(auth(patientBToken)).expect(404);
+    await request(server()).get('/v1/lab-orders').set(auth(pharmacyStaffToken)).expect(403);
     await request(server()).post(`/v1/lab-orders/${doctorOrderId}/quote`).set(auth(labStaffToken)).set('Idempotency-Key', idempotencyKey()).send({ totalPrice: '300.00', appointmentAt: new Date(Date.now() + 172_800_000).toISOString(), prepInstructions: 'Fast 8 hours', queueNumber: 1 }).expect(201);
     await request(server()).get(`/v1/lab-orders/${doctorOrderId}`).set(auth(patientAToken)).expect(200).expect((response) => expect(response.body.data.status).toBe('QUOTED'));
     await request(server()).get(`/v1/lab-orders/${doctorOrderId}`).set(auth(doctorAToken)).expect(200).expect((response) => expect(response.body.data.status).toBe('QUOTED'));
 
     const assistantOrder = await request(server()).post('/v1/lab-orders/provider').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId }).expect(201);
     expect(assistantOrder.body.data.status).toBe('REQUESTED');
+    const assistantQueue = await request(server()).get('/v1/lab-orders').set(auth(labStaffToken)).expect(200);
+    expect(assistantQueue.body.data.orders.some((row: { id: string; origin: string }) => row.id === assistantOrder.body.data.labOrderId && row.origin === 'PROVIDER')).toBe(true);
     const batch = await request(server()).post('/v1/lab-orders/provider/batch').set(auth(assistantToken)).set('Idempotency-Key', idempotencyKey()).send({ requests: [
       { patientId: patientAId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralAId },
       { patientId: patientBId, labBranchId, collectionType: 'VISIT', prescriptionId: labReferralBId },

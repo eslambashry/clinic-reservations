@@ -21,6 +21,18 @@ const DEMO_PHARMACY_PASSWORD = process.env.SEED_DEMO_PHARMACY_PASSWORD ?? DEMO_S
 const DEMO_LAB_PASSWORD = process.env.SEED_DEMO_LAB_PASSWORD ?? DEMO_STAFF_PASSWORD;
 
 async function main() {
+  // Earlier demo branches used UUID-shaped values with no version/variant bits.
+  // Order DTOs reject those IDs. Refuse to create a second copy of the demo
+  // network in a database that still has those rows; it could strand existing
+  // staff assignments and orders on the old branches.
+  const legacyBranch = await Promise.all([
+    prisma.pharmacyBranch.findUnique({ where: { id: '00000000-0000-0000-0000-000000000111' }, select: { id: true } }),
+    prisma.labBranch.findUnique({ where: { id: '00000000-0000-0000-0000-000000000211' }, select: { id: true } }),
+  ]);
+  if (legacyBranch.some(Boolean)) {
+    throw new Error('Legacy demo branch IDs are present. Use a fresh disposable seed database; this seed will not duplicate or rewrite existing branches.');
+  }
+
   console.log('🌱 Starting database seed verification...');
 
   // Seed roles (File 10 §3.3: "roles/permissions/role_permissions — static
@@ -387,31 +399,31 @@ async function main() {
   // fail `ParseUUIDPipe` validation.
   const demoPharmacies = [
     {
-      id: '00000000-0000-0000-0000-000000000101',
+      id: '00000000-0000-4000-8000-000000000101',
       legalName: 'Nile Pharma LLC (Seed)',
       brandName: 'Nile Pharmacy',
-      branchId: '00000000-0000-0000-0000-000000000111',
-      addressId: '00000000-0000-0000-0000-000000000121',
+      branchId: '00000000-0000-4000-8000-000000000111',
+      addressId: '00000000-0000-4000-8000-000000000121',
       addressLine1: '5 Zamalek Ave',
       phone: '+20221230001',
       deliveryCapable: true,
     },
     {
-      id: '00000000-0000-0000-0000-000000000102',
+      id: '00000000-0000-4000-8000-000000000102',
       legalName: 'Al Ezaby Pharmaceuticals Co. (Seed)',
       brandName: 'Al Ezaby Pharmacy',
-      branchId: '00000000-0000-0000-0000-000000000112',
-      addressId: '00000000-0000-0000-0000-000000000122',
+      branchId: '00000000-0000-4000-8000-000000000112',
+      addressId: '00000000-0000-4000-8000-000000000122',
       addressLine1: '18 King Fahd Rd',
       phone: '+20221230002',
       deliveryCapable: true,
     },
     {
-      id: '00000000-0000-0000-0000-000000000103',
+      id: '00000000-0000-4000-8000-000000000103',
       legalName: 'Community Pharma Group (Seed)',
       brandName: 'Community Pharmacy',
-      branchId: '00000000-0000-0000-0000-000000000113',
-      addressId: '00000000-0000-0000-0000-000000000123',
+      branchId: '00000000-0000-4000-8000-000000000113',
+      addressId: '00000000-0000-4000-8000-000000000123',
       addressLine1: '40 Al Olaya St',
       phone: '+20221230003',
       deliveryCapable: false,
@@ -471,7 +483,7 @@ async function main() {
   // ('...0111'), so the pharmacy_branches row it FK's against must exist
   // first — running before demoPharmacies caused a P2003 FK violation on
   // pharmacy_staff_assignments_pharmacy_branch_id_fkey.
-  const demoPharmacyBranchId = '00000000-0000-0000-0000-000000000111';
+  const demoPharmacyBranchId = '00000000-0000-4000-8000-000000000111';
   let pharmacyStaffUser = await prisma.user.findUnique({ where: { phone: '+201000000003' } });
   if (!pharmacyStaffUser) {
     pharmacyStaffUser = await prisma.user.create({
@@ -542,9 +554,9 @@ async function main() {
   // `medsuper-laboratory-dashboard`'s real-auth bridge has a real branch to
   // log a LAB_STAFF test user into. No LabOrder rows are seeded — the queue
   // starts empty until a real PATIENT creates one via `POST /v1/lab-orders`.
-  const demoLabId = '00000000-0000-0000-0000-000000000201';
-  const demoLabBranchId = '00000000-0000-0000-0000-000000000211';
-  const demoLabAddressId = '00000000-0000-0000-0000-000000000221';
+  const demoLabId = '00000000-0000-4000-8000-000000000201';
+  const demoLabBranchId = '00000000-0000-4000-8000-000000000211';
+  const demoLabAddressId = '00000000-0000-4000-8000-000000000221';
 
   await prisma.laboratory.upsert({
     where: { id: demoLabId },
@@ -751,13 +763,13 @@ async function main() {
   // actually claim a broadcast — these accounts are branch-scoped on purpose.
   const demoPharmacyChains = [
     {
-      id: '00000000-0000-0000-0000-000000000130',
+      id: '00000000-0000-4000-8000-000000000130',
       legalName: 'Seif Pharmaceutical Group LLC (Seed)',
       brandName: 'Seif Pharmacy',
       branches: [
         {
-          id: '00000000-0000-0000-0000-000000000131',
-          addressId: '00000000-0000-0000-0000-000000000141',
+          id: '00000000-0000-4000-8000-000000000131',
+          addressId: '00000000-0000-4000-8000-000000000141',
           addressLine1: 'Road 9, Maadi',
           city: 'Cairo',
           phone: '+20221230011',
@@ -767,8 +779,8 @@ async function main() {
           staffLastName: 'Younes',
         },
         {
-          id: '00000000-0000-0000-0000-000000000132',
-          addressId: '00000000-0000-0000-0000-000000000142',
+          id: '00000000-0000-4000-8000-000000000132',
+          addressId: '00000000-0000-4000-8000-000000000142',
           addressLine1: 'Abbas El Akkad St, Nasr City',
           city: 'Cairo',
           phone: '+20221230012',
@@ -780,13 +792,13 @@ async function main() {
       ],
     },
     {
-      id: '00000000-0000-0000-0000-000000000150',
+      id: '00000000-0000-4000-8000-000000000150',
       legalName: 'El Dawaa Pharmaceuticals Co. (Seed)',
       brandName: 'El Dawaa Pharmacy',
       branches: [
         {
-          id: '00000000-0000-0000-0000-000000000151',
-          addressId: '00000000-0000-0000-0000-000000000161',
+          id: '00000000-0000-4000-8000-000000000151',
+          addressId: '00000000-0000-4000-8000-000000000161',
           addressLine1: 'Baghdad St, Heliopolis',
           city: 'Cairo',
           phone: '+20221230013',
@@ -796,8 +808,8 @@ async function main() {
           staffLastName: 'Kamel',
         },
         {
-          id: '00000000-0000-0000-0000-000000000152',
-          addressId: '00000000-0000-0000-0000-000000000162',
+          id: '00000000-0000-4000-8000-000000000152',
+          addressId: '00000000-0000-4000-8000-000000000162',
           addressLine1: 'Gamet El Dowal St, Mohandessin',
           city: 'Giza',
           phone: '+20221230014',
@@ -809,13 +821,13 @@ async function main() {
       ],
     },
     {
-      id: '00000000-0000-0000-0000-000000000170',
+      id: '00000000-0000-4000-8000-000000000170',
       legalName: 'Rowad Modern Pharmacy Co. (Seed)',
       brandName: '19011 Pharmacy',
       branches: [
         {
-          id: '00000000-0000-0000-0000-000000000171',
-          addressId: '00000000-0000-0000-0000-000000000181',
+          id: '00000000-0000-4000-8000-000000000171',
+          addressId: '00000000-0000-4000-8000-000000000181',
           addressLine1: '26th of July St, Zamalek',
           city: 'Cairo',
           phone: '+20221230015',
@@ -825,8 +837,8 @@ async function main() {
           staffLastName: 'Fawzy',
         },
         {
-          id: '00000000-0000-0000-0000-000000000172',
-          addressId: '00000000-0000-0000-0000-000000000182',
+          id: '00000000-0000-4000-8000-000000000172',
+          addressId: '00000000-0000-4000-8000-000000000182',
           addressLine1: 'Tahrir St, Dokki',
           city: 'Giza',
           phone: '+20221230016',
@@ -916,13 +928,13 @@ async function main() {
   // as the single `demoLabId`/`demoLabBranchId` block above.
   const demoLabChains = [
     {
-      id: '00000000-0000-0000-0000-000000000230',
+      id: '00000000-0000-4000-8000-000000000230',
       legalName: 'Al Borg Diagnostics LLC (Seed)',
       brandName: 'Al Borg Laboratories',
       branches: [
         {
-          id: '00000000-0000-0000-0000-000000000231',
-          addressId: '00000000-0000-0000-0000-000000000241',
+          id: '00000000-0000-4000-8000-000000000231',
+          addressId: '00000000-0000-4000-8000-000000000241',
           addressLine1: 'Corniche El Nil, Maadi',
           city: 'Cairo',
           geoLat: 29.9602,
@@ -934,8 +946,8 @@ async function main() {
           staffLastName: 'Ashraf',
         },
         {
-          id: '00000000-0000-0000-0000-000000000232',
-          addressId: '00000000-0000-0000-0000-000000000242',
+          id: '00000000-0000-4000-8000-000000000232',
+          addressId: '00000000-0000-4000-8000-000000000242',
           addressLine1: 'Makram Ebeid St, Nasr City',
           city: 'Cairo',
           geoLat: 30.0620,
@@ -949,13 +961,13 @@ async function main() {
       ],
     },
     {
-      id: '00000000-0000-0000-0000-000000000250',
+      id: '00000000-0000-4000-8000-000000000250',
       legalName: 'Alfa Scan & Laboratories Co. (Seed)',
       brandName: 'Alfa Lab',
       branches: [
         {
-          id: '00000000-0000-0000-0000-000000000251',
-          addressId: '00000000-0000-0000-0000-000000000261',
+          id: '00000000-0000-4000-8000-000000000251',
+          addressId: '00000000-0000-4000-8000-000000000261',
           addressLine1: 'El Merghany St, Heliopolis',
           city: 'Cairo',
           geoLat: 30.0808,
@@ -967,8 +979,8 @@ async function main() {
           staffLastName: 'Kotb',
         },
         {
-          id: '00000000-0000-0000-0000-000000000252',
-          addressId: '00000000-0000-0000-0000-000000000262',
+          id: '00000000-0000-4000-8000-000000000252',
+          addressId: '00000000-0000-4000-8000-000000000262',
           addressLine1: 'Sudan St, Mohandessin',
           city: 'Giza',
           geoLat: 30.0575,
@@ -982,13 +994,13 @@ async function main() {
       ],
     },
     {
-      id: '00000000-0000-0000-0000-000000000270',
+      id: '00000000-0000-4000-8000-000000000270',
       legalName: 'Cairo Scan Diagnostic Center (Seed)',
       brandName: 'Cairo Scan Labs',
       branches: [
         {
-          id: '00000000-0000-0000-0000-000000000271',
-          addressId: '00000000-0000-0000-0000-000000000281',
+          id: '00000000-0000-4000-8000-000000000271',
+          addressId: '00000000-0000-4000-8000-000000000281',
           addressLine1: 'Hassan Sabry St, Zamalek',
           city: 'Cairo',
           geoLat: 30.0626,
@@ -1000,8 +1012,8 @@ async function main() {
           staffLastName: 'Refaat',
         },
         {
-          id: '00000000-0000-0000-0000-000000000272',
-          addressId: '00000000-0000-0000-0000-000000000282',
+          id: '00000000-0000-4000-8000-000000000272',
+          addressId: '00000000-0000-4000-8000-000000000282',
           addressLine1: 'Central Axis, 6th of October City',
           city: 'Giza',
           geoLat: 29.9285,
@@ -1099,9 +1111,9 @@ async function main() {
   const demoClinics = [
     {
       key: 'cairo-specialized',
-      id: '00000000-0000-0000-0000-000000000301',
-      branchId: '00000000-0000-0000-0000-000000000311',
-      addressId: '00000000-0000-0000-0000-000000000321',
+      id: '00000000-0000-4000-8000-000000000301',
+      branchId: '00000000-0000-4000-8000-000000000311',
+      addressId: '00000000-0000-4000-8000-000000000321',
       legalName: 'Cairo Specialized Hospital Group (Seed)',
       brandName: 'Cairo Specialized Hospital',
       addressLine1: 'Ramses St, Downtown Cairo',
@@ -1110,9 +1122,9 @@ async function main() {
     },
     {
       key: 'alexandria-medical',
-      id: '00000000-0000-0000-0000-000000000302',
-      branchId: '00000000-0000-0000-0000-000000000312',
-      addressId: '00000000-0000-0000-0000-000000000322',
+      id: '00000000-0000-4000-8000-000000000302',
+      branchId: '00000000-0000-4000-8000-000000000312',
+      addressId: '00000000-0000-4000-8000-000000000322',
       legalName: 'Alexandria Medical Center LLC (Seed)',
       brandName: 'Alexandria Medical Center',
       addressLine1: 'Fouad St, Smouha',
@@ -1121,9 +1133,9 @@ async function main() {
     },
     {
       key: 'heliopolis-health',
-      id: '00000000-0000-0000-0000-000000000303',
-      branchId: '00000000-0000-0000-0000-000000000313',
-      addressId: '00000000-0000-0000-0000-000000000323',
+      id: '00000000-0000-4000-8000-000000000303',
+      branchId: '00000000-0000-4000-8000-000000000313',
+      addressId: '00000000-0000-4000-8000-000000000323',
       legalName: 'Heliopolis Health Clinic Co. (Seed)',
       brandName: 'Heliopolis Health Clinic',
       addressLine1: 'El Ahram St, Heliopolis',
@@ -1132,9 +1144,9 @@ async function main() {
     },
     {
       key: 'new-cairo-wellness',
-      id: '00000000-0000-0000-0000-000000000304',
-      branchId: '00000000-0000-0000-0000-000000000314',
-      addressId: '00000000-0000-0000-0000-000000000324',
+      id: '00000000-0000-4000-8000-000000000304',
+      branchId: '00000000-0000-4000-8000-000000000314',
+      addressId: '00000000-0000-4000-8000-000000000324',
       legalName: 'New Cairo Wellness Clinic LLC (Seed)',
       brandName: 'New Cairo Wellness Clinic',
       addressLine1: 'Ninety Street, Fifth Settlement',
@@ -1143,9 +1155,9 @@ async function main() {
     },
     {
       key: 'giza-family-care',
-      id: '00000000-0000-0000-0000-000000000305',
-      branchId: '00000000-0000-0000-0000-000000000315',
-      addressId: '00000000-0000-0000-0000-000000000325',
+      id: '00000000-0000-4000-8000-000000000305',
+      branchId: '00000000-0000-4000-8000-000000000315',
+      addressId: '00000000-0000-4000-8000-000000000325',
       legalName: 'Giza Family Care Center Co. (Seed)',
       brandName: 'Giza Family Care Center',
       addressLine1: 'Tahrir St, Dokki',
@@ -1154,9 +1166,9 @@ async function main() {
     },
     {
       key: 'maadi-medical-plaza',
-      id: '00000000-0000-0000-0000-000000000306',
-      branchId: '00000000-0000-0000-0000-000000000316',
-      addressId: '00000000-0000-0000-0000-000000000326',
+      id: '00000000-0000-4000-8000-000000000306',
+      branchId: '00000000-0000-4000-8000-000000000316',
+      addressId: '00000000-0000-4000-8000-000000000326',
       legalName: 'Maadi Medical Plaza LLC (Seed)',
       brandName: 'Maadi Medical Plaza',
       addressLine1: 'Road 9, Maadi',

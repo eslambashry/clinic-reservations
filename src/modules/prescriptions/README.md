@@ -12,3 +12,5 @@ from lab referrals without a second document store. Assistant medication
 uploads remain pending physician sign-off; lab referrals link to the existing
 provider lab-order flow and are not exposed as pharmacy prescriptions. The
 additive migration is `20260923150000_provider_clinical_document_type`.
+
+**Local validation, 2026-10-01:** An isolated PostgreSQL/Redis database accepted all 43 migrations and the current seed. `test/provider-clinical-requests.e2e-spec.ts` passed 6/6 against real HTTP and PostgreSQL, covering doctor-authored prescription creation, assistant draft approval and rejection, authorization denials, and pharmacy/lab staff queue reads. Seeded pharmacy and lab staff then logged in through the running API and saw provider orders in their own branch queues. The seed's fixed pharmacy/lab IDs now use UUIDv4 syntax accepted by the order DTOs. The seed refuses to duplicate old fixture branches; an older local database containing the previous invalid IDs needs a fresh disposable seed database. Private ImageKit upload, a Flutter device run, and deployed notification delivery were not exercised.
