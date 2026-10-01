@@ -60,6 +60,9 @@ export interface AppConfig {
     clientEmail: string | null;
     privateKey: string | null;
   };
+  scheduling: {
+    appointmentEndGraceMinutes: number;
+  };
 }
 
 export default (): AppConfig => ({
@@ -106,5 +109,11 @@ export default (): AppConfig => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
     // Non-Google hosts may use an escaped PEM; Cloud Run uses its attached service identity through ADC.
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
+  },
+  scheduling: {
+    appointmentEndGraceMinutes: (() => {
+      const parsed = Number(process.env.APPOINTMENT_END_GRACE_MINUTES ?? '30');
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 30;
+    })(),
   },
 });

@@ -14,6 +14,7 @@ import { CreateClinicStaffAppointmentUseCase } from './application/create-clinic
 import { CreateScheduleTemplateUseCase } from './application/create-schedule-template.use-case';
 import { DeleteScheduleTemplateUseCase } from './application/delete-schedule-template.use-case';
 import { ExpireHoldsUseCase } from './application/expire-holds.use-case';
+import { ExpireWaitingVisitsUseCase } from './application/expire-waiting-visits.use-case';
 import { GenerateSlotsUseCase } from './application/generate-slots.use-case';
 import { GetAppointmentUseCase } from './application/get-appointment.use-case';
 import { GetDoctorAppointmentUseCase } from './application/get-doctor-appointment.use-case';
@@ -34,6 +35,7 @@ import { AppointmentRepository } from './infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from './infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from './infrastructure/appointment-slot.repository';
 import { HoldExpiryJob } from './infrastructure/hold-expiry.job';
+import { WaitingVisitExpiryJob } from './infrastructure/waiting-visit-expiry.job';
 import { ScheduleTemplateRepository } from './infrastructure/schedule-template.repository';
 import { SlotGenerationJob } from './infrastructure/slot-generation.job';
 import { AuditModule } from '../audit/audit.module';
@@ -68,6 +70,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     AppointmentRepository,
     SlotGenerationJob,
     HoldExpiryJob,
+    WaitingVisitExpiryJob,
     // application
     CreateScheduleTemplateUseCase,
     UpdateScheduleTemplateUseCase,
@@ -90,6 +93,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetDoctorAppointmentUseCase,
     UpdateAppointmentVisitStatusUseCase,
     ExpireHoldsUseCase,
+    ExpireWaitingVisitsUseCase,
     ResolveAppointmentPaymentAmountUseCase,
     InitiateOnlineAppointmentPaymentUseCase,
     ProcessPaymentWebhookUseCase,

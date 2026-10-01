@@ -28,6 +28,7 @@ model AppointmentSlot {
   appointment                  Appointment?
 
   @@unique([doctor_clinic_affiliation_id, start_at])
+  @@index([end_at])
   @@map("appointment_slots")
 }
 
@@ -98,6 +99,7 @@ model Appointment {
   pharmacy_orders                 PharmacyOrder[]
 
   @@index([patient_id, status])
+  @@index([status, visit_status])
   @@map("appointments")
 }
 
@@ -105,6 +107,8 @@ enum VisitStatus {
   WAITING
   IN_DOCTOR_ROOM
   LEFT
+  CANCELLED
+  TIME_EXPIRED
 
   @@map("appointments_visit_status_enum")
 }

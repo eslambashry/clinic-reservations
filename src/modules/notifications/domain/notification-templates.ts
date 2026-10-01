@@ -16,7 +16,7 @@ import { NotificationTier } from '@prisma/client';
  * `SubstitutionProposed`, `DeliveryStatusChanged`, `PharmacyOrder*`.
  */
 
-export type NotificationChannel = 'PUSH' | 'SMS';
+export type NotificationChannel = 'PUSH';
 
 export interface RenderedNotification {
   title: string;
@@ -39,7 +39,7 @@ function money(amount: unknown, currency: unknown = 'EGP'): string {
 export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplate>> = {
   AppointmentConfirmed: {
     tier: 'TRANSACTIONAL',
-    channels: ['PUSH', 'SMS'],
+    channels: ['PUSH'],
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'تم تأكيد الموعد',
@@ -49,7 +49,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
   },
   AppointmentCancelled: {
     tier: 'TRANSACTIONAL',
-    channels: ['PUSH', 'SMS'],
+    channels: ['PUSH'],
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'تم إلغاء الموعد',
@@ -238,7 +238,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
   },
   CriticalLabResult: {
     tier: 'SAFETY_CRITICAL',
-    channels: ['PUSH', 'SMS'],
+    channels: ['PUSH'],
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'نتيجة تحتاج انتباه فوري',

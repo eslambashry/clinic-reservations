@@ -3,6 +3,8 @@ import { Type } from 'class-transformer';
 import { ArrayMinSize, IsArray, IsBoolean, IsEnum, IsIn, ValidateNested } from 'class-validator';
 import { NotificationTier } from '@prisma/client';
 
+// SMS is accepted only so an already-installed client does not receive a 400
+// during a rolling release. It is ignored by the use case and never returned.
 const CHANNELS = ['PUSH', 'SMS'] as const;
 
 export class NotificationPreferenceItemDto {

@@ -37,7 +37,7 @@ export class GetNotificationPreferencesUseCase {
     const combinations = new Set<string>();
     const tiersByChannel: { tier: NotificationTier; channel: string }[] = [];
     for (const tier of ['TRANSACTIONAL', 'INFORMATIONAL', 'SAFETY_CRITICAL', 'MARKETING'] as NotificationTier[]) {
-      for (const channel of ['PUSH', 'SMS']) {
+      for (const channel of ['PUSH']) {
         const key = `${tier}:${channel}`;
         if (combinations.has(key)) continue;
         combinations.add(key);

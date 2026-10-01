@@ -30,12 +30,6 @@ const PUSH_DATA_KEYS = new Set([
   'paymentIntentId', 'walletId', 'doctorId', 'clinicId',
 ]);
 
-/** A transferred FCM token may still receive an already accepted push. Full clinical, price and staff context stays behind the authenticated inbox. */
-const PUSH_LOCK_SCREEN_COPY = {
-  title: 'لديك إشعار جديد',
-  body: 'افتح التطبيق للاطلاع على التحديث.',
-} as const;
-
 /**
  * File 12 Part 53: the actual send, factored out of `DispatchNotificationUseCase`
  * so `NotificationRetryJob` can reuse it byte-for-byte instead of
@@ -123,7 +117,13 @@ export class DeliverNotificationUseCase {
     }
 
     attemptedTokens.push(...tokens);
-    const result = await this.push.send(tokens, { ...PUSH_LOCK_SCREEN_COPY, data: this.pushData(notification) });
+    // The user explicitly opted in to seeing the actual notification outside
+    // the app. Routing data remains opaque, while title/body match the inbox.
+    const result = await this.push.send(tokens, {
+      title: notification.title,
+      body: notification.body,
+      data: this.pushData(notification),
+    });
 
     // Best-effort: a failed cleanup must never turn a delivered notification
     // into a FAILED row, so it is caught here rather than in `execute`.

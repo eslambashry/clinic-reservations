@@ -3,12 +3,14 @@
  * separate from `AppointmentStatus`: arrival/progress through the clinic is
  * not cancellation, rescheduling, payment, or clinical completion.
  */
-export type VisitStatusValue = 'WAITING' | 'IN_DOCTOR_ROOM' | 'LEFT';
+export type VisitStatusValue = 'WAITING' | 'IN_DOCTOR_ROOM' | 'LEFT' | 'CANCELLED' | 'TIME_EXPIRED';
 
 const NEXT_VISIT_STATUS: Record<VisitStatusValue, VisitStatusValue | null> = {
   WAITING: 'IN_DOCTOR_ROOM',
   IN_DOCTOR_ROOM: 'LEFT',
   LEFT: null,
+  CANCELLED: null,
+  TIME_EXPIRED: null,
 };
 
 export function nextVisitStatus(status: VisitStatusValue): VisitStatusValue | null {

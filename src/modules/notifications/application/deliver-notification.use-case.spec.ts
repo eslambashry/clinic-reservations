@@ -62,8 +62,8 @@ describe('DeliverNotificationUseCase', () => {
 
     expect(notifications.claimForDelivery).toHaveBeenCalledWith(prisma, 'notif-1', 5);
     expect(push.send).toHaveBeenCalledWith(['token-1', 'token-2'], {
-      title: 'لديك إشعار جديد',
-      body: 'افتح التطبيق للاطلاع على التحديث.',
+      title: 'title',
+      body: 'body',
       data: { appointmentId: 'appt-1', notificationId: 'notif-1', templateCode: 'AppointmentConfirmed', tier: 'TRANSACTIONAL' },
     });
     expect(notifications.markSent).toHaveBeenCalledWith(prisma, 'notif-1', lease, 2);
@@ -77,7 +77,7 @@ describe('DeliverNotificationUseCase', () => {
 
     await useCase.execute({ ...base, templateCode: 'NewProviderRegistrationForAdmin', title: 'طلب توثيق طبيب جديد', body: 'تقدّم د. فلان بطلب انضمام', channel: 'PUSH' });
 
-    expect(push.send).toHaveBeenCalledWith(['token-1'], expect.objectContaining({ title: 'لديك إشعار جديد', body: 'افتح التطبيق للاطلاع على التحديث.' }));
+    expect(push.send).toHaveBeenCalledWith(['token-1'], expect.objectContaining({ title: 'طلب توثيق طبيب جديد', body: 'تقدّم د. فلان بطلب انضمام' }));
   });
 
   it.each(['PharmacyOrderQuoted', 'CriticalLabResult', 'PaymentCaptured', 'PharmacyOrderOnWayToClinicForStaff'])(
@@ -89,10 +89,8 @@ describe('DeliverNotificationUseCase', () => {
       await useCase.execute({ ...base, templateCode, title: 'Sensitive title', body: 'Sensitive patient, clinic, price or result details', channel: 'PUSH' });
 
       expect(push.send).toHaveBeenCalledWith(['token-1'], expect.objectContaining({
-        title: 'لديك إشعار جديد', body: 'افتح التطبيق للاطلاع على التحديث.',
+        title: 'Sensitive title', body: 'Sensitive patient, clinic, price or result details',
       }));
-      const sentMessage = push.send.mock.calls[0][1];
-      expect(JSON.stringify(sentMessage)).not.toContain('Sensitive');
     },
   );
 

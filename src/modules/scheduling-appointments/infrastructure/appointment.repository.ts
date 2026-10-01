@@ -209,7 +209,7 @@ export class AppointmentRepository {
   async cancel(db: Prisma.TransactionClient, id: string, currentVersion: number, cancelledBy: string, cancelledReason: string): Promise<boolean> {
     const result = await db.appointment.updateMany({
       where: { id, version: currentVersion, status: 'CONFIRMED' },
-      data: { status: 'CANCELLED', cancelled_by: cancelledBy, cancelled_reason: cancelledReason, version: { increment: 1 } },
+      data: { status: 'CANCELLED', visit_status: 'CANCELLED', cancelled_by: cancelledBy, cancelled_reason: cancelledReason, version: { increment: 1 } },
     });
     return result.count === 1;
   }
@@ -251,5 +251,20 @@ export class AppointmentRepository {
     visitStatus: VisitStatus,
   ): Promise<void> {
     await updateWithOptimisticLock(db.appointment, id, currentVersion, { visit_status: visitStatus });
+  }
+
+  /** Marks only genuinely overdue waiting visits; active consultations are
+   * deliberately never auto-closed. */
+  async expireWaitingVisits(db: Prisma.TransactionClient, graceMinutes: number): Promise<number> {
+    const cutoff = new Date(Date.now() - graceMinutes * 60_000);
+    const result = await db.appointment.updateMany({
+      where: {
+        status: 'CONFIRMED',
+        visit_status: 'WAITING',
+        slot: { end_at: { lte: cutoff } },
+      },
+      data: { visit_status: 'TIME_EXPIRED', version: { increment: 1 } },
+    });
+    return result.count;
   }
 }

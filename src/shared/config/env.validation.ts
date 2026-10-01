@@ -146,6 +146,12 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   FIREBASE_PRIVATE_KEY?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  APPOINTMENT_END_GRACE_MINUTES: number = 30;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
