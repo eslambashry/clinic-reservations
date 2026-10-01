@@ -47,6 +47,23 @@ npm run db:migrate:deploy
 Do not run `db:migrate`, demo seeds, or local slot-generation scripts against
 production as part of deployment.
 
+## GCP staging verification — 2026-10-01
+
+The GCP project `project-399dfad9-c3f6-4a3d-a7f` had no Cloud Build trigger
+configured when checked. A push to `staging` does not automatically deploy this
+backend. The `cloudbuild.yaml` file is a manual build/deploy recipe.
+
+For this staging update, an on-demand Cloud SQL backup completed successfully
+before Prisma migration `20261001090000_rekey_legacy_demo_uuids` was applied.
+Prisma reported all 44 migrations applied. Direct SQL checks found zero legacy
+branch UUIDs and 9 pharmacy plus 7 lab branches with corrected UUIDv4-format
+IDs. Cloud Build `a1e91466-0350-44df-9ff3-50d00514f2a2` built image
+`staging-be9c859`; Cloud Run worker revision `medsuper-worker-00004-fx2` and
+API revision `medsuper-api-00007-wz4` use it, with the API receiving 100% of
+traffic. `/v1/health/ready` reported database and Redis ready; public branch
+searches returned corrected IDs. This does not establish a live authenticated
+provider upload/approval or staff queue flow on deployed staging.
+
 ## Production environment checklist
 
 - Use managed PostgreSQL with TLS and a separately restricted direct migration

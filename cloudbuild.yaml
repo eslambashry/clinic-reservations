@@ -1,4 +1,5 @@
-# Connected to the staging branch with a Cloud Build GitHub trigger.
+# Manual staging build/deploy configuration. The GCP project had no Cloud Build
+# trigger configured when checked on 2026-10-01; a Git push alone does not run it.
 # Runtime secrets stay in Secret Manager and are not part of this build.
 steps:
   - id: build-backend-image
