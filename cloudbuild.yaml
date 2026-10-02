@@ -9,11 +9,52 @@ steps:
       - --tag=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
       - .
 
+  - id: build-migrator-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target=migrator
+      - --tag=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-migrator:$SHORT_SHA
+      - .
+
   - id: push-backend-image
     name: gcr.io/cloud-builders/docker
     args:
       - push
       - europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+
+  - id: push-migrator-image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-migrator:$SHORT_SHA
+
+  # The preconfigured Cloud Run Job holds the DIRECT_URL Secret Manager
+  # binding. Update and execute it once; a failed migration stops deployment.
+  - id: update-migrator-job
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - medsuper-migrate
+      - --project=$PROJECT_ID
+      - --region=europe-west1
+      - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-migrator:$SHORT_SHA
+      - --quiet
+
+  - id: migrate-database
+    name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - medsuper-migrate
+      - --project=$PROJECT_ID
+      - --region=europe-west1
+      - --wait
 
   # Update the background worker before routing the API to this image. If the
   # worker update fails, the currently serving API revision remains untouched.
@@ -45,6 +86,7 @@ steps:
 
 images:
   - europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-backend:$SHORT_SHA
+  - europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-migrator:$SHORT_SHA
 
 options:
   logging: CLOUD_LOGGING_ONLY
