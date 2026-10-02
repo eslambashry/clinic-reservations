@@ -43,7 +43,7 @@ describe('UploadPrescriptionUseCase', () => {
     return { tx, prisma, prescriptions, images, items, qualityChecker, ocrExtractor, audit, outbox, mediaStorage, doctorScope, patientAccess, getDoctorAppointment, useCase };
   }
 
-  it('sets QUALITY_CHECK_PASSED, runs OCR, and emits PrescriptionUploaded when all images pass', async () => {
+  it('sets QUALITY_CHECK_PASSED, runs OCR, and sends no upload notification when all images pass', async () => {
     const { tx, prescriptions, images, items, qualityChecker, ocrExtractor, audit, outbox, mediaStorage, useCase } = setup();
     qualityChecker.check.mockResolvedValue({ passed: true, blurScore: null });
     ocrExtractor.extract.mockResolvedValue([{ drugNameFreeText: 'Panadol', dose: null, frequency: null, durationDays: null, quantity: null }]);
@@ -62,7 +62,7 @@ describe('UploadPrescriptionUseCase', () => {
     ]);
     expect(prescriptions.setStatus).toHaveBeenCalledWith(tx, 'prescription-1', 1, 'QUALITY_CHECK_PASSED');
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'prescriptions.prescription.upload', resourceId: 'prescription-1' }));
-    expect(outbox.emit).toHaveBeenCalledWith(tx, 'PrescriptionUploaded', expect.objectContaining({ prescriptionId: 'prescription-1', status: 'QUALITY_CHECK_PASSED' }));
+    expect(outbox.emit).not.toHaveBeenCalledWith(expect.anything(), 'PrescriptionUploaded', expect.anything());
   });
 
   it('sets QUALITY_CHECK_FAILED and skips OCR entirely when a quality check fails', async () => {

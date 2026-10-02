@@ -107,7 +107,10 @@ export class UploadPrescriptionUseCase {
         resourceId: prescription.id,
       });
 
-      await this.outbox.emit(tx, 'PrescriptionUploaded', { prescriptionId: prescription.id, patientId: actor.sub, status });
+      // NOTE: intentionally no patient notification here. Upload is only step 1
+      // of the pharmacy/lab flow (upload -> choose pharmacy -> delivery); the
+      // "received" notification is sent when the order is created (last step).
+      // Sending it mid-flow is wrong and must not return.
 
       return { prescriptionId: prescription.id, status };
     });

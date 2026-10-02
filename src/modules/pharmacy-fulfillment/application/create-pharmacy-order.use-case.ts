@@ -176,6 +176,12 @@ export class CreatePharmacyOrderUseCase {
         patientId,
         broadcastBranchIds: branchIds,
       });
+      // "Prescription received" goes out only now, once the patient finished
+      // all 3 steps (upload -> choose pharmacy -> delivery), not at upload.
+      await this.outbox.emit(tx, 'PrescriptionUploaded', {
+        prescriptionId: input.prescriptionId,
+        patientId,
+      });
       if (providerDoctorUserId) {
         await this.outbox.emit(tx, 'ProviderPharmacyOrderCreated', {
           pharmacyOrderId: order.id,

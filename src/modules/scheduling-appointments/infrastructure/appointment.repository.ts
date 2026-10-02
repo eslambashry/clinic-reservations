@@ -253,18 +253,25 @@ export class AppointmentRepository {
     await updateWithOptimisticLock(db.appointment, id, currentVersion, { visit_status: visitStatus });
   }
 
-  /** Marks only genuinely overdue waiting visits; active consultations are
-   * deliberately never auto-closed. */
+  /** Marks only genuinely overdue waiting visits; active consultations of
+   * live (CONFIRMED) appointments are deliberately never auto-closed. A
+   * COMPLETED/RESCHEDULED appointment is already finished, so its visit state
+   * is reconciled to match instead of staying stale. */
   async expireWaitingVisits(db: Prisma.TransactionClient, graceMinutes: number): Promise<number> {
     const cutoff = new Date(Date.now() - graceMinutes * 60_000);
-    const result = await db.appointment.updateMany({
+    const expired = await db.appointment.updateMany({
       where: {
-        status: 'CONFIRMED',
+        status: { in: ['CONFIRMED', 'COMPLETED', 'RESCHEDULED'] },
         visit_status: 'WAITING',
         slot: { end_at: { lte: cutoff } },
       },
       data: { visit_status: 'TIME_EXPIRED', version: { increment: 1 } },
     });
-    return result.count;
+    // A COMPLETED appointment can't still have the patient in the doctor room.
+    const left = await db.appointment.updateMany({
+      where: { status: 'COMPLETED', visit_status: 'IN_DOCTOR_ROOM' },
+      data: { visit_status: 'LEFT', version: { increment: 1 } },
+    });
+    return expired.count + left.count;
   }
 }

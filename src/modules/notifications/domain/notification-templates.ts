@@ -67,6 +67,16 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { prescriptionId: p.prescriptionId },
     }),
   },
+  LabOrderRequested: {
+    tier: 'INFORMATIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.patientId,
+    render: (p) => ({
+      title: 'تم استلام طلب التحليل',
+      body: 'تم استلام طلبك وهو الآن قيد المراجعة.',
+      data: { labOrderId: p.labOrderId },
+    }),
+  },
   PrescriptionAccepted: {
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],

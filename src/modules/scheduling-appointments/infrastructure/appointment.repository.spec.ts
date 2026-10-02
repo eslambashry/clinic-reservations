@@ -9,11 +9,11 @@ describe('AppointmentRepository terminal visit updates', () => {
     const repository = new AppointmentRepository();
     const db = { appointment: { updateMany } } as any;
 
-    await expect(repository.expireWaitingVisits(db, 30)).resolves.toBe(1);
+    await expect(repository.expireWaitingVisits(db, 30)).resolves.toBe(2);
 
     expect(updateMany).toHaveBeenCalledWith({
       where: {
-        status: 'CONFIRMED',
+        status: { in: ['CONFIRMED', 'COMPLETED', 'RESCHEDULED'] },
         visit_status: 'WAITING',
         slot: { end_at: { lte: new Date('2026-10-02T11:30:00.000Z') } },
       },
@@ -32,11 +32,11 @@ describe('AppointmentRepository terminal visit updates', () => {
     // One database-side predicate is the race protection: any cancellation,
     // check-in, future slot, or prior expiry no longer matches these clauses.
     expect(where).toMatchObject({
-      status: 'CONFIRMED',
+      status: { in: ['CONFIRMED', 'COMPLETED', 'RESCHEDULED'] },
       visit_status: 'WAITING',
       slot: { end_at: { lte: expect.any(Date) } },
     });
-    expect(where.status).not.toBe('CANCELLED');
+    expect(where.status.in).not.toContain('CANCELLED');
     expect(where.visit_status).not.toBe('IN_DOCTOR_ROOM');
     expect(where.visit_status).not.toBe('TIME_EXPIRED');
   });

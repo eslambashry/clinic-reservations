@@ -88,6 +88,12 @@ export class CreateLabOrderUseCase {
         });
       }
 
+      // Patient confirmation only after the whole lab flow is submitted.
+      await this.outbox.emit(tx, 'LabOrderRequested', {
+        labOrderId: order.id,
+        patientId: actor.sub,
+      });
+
       return { labOrderId: order.id, status: 'REQUESTED' as const };
     });
   }
