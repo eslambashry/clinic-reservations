@@ -36,20 +36,21 @@ The public health endpoints are `/v1/health/live` for liveness and
 Apply committed migrations once as a controlled pre-deploy job, before updating
 the worker or API. Do not run migrations independently from every API or
 worker replica. The staging `cloudbuild.yaml` builds the Dockerfile's
-`migrator` target, updates the `medsuper-migrate` Cloud Run Job image, executes
+`migrator` target, updates the `medsuper-db-migrate` Cloud Run Job image, executes
 that job once, and waits for success. A failed job stops the build before either
 application service is updated. The job runs `prisma migrate deploy`; it does
 not seed data.
 
 Configure the Cloud Run Job separately in GCP. Bind its `DIRECT_URL` environment
-variable to the migration connection secret in Secret Manager, and give the
+variable to the migration connection secret and `DATABASE_URL` to the runtime
+connection secret in Secret Manager, and give the
 job's runtime service account secret access and network connectivity to the
 database. Keep the secret value and Secret Manager binding out of
 `cloudbuild.yaml`; the build only changes the job image and executes it. Grant
 the Cloud Build service account Artifact Registry push access and permission to
 update and execute the Cloud Run Job, plus any required `iam.serviceAccounts.actAs`
 permission for the job runtime identity. The job must exist in `europe-west1`
-as `medsuper-migrate` before running this build.
+as `medsuper-db-migrate` before running this build.
 
 For other CI environments, provide the migration URL through the platform's
 secret manager; never commit it or pass it as a build argument:

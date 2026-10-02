@@ -38,7 +38,7 @@ steps:
       - run
       - jobs
       - update
-      - medsuper-migrate
+      - medsuper-db-migrate
       - --project=$PROJECT_ID
       - --region=europe-west1
       - --image=europe-west1-docker.pkg.dev/$PROJECT_ID/medsuper/medsuper-migrator:$SHORT_SHA
@@ -51,7 +51,7 @@ steps:
       - run
       - jobs
       - execute
-      - medsuper-migrate
+      - medsuper-db-migrate
       - --project=$PROJECT_ID
       - --region=europe-west1
       - --wait
