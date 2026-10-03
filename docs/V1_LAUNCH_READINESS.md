@@ -11,9 +11,12 @@ Plan: *MedSuper Backend and Flutter Launch-Readiness Master Plan* (started 2026-
 ومنع تكرار طلب الصيدلية، وحدود رفع الملفات، وتبديل جلسات Flutter وحفظ
 رموز الدخول، وتوقيت فرع الموعد واختيار فرع إعادة الجدولة وسجل الطلبات.
 نجح 1194 اختبار وحدة و102 اختبار تكامل و114 اختبار HTTP للخلفية، و629
-اختبار Flutter. تحليل Flutter: صفر أخطاء وصفر تحذيرات، مع 101 ملاحظة
+اختبار Flutter على النسخة السابقة، ثم 659 اختبارًا بعد دمج تحديثات الفريق
+ونشرها إلى مستودع Hosni في 2026-10-04. تحليل النسخة المجمّعة: صفر أخطاء
+وصفر تحذيرات، مع 103 ملاحظات
 معلوماتية؛ أمر التحليل يعيد exit 1 ولا يُعد بوابة نظيفة. نجح بناء Android
-التجريبي على الشجرة الحالية في 2026-10-04؛ النسخة تستخدم بيانات وهمية.
+التجريبي قبل دمج تحديثات الموقع والمحفظة في 2026-10-04؛ النسخة تستخدم
+بيانات وهمية ولا تثبت بناء الشجرة المجمّعة المنشورة.
 الإطلاق ما زال يحتاج اختبارات
 جهاز وخدمات دفع وإشعارات ورفع حقيقية، وتوقيع الإصدارات وتجربة استعادة
 النسخ الاحتياطية. التغطية الأمنية جزئية، والمشروع غير معلن جاهزًا للإنتاج.
@@ -44,10 +47,21 @@ are not the same thing and are not used interchangeably here.
   team commits. Merge `6027e3a` retains staging history and has exactly the
   same tree as that tested fix commit: the 1194 unit, 102 integration and
   114 HTTP tests, build and lint evidence above remain applicable.
-- Flutter fix commit `3715fc7` is being reconciled with the seven main
-  commits, retaining proximity discovery, wallet navigation and the newer
-  session/token protections. Integrated verification is recorded separately
-  below when finished; previous APK evidence applies to the earlier tree.
+- Flutter fix commit `3715fc7` was reconciled with the seven main commits
+  in `83a256d`, retaining proximity discovery, wallet navigation and the newer
+  session/token protections, plus manual-location cleanup on logout. Native
+  Arabic/English permission resources and regenerated tracked files remain.
+  Code generation passed; the integrated suite passed **659/659** tests.
+  Integrated analysis reports **0 errors, 0 warnings, 103 info findings**,
+  exit 1, so the analyzer gate remains open. Logs:
+  `flutter-codegen-branch-sync.log`, `flutter-test-branch-sync.log` and
+  `flutter-analyze-branch-sync.log` in the workspace review directory.
+- Atomic, non-forced publication and independent `git ls-remote` checks
+  confirmed backend main/staging at `ec8e861` and Flutter main/staging at
+  `382fae4`. This follow-up updates only the canonical report; final backend
+  heads after its publication are recorded in the workspace publication log.
+  Flutter's repository retains `docs/BRANCH_PUBLICATION_2026-10-04.md` with
+  the integration evidence. The personal Flutter fork was not pushed.
 - Git publication does not execute the controlled database migration or
   deploy the API/worker. The staging APK workflow produces a debug artifact
   with the configured staging API URL; this is not physical-device or store
