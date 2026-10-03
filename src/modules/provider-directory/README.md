@@ -31,3 +31,13 @@ staff identity phone fields remain restricted to Egyptian mobile numbers.
 Provider self-registration retains its separate phone mapping as described in
 ADR-005 until product confirms whether that field is the doctor's phone or the
 clinic branch's contact number.
+
+2026-10-03 (LR017): `Specialty.code` declares the existing PostgreSQL
+`gen_random_uuid()` default through Prisma `dbgenerated`. The previous Prisma
+`uuid()` declaration generated UUIDv4 values in the client while the deployed
+2026-09-23 migration also installed a database UUIDv4 default, leaving schema
+parity drift. A new forward migration reasserts that existing database default;
+historical migrations, specialty codes, API fields and foreign keys are unchanged.
+The specialty repository still creates with name and optional parent only.
+`specialty-default.integration.spec.ts` checks the actual column default, verifies
+that Prisma omits `code` from the insert, and reads back the generated UUIDv4.

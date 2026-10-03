@@ -25,10 +25,10 @@ import { CreateProviderPrescriptionBatchDto, CreateProviderPrescriptionDto } fro
 import { ApproveProviderPrescriptionDto, ListProviderPrescriptionsQueryDto, RejectProviderPrescriptionDto } from './dto/provider-prescription-decision.dto';
 
 /**
- * File 11 05.7 / File 12 Part 37 — patient upload + detail, pharmacy-staff
- * review queue + review action. Mixed per-method roles (not a class-level
- * `@Roles()`) since PATIENT/PHARMACY_STAFF/ADMIN each get a different subset
- * of routes.
+ * Patient upload/global detail and provider-scoped creation, decisions and
+ * reads. Roles are declared per method. Approved PM-SEC-01 moves pharmacy
+ * staff reads/reviews to authorized branch-order routes in pharmacy-fulfillment;
+ * this controller exposes no global pharmacy review queue or review action.
  */
 @ApiTags('prescriptions')
 @ApiBearerAuth()

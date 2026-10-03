@@ -1,5 +1,7 @@
 # pharmacy-fulfillment
 
+**2026-10-03 — active-order creation is serialized per prescription.** Patient, doctor and authorized assistant submissions acquire the same prescription row lock through the exported prescription application service before checking for an active order. The check covers every existing order whose status is not `REJECTED` or `FULFILLED`, including an older active row behind a newer terminal row. A losing concurrent create returns `409 PHARMACY_ORDER_ALREADY_EXISTS` and creates no order items, broadcasts, audit row or outbox events. Reordering after all previous orders are terminal stays supported. This protection is independent of HTTP idempotency keys and does not change the branch-scoped prescription read/review contract. The PostgreSQL regression suite is `infrastructure/pharmacy-order-creation-concurrency.integration.spec.ts` and requires an explicitly disposable `TEST_DATABASE_URL`.
+
 **MVP** — owns `PharmacyOrder`, `PharmacyOrderBroadcast`, `PharmacyOrderItem`, `Substitution` (see `prisma/schema/pharmacy.prisma`), per File 11 Part 03/14.
 
 **Status:** the staff-driven lifecycle is implemented: order creation and broadcast, branch claim during quoting, a flat price with optional note, direct staff fulfillment, patient status visibility, and terminal receipt/completion. The pharmacy path no longer has a patient approve or payment step. `ACCEPTED` means priced and ready for staff fulfillment; `PAID` remains readable only for legacy rows.

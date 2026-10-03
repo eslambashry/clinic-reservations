@@ -18,6 +18,7 @@ describe('ListAppointmentsUseCase', () => {
         clinic_branch: {
           id: 'branch-1',
           phone: '+20 100 000 0000',
+          iana_timezone: 'Africa/Cairo',
           clinic: { brand_name: 'Nour Clinic' },
           address: { line1: '12 Tahrir St', city: 'Cairo' },
         },
@@ -51,6 +52,8 @@ describe('ListAppointmentsUseCase', () => {
     const result = await useCase.execute({ limit: 20 }, actor);
 
     expect(result.items).toHaveLength(1);
+    expect(result.items[0].ianaTimezone).toBe('Africa/Cairo');
+    expect(result.items[0].startAt.toISOString()).toBe('2026-09-01T09:00:00.000Z');
     expect(result.nextCursor).toBeNull();
   });
 

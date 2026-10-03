@@ -30,6 +30,7 @@ const WITH_SLOT_TIMES = {
         select: {
           id: true,
           phone: true,
+          iana_timezone: true,
           clinic: { select: { brand_name: true } },
           address: { select: { line1: true, city: true } },
         },

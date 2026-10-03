@@ -21,13 +21,11 @@ export interface PrescriptionDetail {
 }
 
 /**
- * File 11 05.7 `GET /v1/prescriptions/{id}` — owning patient, `PHARMACY_STAFF`,
- * or `ADMIN`. File 12 Part 37.4/37.6: no branch-scoping for pharmacy staff
- * yet (Phase 7 dependency), and no mandatory-reason-code Admin-read audit
- * variant exists — both flagged gaps, not silently built. 404 hides
- * existence from anyone not entitled to see this prescription at all
- * (a patient who isn't the owner), same pattern as every other detail
- * endpoint in this codebase.
+ * `GET /v1/prescriptions/{id}` — owning patient or ADMIN only. Approved
+ * PM-SEC-01 restricts pharmacy staff reads/reviews to authorized branch orders
+ * through pharmacy-fulfillment; executeForOrder is that module's internal seam.
+ * File 12 Part 37.6 still flags the missing mandatory-reason-code Admin-read
+ * audit variant. Unauthorized global reads return 404 to hide existence.
  */
 @Injectable()
 export class GetPrescriptionUseCase {

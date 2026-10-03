@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FulfillmentType, PharmacyOrder, PharmacyOrderRejectionReason, PharmacyOrderStatus, Prisma, RoleContextType } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
+import { TERMINAL_PHARMACY_ORDER_STATUSES } from '../domain/pharmacy-order.rules';
 
 export interface NewPharmacyOrder {
   prescriptionId: string;
@@ -67,11 +68,10 @@ export class PharmacyOrderRepository {
     });
   }
 
-  /** Most recent order for this prescription, if any — callers check its status against `isActiveOrderStatus`. */
-  findLatestByPrescriptionId(db: Prisma.TransactionClient, prescriptionId: string): Promise<PharmacyOrder | null> {
+  /** Any active order, including older rows hidden by a newer terminal order. Caller holds the prescription lock. */
+  findActiveByPrescriptionId(db: Prisma.TransactionClient, prescriptionId: string): Promise<PharmacyOrder | null> {
     return db.pharmacyOrder.findFirst({
-      where: { prescription_id: prescriptionId },
-      orderBy: { created_at: 'desc' },
+      where: { prescription_id: prescriptionId, status: { notIn: TERMINAL_PHARMACY_ORDER_STATUSES } },
     });
   }
 

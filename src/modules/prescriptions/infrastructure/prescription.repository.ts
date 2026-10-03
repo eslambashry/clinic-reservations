@@ -59,7 +59,7 @@ export class PrescriptionRepository {
     return db.prescription.findUnique({ where: { id } });
   }
 
-  /** Serialize reviews, including clarification decisions that do not change status/version. */
+  /** Serialize prescription reviews and order creation, including decisions that do not change status/version. */
   async lockForReview(db: Prisma.TransactionClient, id: string): Promise<void> {
     await db.$queryRaw`SELECT id FROM prescriptions WHERE id = ${id}::uuid FOR UPDATE`;
   }

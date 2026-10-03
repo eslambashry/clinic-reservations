@@ -2,10 +2,10 @@ import { FulfillmentType, PharmacyOrderStatus } from '@prisma/client';
 import { BusinessRuleError, ConflictError } from '../../../shared/core/errors/domain-errors';
 
 /** File 11 Part 14: an order is "done" once `REJECTED` or `FULFILLED` — any other status is still active. */
-const TERMINAL_STATUSES: PharmacyOrderStatus[] = ['REJECTED', 'FULFILLED'];
+export const TERMINAL_PHARMACY_ORDER_STATUSES: PharmacyOrderStatus[] = ['REJECTED', 'FULFILLED'];
 
 export function isActiveOrderStatus(status: PharmacyOrderStatus): boolean {
-  return !TERMINAL_STATUSES.includes(status);
+  return !TERMINAL_PHARMACY_ORDER_STATUSES.includes(status);
 }
 
 /** File 12 Part 39: a prescription may only ever have one active `PharmacyOrder` at a time. */

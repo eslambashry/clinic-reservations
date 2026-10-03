@@ -136,12 +136,13 @@ export class CreatePharmacyOrderUseCase {
         }
         handoverClinicBranchId = appointment.clinicBranchId;
       }
-      const latestOrder = await this.pharmacyOrders.findLatestByPrescriptionId(tx, input.prescriptionId);
-      assertNoActiveOrderExists(latestOrder);
-
       const prescription = providerDoctorUserId
         ? await this.getAcceptedPrescription.executeForProvider(tx, input.prescriptionId, patientId, providerDoctorUserId)
         : await this.getAcceptedPrescription.execute(tx, input.prescriptionId, patientId);
+      // The prescription service holds the shared row lock until this transaction commits.
+      // Checking all active rows after authorization also avoids revealing another patient's order.
+      const activeOrder = await this.pharmacyOrders.findActiveByPrescriptionId(tx, input.prescriptionId);
+      assertNoActiveOrderExists(activeOrder);
       assertCanCreatePharmacyOrder(prescription.items, prescription.imageCount);
 
       const order = await this.pharmacyOrders.create(tx, {

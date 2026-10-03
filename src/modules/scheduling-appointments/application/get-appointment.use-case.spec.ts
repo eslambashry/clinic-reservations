@@ -17,6 +17,7 @@ describe('GetAppointmentUseCase', () => {
       clinic_branch: {
         id: 'branch-1',
         phone: '+20 100 000 0000',
+        iana_timezone: 'Africa/Cairo',
         clinic: { brand_name: 'Nour Clinic' },
         address: { line1: '12 Tahrir St', city: 'Cairo' },
       },
@@ -66,6 +67,7 @@ describe('GetAppointmentUseCase', () => {
       clinicAddressLine1: '12 Tahrir St',
       clinicCity: 'Cairo',
       clinicPhone: '+20 100 000 0000',
+      ianaTimezone: 'Africa/Cairo',
       payment: null,
     });
   });

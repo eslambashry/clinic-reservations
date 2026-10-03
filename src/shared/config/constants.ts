@@ -126,6 +126,12 @@ export const MEDIA_CONSTANTS = {
   MAX_DOCUMENT_SIZE_BYTES: 15 * 1024 * 1024,
   PRESCRIPTION_MAX_FILES: 5,
   LAB_RESULT_MAX_FILES: 5,
+  /** Largest upload DTO: provider patientId/documentType/appointmentId/notes. */
+  MULTIPART_MAX_FIELDS: 4,
+  /** Preserve Busboy's existing default per-field value cap. */
+  MULTIPART_MAX_FIELD_SIZE_BYTES: 1024 * 1024,
+  /** Explicitly enables Multer's multipart field-name length backstop. */
+  MULTIPART_MAX_FIELD_NAME_SIZE: 100,
   /** How long a freshly generated signed URL for a private file stays valid (read-time only — never persisted). */
   SIGNED_URL_TTL_SECONDS: 5 * 60,
 } as const;

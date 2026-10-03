@@ -768,6 +768,24 @@ describe('Doctor Dashboard (e2e)', () => {
   });
 
   describe('5. no regression on the existing patient surface', () => {
+    it('returns the actual non-Cairo branch zone on patient list and detail without shifting UTC instants', async () => {
+      const start = new Date('2027-02-06T06:30:00Z');
+      const booked = await bookConfirmedAppointment(affiliationAId, start);
+      await prisma.clinicBranch.update({ where: { id: branchAId }, data: { iana_timezone: 'Asia/Riyadh' } });
+      try {
+        const list = await request(server()).get('/v1/appointments')
+          .query({ from: start.toISOString(), to: new Date(start.getTime() + 60000).toISOString() })
+          .set('Authorization', `Bearer ${patientToken}`).expect(200);
+        expect(list.body.data.items.find((item: { appointmentId: string }) => item.appointmentId === booked.appointmentId))
+          .toMatchObject({ ianaTimezone: 'Asia/Riyadh', startAt: start.toISOString(), clinicBranchId: branchAId });
+        const detail = await request(server()).get(`/v1/appointments/${booked.appointmentId}`)
+          .set('Authorization', `Bearer ${patientToken}`).expect(200);
+        expect(detail.body.data).toMatchObject({ ianaTimezone: 'Asia/Riyadh', startAt: start.toISOString(), clinicBranchId: branchAId });
+      } finally {
+        await prisma.clinicBranch.update({ where: { id: branchAId }, data: { iana_timezone: 'Africa/Cairo' } });
+      }
+    });
+
     it('still scopes GET /v1/appointments to the calling patient and rejects a DOCTOR token', async () => {
       const asPatient = await request(server()).get('/v1/appointments').set('Authorization', `Bearer ${patientToken}`).expect(200);
       expect(asPatient.body.success).toBe(true);

@@ -24,6 +24,8 @@ export interface AppointmentSummary {
   clinicAddressLine1: string;
   clinicCity: string;
   clinicPhone: string;
+  /** Branch zone for display; startAt/endAt remain UTC instants. */
+  ianaTimezone: string;
   /** What the patient owes/already paid for this appointment. `null` only when the appointment has no payment intent on record. */
   payment: DoctorAppointmentPayment | null;
 }
@@ -51,6 +53,7 @@ export function toAppointmentSummary(appointment: AppointmentWithSlotTimes): App
     clinicAddressLine1: affiliation.clinic_branch.address.line1,
     clinicCity: affiliation.clinic_branch.address.city,
     clinicPhone: affiliation.clinic_branch.phone,
+    ianaTimezone: affiliation.clinic_branch.iana_timezone,
     payment: toAppointmentPayment(appointment),
   };
 }
