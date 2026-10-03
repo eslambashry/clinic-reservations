@@ -10,6 +10,7 @@ import { CreateHoldUseCase } from '../application/create-hold.use-case';
 import { GetAppointmentUseCase } from '../application/get-appointment.use-case';
 import { ListAppointmentsUseCase } from '../application/list-appointments.use-case';
 import { RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
+import { UpdateAppointmentVisitStatusUseCase } from '../application/update-appointment-visit-status.use-case';
 import { ResolveAppointmentPaymentAmountUseCase } from '../application/resolve-appointment-payment-amount.use-case';
 import { ResolveAppointmentScopeUseCase } from '../application/resolve-appointment-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
@@ -56,6 +57,7 @@ describe('Appointment booking loop (integration)', () => {
   let rescheduleAppointment: RescheduleAppointmentUseCase;
   let listAppointments: ListAppointmentsUseCase;
   let getAppointment: GetAppointmentUseCase;
+  let updateVisitStatus: UpdateAppointmentVisitStatusUseCase;
 
   const suffix = randomUUID().slice(0, 8);
   // `specialties.code` is a UUID; the suffix above still names the other fixtures.
@@ -106,6 +108,7 @@ describe('Appointment booking loop (integration)', () => {
         RescheduleAppointmentUseCase,
         ListAppointmentsUseCase,
         GetAppointmentUseCase,
+        UpdateAppointmentVisitStatusUseCase,
       ],
     }).compile();
     await moduleRef.init();
@@ -116,6 +119,7 @@ describe('Appointment booking loop (integration)', () => {
     rescheduleAppointment = moduleRef.get(RescheduleAppointmentUseCase);
     listAppointments = moduleRef.get(ListAppointmentsUseCase);
     getAppointment = moduleRef.get(GetAppointmentUseCase);
+    updateVisitStatus = moduleRef.get(UpdateAppointmentVisitStatusUseCase);
 
     await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص اختبار' } });
 
@@ -181,6 +185,11 @@ describe('Appointment booking loop (integration)', () => {
     await moduleRef.close();
   }, 20000);
 
+  // Booking-loop slots sit a year ahead of the run date so the patient
+  // start-time cutoff (PM-APPT-01) never ages these fixtures out.
+  const nextYear = new Date().getUTCFullYear() + 1;
+  const ahead = (month: number, day: number, hour: number) => new Date(Date.UTC(nextYear, month - 1, day, hour));
+
   async function freshOpenSlot(startAt: Date) {
     return prisma.appointmentSlot.create({
       data: { doctor_clinic_affiliation_id: affiliationId, start_at: startAt, end_at: new Date(startAt.getTime() + 20 * 60 * 1000), status: 'OPEN' },
@@ -188,7 +197,7 @@ describe('Appointment booking loop (integration)', () => {
   }
 
   it('lets exactly one of N simultaneous holds on the same slot succeed', async () => {
-    const slot = await freshOpenSlot(new Date('2026-09-01T09:00:00Z'));
+    const slot = await freshOpenSlot(ahead(9, 1, 9));
     const patients = patientUserIds.slice(1); // exclude the doctor's own user row
 
     const outcomes = await Promise.allSettled(
@@ -217,7 +226,7 @@ describe('Appointment booking loop (integration)', () => {
   });
 
   it('lets exactly one of N simultaneous confirms on the same hold succeed', async () => {
-    const slot = await freshOpenSlot(new Date('2026-09-01T10:00:00Z'));
+    const slot = await freshOpenSlot(ahead(9, 1, 10));
     const patientId = patientUserIds[1];
     const actor = { sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
 
@@ -236,7 +245,7 @@ describe('Appointment booking loop (integration)', () => {
   }, 20000);
 
   it('cancels a confirmed appointment and releases its slot back to OPEN', async () => {
-    const slot = await freshOpenSlot(new Date('2026-09-01T11:00:00Z'));
+    const slot = await freshOpenSlot(ahead(9, 1, 11));
     const patientId = patientUserIds[1];
     const actor = { sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
 
@@ -259,8 +268,8 @@ describe('Appointment booking loop (integration)', () => {
   }, 20000);
 
   it('reschedules a confirmed appointment in one step: new CONFIRMED appointment links back and keeps the same payment intent', async () => {
-    const oldSlot = await freshOpenSlot(new Date('2026-09-01T12:00:00Z'));
-    const newSlot = await freshOpenSlot(new Date('2026-09-01T13:00:00Z'));
+    const oldSlot = await freshOpenSlot(ahead(9, 1, 12));
+    const newSlot = await freshOpenSlot(ahead(9, 1, 13));
     const patientId = patientUserIds[1];
     const actor = { sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
 
@@ -290,8 +299,8 @@ describe('Appointment booking loop (integration)', () => {
     const patientId = patientUserIds[2];
     const actor = { sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
 
-    const slotA = await freshOpenSlot(new Date('2026-09-02T09:00:00Z'));
-    const slotB = await freshOpenSlot(new Date('2026-09-02T10:00:00Z'));
+    const slotA = await freshOpenSlot(ahead(9, 2, 9));
+    const slotB = await freshOpenSlot(ahead(9, 2, 10));
     const holdA = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slotA.id, patientId }, actor);
     const confirmedA = await confirmAppointment.execute(holdA.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
     const holdB = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slotB.id, patientId }, actor);
@@ -314,4 +323,132 @@ describe('Appointment booking loop (integration)', () => {
     const detail = await getAppointment.execute(confirmedA.appointmentId, actor);
     expect(detail).toMatchObject({ appointmentId: confirmedA.appointmentId, status: 'CONFIRMED', slotId: slotA.id });
   }, 20000);
+
+  /**
+   * Approved V1 lifecycle rules (PM-APPT-01..05) against real Postgres. The
+   * first two cases are the exact holes reproduced on 2026-10-03 (an
+   * attended or past appointment cancelled for a refund, or rescheduled into
+   * a free new visit); they must now be rejected with nothing written.
+   */
+  describe('approved V1 lifecycle rules', () => {
+    const patientActor = (patientId: string) =>
+      ({ sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] }) as any;
+    const doctorActor = () =>
+      ({ sub: patientUserIds[0], roleMembershipId: randomUUID(), roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] }) as any;
+
+    /** Books through the real use-cases on a future slot, then moves the slot to `startAt`. */
+    async function bookedAt(patientId: string, startAt: Date, hourOffset: number) {
+      const slot = await freshOpenSlot(ahead(10, 1, hourOffset));
+      const actor = patientActor(patientId);
+      const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slot.id, patientId }, actor);
+      const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+      await prisma.appointmentSlot.update({
+        where: { id: slot.id },
+        data: { start_at: startAt, end_at: new Date(startAt.getTime() + 20 * 60 * 1000) },
+      });
+      return { appointmentId: confirmed.appointmentId, slotId: slot.id, actor };
+    }
+
+    async function snapshot(appointmentId: string) {
+      const appointment = await prisma.appointment.findUniqueOrThrow({ where: { id: appointmentId } });
+      const refunds = await prisma.refund.count({ where: { payment_intent_id: appointment.payment_intent_id ?? '' } });
+      return { appointment, refunds };
+    }
+
+    it('rejects a patient cancelling last month\'s attended (LEFT) appointment — no refund, nothing written', async () => {
+      const booked = await bookedAt(patientUserIds[4], new Date(Date.now() - 30 * 24 * 3600_000), 8);
+      await prisma.appointment.update({ where: { id: booked.appointmentId }, data: { visit_status: 'LEFT' } });
+      const before = await snapshot(booked.appointmentId);
+
+      await expect(cancelAppointment.execute(booked.appointmentId, { reason: 'PATIENT_REQUEST' }, booked.actor)).rejects.toMatchObject({
+        code: 'APPOINTMENT_VISIT_IN_PROGRESS',
+      });
+      expect(await snapshot(booked.appointmentId)).toEqual(before);
+    }, 20000);
+
+    it('rejects a patient rescheduling an attended past appointment into a free new visit', async () => {
+      const booked = await bookedAt(patientUserIds[4], new Date(Date.now() - 30 * 24 * 3600_000), 9);
+      await prisma.appointment.update({ where: { id: booked.appointmentId }, data: { visit_status: 'LEFT' } });
+      const target = await freshOpenSlot(ahead(11, 1, 9));
+
+      await expect(rescheduleAppointment.execute(booked.appointmentId, { newSlotId: target.id }, booked.actor)).rejects.toMatchObject({
+        code: 'APPOINTMENT_VISIT_IN_PROGRESS',
+      });
+      expect((await prisma.appointmentSlot.findUniqueOrThrow({ where: { id: target.id } })).status).toBe('OPEN');
+      expect(await prisma.appointment.count({ where: { rescheduled_from_appointment_id: booked.appointmentId } })).toBe(0);
+    }, 20000);
+
+    it('rejects a patient cancel or reschedule once start_at has passed, even if the patient never arrived', async () => {
+      const booked = await bookedAt(patientUserIds[4], new Date(Date.now() - 60_000), 10);
+      const before = await snapshot(booked.appointmentId);
+      const target = await freshOpenSlot(ahead(11, 1, 10));
+
+      await expect(cancelAppointment.execute(booked.appointmentId, { reason: 'PATIENT_REQUEST' }, booked.actor)).rejects.toMatchObject({
+        code: 'APPOINTMENT_CHANGE_WINDOW_CLOSED',
+      });
+      await expect(rescheduleAppointment.execute(booked.appointmentId, { newSlotId: target.id }, booked.actor)).rejects.toMatchObject({
+        code: 'APPOINTMENT_CHANGE_WINDOW_CLOSED',
+      });
+      expect(await snapshot(booked.appointmentId)).toEqual(before);
+    }, 20000);
+
+    it('the repository WHERE alone refuses a cancel once the visit has started (race between check and write)', async () => {
+      const booked = await bookedAt(patientUserIds[4], ahead(10, 2, 9), 11);
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } });
+      // Simulates a visit start that landed after the use-case's read but
+      // before its write: same version, but the patient is now in the room.
+      await prisma.$executeRaw`UPDATE appointments SET visit_status = 'IN_DOCTOR_ROOM' WHERE id = ${row.id}::uuid`;
+
+      const repo = new AppointmentRepository();
+      await expect(repo.cancel(prisma, row.id, row.version, booked.actor.sub, 'PATIENT_REQUEST', new Date())).resolves.toBe(false);
+      expect((await prisma.appointment.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('CONFIRMED');
+    }, 20000);
+
+    it('completes the appointment atomically when the doctor records LEFT on the appointment day', async () => {
+      const booked = await bookedAt(patientUserIds[5], new Date(), 12);
+      const first = await prisma.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } });
+
+      const inRoom = await updateVisitStatus.execute(booked.appointmentId, { status: 'IN_DOCTOR_ROOM', version: first.version }, doctorActor());
+      expect(inRoom).toMatchObject({ status: 'CONFIRMED', visitStatus: 'IN_DOCTOR_ROOM' });
+      const left = await updateVisitStatus.execute(booked.appointmentId, { status: 'LEFT', version: inRoom.version }, doctorActor());
+      expect(left).toMatchObject({ status: 'COMPLETED', visitStatus: 'LEFT' });
+
+      // A completed appointment is no longer cancellable by anyone.
+      await expect(cancelAppointment.execute(booked.appointmentId, { reason: 'PROVIDER_REQUEST' }, doctorActor())).rejects.toMatchObject({
+        code: 'APPOINTMENT_NOT_CANCELLABLE',
+      });
+    }, 20000);
+
+    it('refuses to start a visit for an appointment on another local day', async () => {
+      const booked = await bookedAt(patientUserIds[5], new Date(Date.now() + 3 * 24 * 3600_000), 13);
+      const row = await prisma.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } });
+
+      await expect(
+        updateVisitStatus.execute(booked.appointmentId, { status: 'IN_DOCTOR_ROOM', version: row.version }, doctorActor()),
+      ).rejects.toMatchObject({ code: 'VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY' });
+      expect((await prisma.appointment.findUniqueOrThrow({ where: { id: row.id } })).visit_status).toBe('WAITING');
+    }, 20000);
+
+    it('turns an unattended expired CONFIRMED visit into NO_SHOW without moving any money', async () => {
+      const booked = await bookedAt(patientUserIds[5], new Date(Date.now() - 3 * 3600_000), 14);
+      const rescheduledAway = await bookedAt(patientUserIds[5], new Date(Date.now() - 3 * 3600_000 + 30 * 60_000), 15);
+      await prisma.appointment.update({ where: { id: rescheduledAway.appointmentId }, data: { status: 'RESCHEDULED' } });
+      const before = await snapshot(booked.appointmentId);
+      const intentBefore = await prisma.paymentIntent.findUniqueOrThrow({ where: { id: before.appointment.payment_intent_id! } });
+      const walletTxBefore = await prisma.walletTransaction.count();
+
+      await prisma.$transaction((tx) => new AppointmentRepository().expireWaitingVisits(tx, 30));
+
+      const after = await snapshot(booked.appointmentId);
+      expect(after.appointment).toMatchObject({ status: 'NO_SHOW', visit_status: 'TIME_EXPIRED', payment_intent_id: before.appointment.payment_intent_id });
+      expect(after.refunds).toBe(before.refunds);
+      expect(await prisma.paymentIntent.findUniqueOrThrow({ where: { id: intentBefore.id } })).toEqual(intentBefore);
+      expect(await prisma.walletTransaction.count()).toBe(walletTxBefore);
+      // TIME_EXPIRED on an already-finished row is reconciliation, not a no-show.
+      expect(await prisma.appointment.findUniqueOrThrow({ where: { id: rescheduledAway.appointmentId } })).toMatchObject({
+        status: 'RESCHEDULED',
+        visit_status: 'TIME_EXPIRED',
+      });
+    }, 20000);
+  });
 });

@@ -172,28 +172,56 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
     expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
   });
 
-  it('allows a transition independently of the current slot after reschedule', async () => {
-    const rescheduled = {
-      ...appointment,
-      slot: {
-        start_at: new Date('2026-09-22T15:00:00.000Z'),
-        end_at: new Date('2026-09-22T15:30:00.000Z'),
-      },
-    };
-    const { appointments, useCase } = setup(rescheduled);
+  describe('day window in the branch zone (PM-APPT-03)', () => {
+    it('422s (VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY) when starting a visit whose slot is on a future local day', async () => {
+      const future = { ...appointment, slot: { start_at: new Date('2026-09-22T15:00:00.000Z'), end_at: new Date('2026-09-22T15:30:00.000Z') } };
+      const { appointments, audit, useCase } = setup(future);
 
-    const result = await useCase.execute(
-      'appointment-1',
-      { status: 'IN_DOCTOR_ROOM', version: 3 },
-      actor,
-    );
+      await expect(useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor)).rejects.toMatchObject({
+        code: 'VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY',
+        httpStatus: 422,
+      });
+      expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
 
-    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
-      expect.anything(),
-      'appointment-1',
-      3,
-      'IN_DOCTOR_ROOM',
-    );
-    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
+    it('422s when starting a visit for an old past-day appointment', async () => {
+      const past = { ...appointment, slot: { start_at: new Date('2026-09-14T09:00:00.000Z'), end_at: new Date('2026-09-14T09:30:00.000Z') } };
+      const { appointments, useCase } = setup(past);
+
+      await expect(useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor)).rejects.toMatchObject({
+        code: 'VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY',
+      });
+      expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+    });
+
+    it('lets a visit started at 23:30 local reach LEFT at 00:15 the next local day, completing the appointment', async () => {
+      // 16 Sep 2026 23:30 Cairo (UTC+3) = 20:30Z; "now" 00:15 on 17 Sep local = 21:15Z.
+      const inRoom = {
+        ...appointment,
+        visit_status: 'IN_DOCTOR_ROOM',
+        slot: { start_at: new Date('2026-09-16T20:30:00.000Z'), end_at: new Date('2026-09-16T21:00:00.000Z') },
+      };
+      const { tx, appointments, audit, useCase } = setup(inRoom);
+
+      await useCase.execute('appointment-1', { status: 'LEFT', version: 3 }, actor, new Date('2026-09-16T21:15:00.000Z'));
+
+      expect(appointments.updateVisitStatus).toHaveBeenCalledWith(tx, 'appointment-1', 3, 'LEFT');
+      expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ reasonCode: 'IN_DOCTOR_ROOM_TO_LEFT_COMPLETED' }));
+    });
+
+    it('reads the day from the branch zone it is configured with', async () => {
+      // 21:00Z is 00:00 on 18 Sep in Riyadh, the day after the 17 Sep "now" (09:15Z = 12:15 Riyadh).
+      const riyadh = {
+        ...appointment,
+        slot: { start_at: new Date('2026-09-17T21:00:00.000Z'), end_at: new Date('2026-09-17T21:30:00.000Z') },
+        affiliation: { clinic_branch: { ...appointment.affiliation.clinic_branch, iana_timezone: 'Asia/Riyadh' } },
+      };
+      const { useCase } = setup(riyadh);
+
+      await expect(useCase.execute('appointment-1', { status: 'IN_DOCTOR_ROOM', version: 3 }, actor)).rejects.toMatchObject({
+        code: 'VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY',
+      });
+    });
   });
 });

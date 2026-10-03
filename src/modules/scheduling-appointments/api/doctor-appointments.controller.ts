@@ -103,6 +103,9 @@ export class DoctorAppointmentsController {
   }
 
   @Post(':appointmentId/cancel')
+  // PM-APPT-05: provider-side cancellation (full refund) is doctor-only in V1;
+  // CancelAppointmentUseCase enforces the same rule independently.
+  @Roles(RoleContextType.DOCTOR)
   @UseInterceptors(IdempotencyInterceptor)
   @ApiOperation({ summary: 'Provider-initiated cancellation — releases the slot, refunds in full (no fee), audits and emits AppointmentCancelled' })
   cancel(
