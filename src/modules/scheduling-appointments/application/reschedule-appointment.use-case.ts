@@ -6,6 +6,7 @@ import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { holdExpiresAt } from '../domain/appointment-lifecycle.rules';
+import { isBeforeAppointmentStart } from '../domain/visit-status.rules';
 import { slotAlreadyStarted, translateCreateHoldError } from './create-hold.use-case';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
