@@ -63,6 +63,21 @@ the old fixed-offset code.
 Mutation check: removing `visit_status: 'WAITING'` from the repository's
 booking-change `WHERE` fails the race test on real Postgres.
 
+### Phase 3 security review (targeted, 2026-10-03)
+
+| Area | Finding | Evidence |
+|---|---|---|
+| Medical files | Every PHI upload (patient/provider prescriptions, lab results, verification documents) is stored `isPrivate: true`; every PHI read re-signs with a 5-minute TTL; only doctor profile photos are public by design | source review of all `upload`/`getSignedUrl` call sites |
+| Lab order reads | Owner, LAB_STAFF of that exact branch, or the originating doctor (assistant: own requests only); others 404 | source review; e2e provider clinical requests |
+| Prescription reads | Open to all pharmacy staff — LR-024 / PM-SEC-01 | source + File 12 Part 37.4 |
+| Payment webhook | HMAC-SHA512, `timingSafeEqual`, verified before anything is recorded; deduplicated by gateway transaction ID in the side-effect transaction; late/duplicate paths explicit | source review + existing unit tests; live Paymob field order is an external gate (§5) |
+| Appointment authz | assistant cancel 403, out-of-branch 404, patient cutoffs | e2e + integration (this batch) |
+| Auth / sessions | refresh rotation + theft revocation race covered by `device-session-race` integration; client single-flight refresh (LR-010) | integration + Flutter tests |
+
+Not yet reviewed in depth: notification recipient privacy beyond the
+template recipient fields, upload MIME/size limits under real multipart load,
+and clinical-request cross-patient negatives beyond the existing e2e suite.
+
 ### 1.1 E2E
 
 `npm run test:e2e` on the same disposable stack: 5 suites / 110 tests pass
@@ -102,7 +117,7 @@ stale expectations against deliberate rule changes (LR-022).
 | LR-012 | appointments | product decision | P1 | Fixed (PM-APPT-04); historical rows need the reviewed script, not yet run anywhere shared |
 | LR-013 | appointments / assistants | product decision / authz | P1 | Fixed (PM-APPT-05); original finding partly wrong, see below |
 | LR-014 | appointments visit status | product decision | P2 | Fixed (PM-APPT-03) |
-| LR-015 | appointments booking | defect candidate | P2 | Open, reproduction pending |
+| LR-015 | appointments booking | defect | P2 | Fixed (`11cf872`) |
 | LR-016 | notifications safety-critical | release gate / product | P1 | Open |
 | LR-017 | Prisma schema | contract drift | P3 | Open |
 | LR-018 | Flutter dates | hardening | P2 | Open |
@@ -110,6 +125,9 @@ stale expectations against deliberate rule changes (LR-022).
 | LR-020 | release | external gates | P1 | Open, see §5 |
 | LR-021 | Flutter ↔ backend reschedule | contract mismatch | P1 | Fixed |
 | LR-022 | backend e2e | stale test | P2 | Fixed |
+| LR-023 | patient lab order (staging 400) | defect / data | P1 | Root cause found; code fix already on `staging`; **staging deploy + migration UNVERIFIED** |
+| LR-024 | prescriptions (pharmacy staff reads) | security / privacy decision | P1 | **PM DECISION REQUIRED** (PM-SEC-01) |
+| LR-025 | admin PHI reads | security hardening | P2 | Open (no mandatory reason-code audit, File 12 Part 37.6) |
 
 ### LR-001 — `npm test` wrote to whatever database `.env` named
 
@@ -285,12 +303,20 @@ in-branch reschedule 200.
 Either side could mark a next-month appointment `WAITING → IN_DOCTOR_ROOM`
 today. → Resolved by PM-APPT-03 (see §3).
 
-### LR-015 — Holds on slots whose start time has passed (candidate)
+### LR-015 — Patient bookings on a slot that has already started
 
-`CreateHoldUseCase` checks that the slot is `OPEN`, not that it is in the
-future. Not reproduced yet; checking whether past slots stay `OPEN` and are
-reachable is the next step. Overlaps with PM-APPT-01 (minimum booking
-lead time).
+- **Reproduced** (disposable DB): a patient held and confirmed a slot that
+  started an hour earlier → `CONFIRMED`. Reachable from a slot list loaded
+  just before the start time, or directly through the API. Such a booking
+  could not then be cancelled by the patient (PM-APPT-01) and would be swept
+  to `NO_SHOW`.
+- **Repair** (`11cf872`): patient hold creation and the patient's reschedule
+  target require `now < start_at` (`422 SLOT_ALREADY_STARTED`). This is the
+  PM-APPT-01 boundary with **no lead time added**. Any minimum lead time
+  above zero would be a new PM decision. Staff walk-ins and provider
+  reschedules are unchanged.
+- **Verification**: unit (at start, after start, patient reschedule target);
+  full unit/integration/e2e green.
 
 ### LR-016 — SAFETY_CRITICAL lab result is push-only
 
@@ -328,6 +354,46 @@ should follow with `ianaLocation`.
 ### LR-020 — External release gates
 
 See §5.
+
+### LR-023 — Patient lab order `400 VALIDATION_ERROR` on staging
+
+- **Root cause**: early demo seed rows used UUID-shaped IDs without
+  version/variant bits (e.g. lab branch `00000000-0000-0000-0000-000000000211`).
+  Postgres stores them, branch search returns them, and the app sends them
+  back, but `@IsUUID()` (validator 13.15.35) rejects them, so `POST
+  /v1/lab-orders` returns `400 VALIDATION_ERROR` "فرع المعمل غير صالح." This
+  matches the 2026-09-30 staging logs (body not logged).
+- **Reproduced** through the real API on the disposable DB: the legacy-shaped
+  branch ID → 400 with that field message; the same request with the
+  re-keyed ID → `REQUESTED`.
+- **Fix already on `staging`** (2026-10-01): `fe4a7c9` (valid UUIDv4 seed IDs),
+  `72ef6d4` (migration `20261001090000_rekey_legacy_demo_uuids`), `ba73af8`
+  (seed refuses databases that still hold legacy IDs). Verified here on a
+  database built from the migrations *before* the re-key, with legacy rows:
+  branch, laboratory, address, LAB_STAFF `role_memberships.context_id`
+  (no FK), staff assignment and a lab order were all re-keyed, with no
+  orphans; a second run is a no-op. The same class of bug affected the other
+  legacy demo IDs (pharmacy branches, doctors, patients), which the same
+  migration covers.
+- **Not verified**: that the staging environment has deployed `staging` and
+  applied the migration, and a real device order after that. Needs staging
+  access → release gate.
+
+### LR-024 — Any pharmacy staff can read any patient's prescription (PM-SEC-01)
+
+`GET /v1/prescriptions` (review queue) and `GET /v1/prescriptions/:id` let
+every `PHARMACY_STAFF` user see every patient's quality-checked prescription,
+with freshly signed image URLs; `:id` is not even limited to the queue's
+status. File 12 Part 37.4 chose this open queue on purpose for Phase 6 and
+said to "tighten once Phase 7 introduces real routing". Phase 7 shipped
+and the tightening never happened. Changing it decides who may see patient
+prescriptions, so it is a product/privacy decision; see §3.
+
+### LR-025 — Admin PHI reads are not reason-coded
+
+File 11 07.2 / File 12 Part 37.6: admin PHI reads must be audit-logged with
+a mandatory reason code. No such audit variant exists; `ADMIN` can read a
+prescription with no audit row at all. Hardening, after PM-SEC-01.
 
 ### LR-021 — Patient reschedule broke against backend `staging`
 
@@ -380,6 +446,38 @@ Open follow-ups, not new decisions: a future no-show fee/refund policy
 (explicitly deferred by PM); and how operations closes a visit left
 `IN_DOCTOR_ROOM` for days (the script only reports these).
 
+### PM-SEC-01 — Pharmacy access to patient prescriptions (decision requested)
+
+**Current behavior**: an open, platform-wide pharmacist review queue. Any
+active `PHARMACY_STAFF` account at any pharmacy can list and open every
+patient's prescriptions (Part 37.4, deferred "until Phase 7").
+
+**Problem**: PHI exposure far wider than any single order needs. Patients
+upload a prescription to get it filled, not to have every pharmacy on the
+platform see it.
+
+**Options**
+- **A: branch-scoped.** Pharmacy staff can read a prescription only when it
+  is attached to a pharmacy order broadcast to, or claimed by, their branch.
+  The global review queue is removed or emptied for pharmacies. Smallest
+  exposure. Prescription review then happens inside the order flow, which
+  the dashboard already uses (orders embed the prescription summary).
+  Impact: the check must live in `pharmacy-fulfillment`, which already
+  depends on `prescriptions`, so `GET /v1/prescriptions[/:id]` for
+  `PHARMACY_STAFF` either moves behind an order route or is removed. The
+  external `medsuper-pharmacy-dashboard` must be checked for calls to these
+  routes (outside this repo).
+- **B: central MedSuper pharmacist pool.** Keep a global queue, but only for a
+  dedicated platform-pharmacist role, not every pharmacy's staff. Needs a
+  new role → new permissions.
+- **C: keep as is** for V1, with audit logging of every staff read. Weakest
+  privacy position.
+
+**Recommended**: A. It matches how orders are already scoped and needs no
+new role.
+
+**Decision requested**: A, B or C. Until decided, this stays open as LR-024 (P1).
+
 ### Current lifecycle
 
 ```
@@ -411,10 +509,10 @@ been reviewed in this plan yet; they are not implied green.
 | Wallet balance / history | patient | implemented | wired | patient | wallet concurrency integration green | UNVERIFIED | NEEDS HARDENING | contract parity |
 | Wallet top-up (Paymob) | patient | implemented | wired, external checkout | patient | unit | no live gateway | **BLOCKED** | Paymob production credentials + live webhook (DEC-001) |
 | Wallet transfer / refund request / linked cards / pay bills | patient | none | UI behind `isMock`, `Navigator`-only, release builds refuse the mock URL | — | — | — | **FUTURE** (FEATURE FLAGGED in UI) | backend contract when scheduled; keep UI, no production calls |
-| Prescriptions (patient upload) | patient | implemented | wired | patient | drug-code trigger integration green | UNVERIFIED | NEEDS HARDENING | upload/media review (Phase 3) |
+| Prescriptions (patient upload) | patient / pharmacy staff | implemented; private storage, signed reads | wired | patient own; **pharmacy staff unscoped** | drug-code trigger integration | needs ImageKit | PM DECISION REQUIRED | PM-SEC-01 (LR-024) |
 | Provider clinical requests | doctor / assistant | implemented | wired | scoped | unit + e2e spec (§1.1) | UNVERIFIED | NEEDS HARDENING | Part 51.10 gates |
 | Pharmacy fulfilment | pharmacy staff (dashboard) | implemented | order creation only | branch-scoped | workflow + broadcast integration green | dashboard UNVERIFIED | NEEDS HARDENING | dashboard verification |
-| Laboratory (referral orders) | patient / lab staff | implemented | partial | — | UNVERIFIED | patient lab-order 400 reported, not reproduced | UNVERIFIED | reproduce the 400 (Phase 4) |
+| Laboratory (referral orders) | patient / lab staff | implemented | partial | scoped reads (owner / branch staff / originating provider) | unit + e2e (provider) | 400 root-caused (LR-023); code fix on `staging` | BLOCKED | confirm staging migration + device order |
 | Notifications | all | implemented, PUSH only | wired | recipient-scoped | dispatch unit + reliability integration green | FCM not verified | **BLOCKED** | FCM credentials; LR-016 |
 | Outbox / worker | system | implemented | — | — | unit + integration green | not deployed here | NEEDS HARDENING | Phase 7 ops (restart, health) |
 | Audit | system | implemented | — | — | via use-case tests | — | UNVERIFIED | — |
@@ -442,9 +540,9 @@ None of these can be closed from mocks.
 
 1. ~~PM-APPT-01…05~~ approved and implemented (§3). Remaining: authorize
    the reconciliation script per environment.
-2. Phase 3 security review: upload/media, clinical-request cross-patient and
-   cross-provider negatives, payments webhook replay/late webhook on the
-   disposable stack. Reproduce LR-015.
-3. Phase 4 contract parity, starting with the patient lab-order 400.
+2. **PM**: decide PM-SEC-01. Phase 3 remainder: notification privacy,
+   upload limits under multipart load, clinical-request negatives.
+3. Phase 4 contract parity beyond the fixed reschedule contract; confirm
+   LR-023 on staging.
 4. Phase 5 documentation reset (LR-019) once the decisions above land.
 5. Phases 6–7: rendered UI on a device/emulator, ops rehearsal (§5).
