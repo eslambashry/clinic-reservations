@@ -30,7 +30,7 @@ All runs were in a cloud container, Node 22.22, Flutter 3.47.4, Dio 5.11.0.
 | Backend `npm test` | 12 suites failed / 157 passed; 57 tests failed / 931 passed. 9 of the failing suites were `*.integration.spec.ts` that tried to reach the `.env` database (placeholder host, unreachable) |
 | Backend `npm run lint` | 0 errors, 1 warning (`update-user-profile.use-case.ts:37` unused `_dropped`) |
 | Backend `npm run build` | pass |
-| Flutter `flutter analyze` | 0 errors, 0 warnings, 104 info |
+| Flutter `flutter analyze` | 0 errors, 6 warnings (`unused_result` on `ref.refresh` in orders/lab/pharmacy screens), 98 info = 104. *Corrected 2026-10-03: the first recording said "0 warnings" because of a grep pattern error; re-run on `staging` confirms 6.* |
 | Flutter `flutter test` | 486 passed, 1 failed (`detail_screens_test.dart`: "a future appointment explains that visit controls are not ready") |
 
 ### After this batch
@@ -41,13 +41,27 @@ All runs were in a cloud container, Node 22.22, Flutter 3.47.4, Dio 5.11.0.
 | Backend `npm run test:integration` | disposable local Postgres 16 + PostGIS 3.4 (port 55432) and Redis (port 56379), `prisma migrate deploy` (48 migrations) + `npm run db:seed` | 9 suites / 47 tests pass, three consecutive runs, each with 30 forced handler-less PENDING outbox events |
 | Backend `npm run lint` / `build` | — | unchanged: 1 warning / pass |
 | Flutter `flutter test` | — | all pass (adds 9 timezone, 11 transport and 2 reschedule-contract tests) |
-| Flutter `flutter analyze` | — | 104 info, no new findings |
+| Flutter `flutter analyze` | — | unchanged from baseline: 0 errors, 6 warnings, 98 info |
 | Backend `npm run test:e2e` | same disposable DB | 5 suites / 110 tests pass (§1.1) |
 
 Mutation checks: reverting the outbox SKIPPED/fencing behavior fails 3 and 2
 outbox tests respectively; restoring the old Flutter `AuthInterceptor` fails
 the concurrent-401 and replay-5xx tests; the timezone tests fail 5/9 against
 the old fixed-offset code.
+
+### Appointment-rules batch (PM-APPT-01..05, 2026-10-03)
+
+| Check | Environment | Result |
+|---|---|---|
+| Backend `npm test` | no database | 990 tests pass |
+| Backend `npm run test:integration` | disposable stack (re-started after a session restart; same migrated + seeded cluster) | 54 tests pass, incl. 7 new lifecycle cases on real Postgres |
+| Backend `npm run test:e2e` | same | 111 tests pass |
+| Backend lint / build | — | 1 pre-existing warning / pass |
+| Reconciliation script dry run, apply, re-run | disposable DB with seeded historical rows | dry run reports + rolls back; apply changes 2 + 2 rows; re-run 0; open visit and waiting row untouched |
+| Flutter `flutter test` / `analyze` | — | all pass / unchanged (0 errors, 6 warnings, 98 info) |
+
+Mutation check: removing `visit_status: 'WAITING'` from the repository's
+booking-change `WHERE` fails the race test on real Postgres.
 
 ### 1.1 E2E
 
@@ -80,14 +94,14 @@ stale expectations against deliberate rule changes (LR-022).
 | LR-004 | backend errors | stale test | P3 | Fixed |
 | LR-005 | backend notifications | stale test (order-dependent) | P2 | Fixed |
 | LR-006 | backend pharmacy | stale test (timing-dependent) | P2 | Fixed |
-| LR-007 | Flutter provider dashboard | stale test | P2 | Fixed (policy open, PM-APPT-03) |
+| LR-007 | Flutter provider dashboard | stale test | P2 | Fixed; test now pins the approved PM-APPT-03 rule |
 | LR-008 | Flutter booking | defect (timezone) | P1 | Fixed |
 | LR-009 | Flutter transport | defect (retry) | P2 | Fixed |
 | LR-010 | Flutter transport | defect (auth/session) | P1 | Fixed |
-| LR-011 | appointments | product decision / financial | **P0** | **PM DECISION REQUIRED** (PM-APPT-01, -02) |
-| LR-012 | appointments | product decision | P1 | **PM DECISION REQUIRED** (PM-APPT-04) |
-| LR-013 | appointments / assistants | product decision / authz | P1 | **PM DECISION REQUIRED** (PM-APPT-05) |
-| LR-014 | appointments visit status | product decision | P2 | **PM DECISION REQUIRED** (PM-APPT-03) |
+| LR-011 | appointments | product decision / financial | P0 | Fixed (PM-APPT-01/02 approved and implemented) |
+| LR-012 | appointments | product decision | P1 | Fixed (PM-APPT-04); historical rows need the reviewed script, not yet run anywhere shared |
+| LR-013 | appointments / assistants | product decision / authz | P1 | Fixed (PM-APPT-05); original finding partly wrong, see below |
+| LR-014 | appointments visit status | product decision | P2 | Fixed (PM-APPT-03) |
 | LR-015 | appointments booking | defect candidate | P2 | Open, reproduction pending |
 | LR-016 | notifications safety-critical | release gate / product | P1 | Open |
 | LR-017 | Prisma schema | contract drift | P3 | Open |
@@ -228,8 +242,13 @@ kept in case PM-APPT-03 reinstates a window.
   and reschedule unless `visit_status = WAITING`, in the use-cases and in
   the repository `WHERE`. It covers the in-room/left case but not the
   past-and-never-attended case.
-- **Status**: the cutoff rule is a product decision → PM-APPT-01/02. Not
-  implemented.
+- **Resolution** (`7c5a55c` backend, `c35e5d9` Flutter): every actor needs
+  `CONFIRMED` + `WAITING`; a patient also needs `now < start_at`. Both are
+  checked in the use-cases and repeated in the repository `WHERE`. The
+  unmerged branch was adapted, not merged: its `canChangeBooking`, guards,
+  copy and e2e checks were taken over; PM-APPT-01/05 were added on top.
+  The two reproduced holes are now permanent integration tests that assert
+  422 and an unchanged row, refund count, slot and replacement count.
 
 ### LR-012 — Appointment status never reaches COMPLETED / NO_SHOW
 
@@ -238,21 +257,33 @@ but no runtime path sets them (only seed data). Visit progress lives in
 `visit_status`; `ExpireWaitingVisitsUseCase` moves overdue `WAITING` visits to
 `TIME_EXPIRED` but leaves `status` at `CONFIRMED`. Pharmacy order creation
 and fulfilment accept `COMPLETED` appointments, so they are written for a
-status nothing produces. → PM-APPT-04.
+status nothing produces. → Resolved by PM-APPT-04: `LEFT` writes
+`COMPLETED` in the same update; the sweep writes `NO_SHOW` only on
+still-`CONFIRMED` unattended rows (it also stamps `TIME_EXPIRED` on finished
+`COMPLETED`/`RESCHEDULED` rows for reconciliation, which is why
+`TIME_EXPIRED` alone does not mean no-show). No money moves on `NO_SHOW`.
+Historical rows: `prisma/data-migrations/20261003_appointment_terminal_status_reconciliation.sql`
+(dry run by default; not under `prisma/migrations/`, so `migrate deploy`
+never runs it). **Not run against any shared/live database — needs explicit
+authorization per environment.**
 
 ### LR-013 — Assistant (CLINIC_STAFF) authority is broader than documented
 
-`ResolveAppointmentScopeUseCase` returns a `CLINIC_STAFF` scope over the
-provisioning doctor's affiliations, and `/v1/doctors/me/appointments/*`
-allows `DOCTOR` and `CLINIC_STAFF`. An assistant can therefore cancel
-(always as `PROVIDER_REQUEST`, full refund), reschedule and advance visit
-status on their own. The use-case doc comments still say CLINIC_STAFF is
-"deferred". → PM-APPT-05.
+*Correction (2026-10-03):* the first write-up said assistants could act on
+"all of their doctor's branches". That was wrong. `ResolveDoctorScopeUseCase`
+already narrows a `CLINIC_STAFF` caller to the branches in
+`clinic_staff_assignments` (unique per membership and branch), and an
+assistant with no assignment sees nothing, so the branch scope PM-APPT-05
+asks for already existed and no schema change was needed. What was true:
+an assistant could cancel (full refund) on their own. Now provider
+cancellation is `DOCTOR`-only at the route and in the use-case, and e2e
+tests prove assistant cancel 403, out-of-branch reschedule/visit 404 and
+in-branch reschedule 200.
 
 ### LR-014 — Visit status has no time window
 
-Either side can mark a next-month appointment `WAITING → IN_DOCTOR_ROOM`
-today. → PM-APPT-03.
+Either side could mark a next-month appointment `WAITING → IN_DOCTOR_ROOM`
+today. → Resolved by PM-APPT-03 (see §3).
 
 ### LR-015 — Holds on slots whose start time has passed (candidate)
 
@@ -334,155 +365,33 @@ appointment keeps the original payment intent.
 
 ## 3. PM decision register — appointment lifecycle
 
-### Current lifecycle (from source, `staging` @ `894cba6`)
+All five were approved on 2026-10-03 with the rules below, and implemented
+in backend `7c5a55c` (local; see §5 on pushing) and Flutter `c35e5d9`.
+
+| ID | Decision | Approved rule | Status | Evidence |
+|---|---|---|---|---|
+| PM-APPT-01 | Patient cancel/reschedule cutoff | Allowed only while `now < slot.start_at` (absolute instant); pre-start fee/refund behavior unchanged | Implemented | use-case + repository `WHERE`; unit boundary tests (−1 ms, =, +1 ms); integration: past appointment → 422, row unchanged |
+| PM-APPT-02 | Visit already started | No cancel/reschedule by anyone once `IN_DOCTOR_ROOM` or `LEFT` (`APPOINTMENT_VISIT_IN_PROGRESS`); an expired visit gives `APPOINTMENT_VISIT_ENDED` | Implemented (adapted from `8642082`) | unit; integration incl. race via repository `WHERE`; e2e doctor cancel / assistant reschedule in room → 422 |
+| PM-APPT-03 | Visit-status time window | "B+": `WAITING → IN_DOCTOR_ROOM` only on the slot's calendar day in the branch `iana_timezone`; `IN_DOCTOR_ROOM → LEFT` always (cross-midnight) | Implemented | domain tests: summer +03 / winter +02, 23:59 vs 00:00, local-day ≠ UTC-date, 23:30 → 00:15 LEFT, unknown zone fails closed; integration + e2e future-day → 422 |
+| PM-APPT-04 | COMPLETED / NO_SHOW | `LEFT` ⇒ `COMPLETED` in the same write. `NO_SHOW` only for still-`CONFIRMED` unattended expired visits (verified: `TIME_EXPIRED` alone is ambiguous). No refund, charge or wallet mutation on `NO_SHOW` | Implemented; historical reconciliation script ready, **not run on shared data** | repository + integration tests (payment intent, refunds, wallet transactions unchanged); script dry-run/apply/idempotency on the disposable DB |
+| PM-APPT-05 | Assistant authority | Branch-scoped (existing `clinic_staff_assignments`); visit status + reschedule allowed; provider cancellation doctor-only | Implemented | unit + e2e: assistant cancel 403, out-of-branch 404, in-branch reschedule 200; Flutter hides Cancel for assistants |
+
+Open follow-ups, not new decisions: a future no-show fee/refund policy
+(explicitly deferred by PM); and how operations closes a visit left
+`IN_DOCTOR_ROOM` for days (the script only reports these).
+
+### Current lifecycle
 
 ```
-Slot:        OPEN ──hold──▶ HELD ──confirm──▶ BOOKED ──cancel/reschedule──▶ OPEN
-Hold:        ACTIVE ──confirm──▶ CONVERTED   ACTIVE ──TTL (5 min; Fawry 15, wallet 10)──▶ EXPIRED
-Appointment: CONFIRMED ──cancel──▶ CANCELLED        (patient, doctor, assistant)
-             CONFIRMED ──reschedule──▶ RESCHEDULED  + new CONFIRMED appointment, same payment
-             CONFIRMED forever otherwise (COMPLETED / NO_SHOW / CHECKED_IN / IN_PROGRESS never set)
-Visit:       WAITING ──▶ IN_DOCTOR_ROOM ──▶ LEFT   (doctor or assistant, strict order, no time window)
-             WAITING ──slot end + APPOINTMENT_END_GRACE_MINUTES (worker, every 5 min)──▶ TIME_EXPIRED
-             any ──cancel──▶ CANCELLED
+Slot:        OPEN ─hold─▶ HELD ─confirm─▶ BOOKED ─cancel/reschedule─▶ OPEN
+Appointment: CONFIRMED ─cancel─────▶ CANCELLED     patient (before start) or doctor; WAITING only
+             CONFIRMED ─reschedule─▶ RESCHEDULED   + new CONFIRMED on the same payment; patient
+                                                   (before start), doctor or assistant; WAITING only
+             CONFIRMED ─visit LEFT─▶ COMPLETED     same write as the visit transition
+             CONFIRMED ─sweep──────▶ NO_SHOW       WAITING past slot end + grace; no money moves
+Visit:       WAITING ─(appointment's local day)─▶ IN_DOCTOR_ROOM ─(any time)─▶ LEFT
+             WAITING ─sweep─▶ TIME_EXPIRED       any ─cancel─▶ CANCELLED
 ```
-
-| Action | Who | State required | Time limit | Money | Audit / notify |
-|---|---|---|---|---|---|
-| Hold + confirm | patient; staff walk-in via `/branch/:id/create` | slot `OPEN` | none checked (LR-015) | capture at confirm (pay-at-clinic ledger / wallet / online) | audited; `AppointmentConfirmed` + doctor/assistant events |
-| Cancel | patient (reason `PATIENT_REQUEST`), doctor or assistant (must be `PROVIDER_REQUEST`) | `CONFIRMED` | **none** | patient: `CANCELLATION_TIER` fee (seed 10%); provider: full refund | audited; patient + doctor/assistant events |
-| Reschedule | patient, doctor, assistant | `CONFIRMED`; same affiliation | **none** | payment carried over, no new charge | audited; events |
-| Visit status | doctor, assistant | `CONFIRMED`, next in order | **none** | none | audited (`<from>_TO_<to>`) |
-| Stale version / races | all | optimistic `version` + `WHERE status=…` guards; partial unique index on active holds | — | — | conflicts → 409 |
-
-Concurrency is sound and covered by integration tests (one winner of N holds,
-one winner of N confirms). The gaps are rule gaps, not race gaps.
-
-### PM-APPT-01 — Patient cancellation and reschedule cutoff
-
-**Current behavior**: none; a patient can cancel or reschedule any `CONFIRMED`
-appointment at any time, including after it happened (LR-011, reproduced).
-
-**Problem**: refunds for attended visits; free repeat visits via reschedule;
-no-shows can recover their money; doctors lose slots minutes before start.
-
-**Actors**: patient, doctor, assistant, operations/finance.
-
-- **Option A: lock at scheduled start.** Patient may cancel/reschedule until
-  `slot.start_at`; after that, only provider/admin paths. Simple, closes
-  the past-appointment hole, still allows last-minute changes.
-- **Option B: lock N hours before start** (configurable `policy_configs`
-  value per region). Protects doctor schedules too; needs N chosen and
-  shown in the UI.
-- **Option C: tiered fee by lead time** (e.g. free > 24 h, fee inside), lock
-  at start. Most flexible, most to explain and test; extends the existing
-  `CANCELLATION_TIER` shape.
-
-**Recommended**: A now, enforced server-side in both use-cases and the
-repository `WHERE` (start time compared to `now()` in the DB), with B/C as
-a follow-up once operations data exists. A closes the P0 with no new
-business number to invent.
-
-**Impact**: backend: one guard + `422 APPOINTMENT_CHANGE_WINDOW_CLOSED` in
-cancel and reschedule (patient scope), Arabic catalog entry, unit and
-integration tests (past appointment, in-progress, boundary second). Flutter:
-`isCancellable` / reschedule entry also check `startAt > now`. No migration
-for A; B/C add a `policy_configs` row. No payment logic change.
-
-**Decision requested**: approve A (or choose B/C and the value of N / tiers).
-
-### PM-APPT-02 — Changes once the visit has started (IN_DOCTOR_ROOM / LEFT)
-
-**Current behavior**: patient, doctor and assistant can all cancel or
-reschedule an appointment whose visit is `IN_DOCTOR_ROOM` or `LEFT`.
-
-**Options**:
-- **A: lock for everyone once `IN_DOCTOR_ROOM`.** Exactly what the unmerged
-  `feat/lock-appointment-changes-after-visit-start` (`8642082`) implements
-  (`422 APPOINTMENT_VISIT_IN_PROGRESS`). Corrections go through an admin
-  path that does not exist yet.
-- **B: lock for patients; providers may still cancel with a mandatory
-  reason** (e.g. emergency). Keeps flexibility, needs a reason code and
-  audit, and refund rules for a visit that started.
-
-**Recommended**: A, by merging the existing branch after review and
-re-running the integration suite. LEFT is terminal for booking changes;
-corrections become an admin/finance operation.
-
-**Impact**: backend: already implemented on the branch (use-cases,
-repository `WHERE`, tests, catalog). Flutter: hide cancel/reschedule
-unless `WAITING` on the provider side too (patient side already does).
-
-**Decision requested**: approve A and merge the branch, or choose B.
-
-### PM-APPT-03 — Visit-status time window
-
-**Current behavior**: no window on either side (client window removed in
-`9bd5f7c` for early arrivals and late finishes).
-
-**Options**:
-- **A: no window** (status quo). Maximum flexibility; a mistaken tap on a
-  future appointment changes it.
-- **B: appointment day only, in the branch's IANA zone** (server-side).
-  Covers early arrival and overruns the same day; blocks future/past days.
-- **C: configurable window around `start_at`.** Precise, but needs numbers.
-
-**Recommended**: B. It matches clinic reality without inventing minute
-values, and uses the branch timezone the schema already stores.
-
-**Impact**: backend: day comparison in the branch zone in
-`UpdateAppointmentVisitStatusUseCase`, plus a new 422 code. Flutter:
-re-use the kept `available_near_time` / `outside_window` strings, and
-`ianaLocation` for the day check. Tests: before/after midnight in summer and
-winter.
-
-**Decision requested**: A, B or C.
-
-### PM-APPT-04 — Terminal appointment states (COMPLETED / NO_SHOW)
-
-**Current behavior**: appointments stay `CONFIRMED` forever; `visit_status`
-carries progress; `TIME_EXPIRED` is visit-level only.
-
-**Options**:
-- **A: derive.** `LEFT` ⇒ `status COMPLETED`, `TIME_EXPIRED` ⇒ `NO_SHOW`, in
-  the same transaction / worker job. Makes PM-APPT-01/02 trivially
-  enforceable by status and fixes pharmacy's `COMPLETED` checks.
-- **B: keep `visit_status` as the only source** and remove the unused enum
-  values from use (document `CONFIRMED` + `LEFT` as "done").
-
-**Recommended**: A. No-show then needs its own follow-up rule (refund? fee?),
-which is a separate decision; until then, NO_SHOW changes no money.
-
-**Impact**: backend: two writes added to existing paths, reconciliation of
-existing rows by a reviewed data migration (not run against live data
-without approval), list/filter DTOs. Flutter: status labels.
-
-**Decision requested**: A or B; and, separately, the no-show money rule.
-
-### PM-APPT-05 — Assistant (CLINIC_STAFF) authority
-
-**Current behavior**: assistants can independently cancel (full refund),
-reschedule and change visit status for all of their doctor's branches
-(LR-013).
-
-**Options**:
-- **A: assistants may do visit status and reschedule; cancellation needs
-  the doctor.** (Draft + approve, mirroring clinical requests.)
-- **B: assistants have full appointment authority** (current code), audited
-  under their own membership.
-- **C: assistants limited to the branch they are assigned to**, otherwise as B.
-
-**Recommended**: C+A: branch-scoped, with cancellation reserved to the
-doctor. Cancellation moves money; reschedule and visit flow are the daily
-operational work assistants exist for.
-
-**Impact**: backend: scope narrowed to assigned branches, role check on the
-cancel route; Flutter: assistant UI hides cancel. Tests: assistant negative
-paths.
-
-**Decision requested**: A, B or C (or a combination).
-
----
 
 ## 4. V1 feature readiness matrix (initial)
 
@@ -495,9 +404,9 @@ been reviewed in this plan yet; they are not implied green.
 | Provider discovery / doctor profile | patient | implemented | wired | public | doctor-search integration green | UNVERIFIED vs real API | NEEDS HARDENING | contract parity (Phase 4) |
 | Available slots | patient | implemented | wired; DST fixed (LR-008) | public | slot repository integration + 9 Flutter tz tests | UNVERIFIED vs real API | NEEDS HARDENING | LR-015, LR-018 |
 | Booking (hold + confirm) | patient | implemented | wired | patient | hold/confirm concurrency integration green | UNVERIFIED end to end | NEEDS HARDENING | payment path gates (§5) |
-| Cancellation | patient / doctor / assistant | implemented | wired | scoped, rule gaps | integration green | — | **PM DECISION REQUIRED** | PM-APPT-01, -02, -05 (P0) |
-| Rescheduling | patient / doctor / assistant | implemented (one step, payment carried over) | wired; contract fixed (LR-021) | scoped, rule gaps | integration + e2e green | not on device | **PM DECISION REQUIRED** | PM-APPT-01, -02, -05 (P0) |
-| Visit status | doctor / assistant | implemented | wired | scoped | unit | — | **PM DECISION REQUIRED** | PM-APPT-03, -04 |
+| Cancellation | patient / doctor | implemented with approved rules | wired; hides after start / once started / for assistants | patient own; doctor own affiliations; assistant 403 | unit + integration + e2e | not on device | NEEDS HARDENING | device smoke; payment-provider refund path (§5) |
+| Rescheduling | patient / doctor / assistant | implemented (one step, payment carried over) with approved rules | wired; contract fixed (LR-021) | scoped; assistant to assigned branches | unit + integration + e2e | not on device | NEEDS HARDENING | device smoke; LR-015 (booking into a past slot) |
+| Visit status + COMPLETED/NO_SHOW | doctor / assistant | implemented with approved rules | wired; day window, NO_SHOW/TIME_EXPIRED labels | scoped | unit + integration + e2e | not on device | NEEDS HARDENING | run reconciliation per environment (authorization needed); device smoke |
 | Appointment lists / detail | patient / doctor | implemented | wired | scoped | integration (patient list) | UNVERIFIED | NEEDS HARDENING | LR-018 |
 | Wallet balance / history | patient | implemented | wired | patient | wallet concurrency integration green | UNVERIFIED | NEEDS HARDENING | contract parity |
 | Wallet top-up (Paymob) | patient | implemented | wired, external checkout | patient | unit | no live gateway | **BLOCKED** | Paymob production credentials + live webhook (DEC-001) |
@@ -519,6 +428,7 @@ been reviewed in this plan yet; they are not implied green.
 
 None of these can be closed from mocks.
 
+- Repository access: the Claude GitHub App cannot push to `eslambashry/clinic-reservations` (HTTP 403), so backend commits on the working branch exist only as an exported `git am` patch until access is granted. The Flutter branch is pushed.
 - SMS/OTP provider: not selected (`LoggingOtpSender` only; production fails closed).
 - FCM/APNs: `FIREBASE_PROJECT_ID` path unverified in a real project.
 - Paymob: production credentials, live HMAC webhook, refund path.
@@ -530,9 +440,8 @@ None of these can be closed from mocks.
 
 ## 6. Next steps (in plan order)
 
-1. **PM**: decide PM-APPT-01…05 (P0 blocks release). After approval:
-   implement, merge/adapt `feat/lock-appointment-changes-after-visit-start`,
-   re-run the integration suite.
+1. ~~PM-APPT-01…05~~ approved and implemented (§3). Remaining: authorize
+   the reconciliation script per environment.
 2. Phase 3 security review: upload/media, clinical-request cross-patient and
    cross-provider negatives, payments webhook replay/late webhook on the
    disposable stack. Reproduce LR-015.
