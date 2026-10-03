@@ -11,7 +11,6 @@ import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/appli
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
 import { assertBookingChangeAllowed } from './booking-change.guard';
-import { isBeforeAppointmentStart } from '../domain/visit-status.rules';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
