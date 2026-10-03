@@ -37,7 +37,7 @@ Runtime/framework decisions (`docs/FILE_12` Part 02–04, resolving `DEC-B01`):
 - **Auth**: `argon2` (OTP hashing — slow/salted), SHA-256 (refresh token hashing — deterministic lookup), `@nestjs/jwt` (access tokens).
 - **Validation**: `class-validator` + `class-transformer` on DTOs.
 - **Dates/timezones**: `luxon` (branches carry `iana_timezone`; all storage/API timestamps are UTC).
-- **Tests**: `jest` + `ts-jest` (unit/integration `*.spec.ts`), separate `test/jest-e2e.json` config for `*.e2e-spec.ts`.
+- **Tests**: `jest` + `ts-jest` — unit `*.spec.ts` (`jest.config.js`), DB-backed `*.integration.spec.ts` (`jest.integration.config.js`) and `*.e2e-spec.ts` (`test/jest-e2e.json`), the latter two gated on `TEST_DATABASE_URL`.
 - **Dev runtime**: `tsx watch` for both entrypoints; `tsc` for production build → `dist/`.
 
 **Global middleware/guard/interceptor order** (registered once, centrally, in `core.module.ts`): `Throttler → JwtAuthGuard → RbacGuard → handler → ResponseInterceptor/ErrorEnvelopeFilter`. Never reimplement any of this per-module — extend what's in `src/shared/core/`.
@@ -213,8 +213,8 @@ Reference module: `src/modules/identity-auth/`.
 
 ## 13. Testing Strategy
 
-- **Unit/integration**: `*.spec.ts` colocated next to the code under test (e.g. `domain/*.rules.spec.ts`, `application/*.use-case.spec.ts`, `infrastructure/*.repository.integration.spec.ts`), run via `npm test` (jest + ts-jest). Passes with 0 tests until a module adds real ones — an empty suite is not a red flag pre-Phase-1.
-- **E2E**: `test/*.e2e-spec.ts`, separate config (`test/jest-e2e.json`), run via `npm run test:e2e`.
+- **Unit**: `*.spec.ts` colocated next to the code under test (e.g. `domain/*.rules.spec.ts`, `application/*.use-case.spec.ts`), run via `npm test` (jest + ts-jest). `npm test` never touches a database: it excludes `*.integration.spec.ts`.
+- **DB-backed (integration + E2E)**: `*.integration.spec.ts` via `npm run test:integration`, and `test/*.e2e-spec.ts` via `npm run test:e2e`. Both create/delete real rows, so both refuse to start unless `TEST_DATABASE_URL` names a disposable Postgres+PostGIS (`test/require-disposable-db.js` swaps it in for `DATABASE_URL`/`DIRECT_URL` and rejects a value equal to `.env`'s). Set `TEST_REDIS_URL` too, or the suites fall back to `.env`'s Redis. Prepare the database with `prisma migrate deploy` then `npm run db:seed` (the appointment suites read the seeded `CANCELLATION_TIER`/`COMMISSION_RATE` policies).
 - Domain-layer tests are framework-free, pure-function style (see `slot-generation.rules.spec.ts`) — assert exact boundaries/timezone conversions, not just "doesn't throw."
 - **Concurrency-critical paths get concurrency tests written alongside the feature, not after** (File 11 Part 26, explicit requirement) — appointment hold and pharmacy first-accept-wins are the two named paths so far. A phase without a documented concurrency-critical path (e.g. Provider Directory verify/suspend, protected only by optimistic locking) intentionally has no N-simultaneous-requests test — don't add one speculatively.
 - `npm run test:cov` for coverage; `npm run test:watch` during active development.
@@ -229,7 +229,8 @@ npm run start:dev            # API process, tsx watch (src/main.ts)
 npm run start:worker:dev     # worker process, tsx watch (src/worker.ts)
 npm run build                # tsc -> dist/ (both entrypoints)
 npm run lint                 # eslint src/**/*.ts
-npm test                     # jest unit/integration
+npm test                     # jest unit only (no database)
+npm run test:integration     # *.integration.spec.ts — needs TEST_DATABASE_URL (disposable DB)
 npm run test:watch
 npm run test:cov
 npm run test:e2e             # jest against test/*.e2e-spec.ts

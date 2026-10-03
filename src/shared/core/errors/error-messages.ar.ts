@@ -56,6 +56,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
   // ── Accounts & staff provisioning ───────────────────────────────────────
   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
+  EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
   PHARMACY_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذه الصيدلية.',
@@ -93,6 +94,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
+  VISIT_STATUS_MANAGED_BY_SYSTEM: 'حالة إلغاء أو انتهاء الموعد تُحدَّث تلقائياً بواسطة النظام.',
   APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
   SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
