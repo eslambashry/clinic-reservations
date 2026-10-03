@@ -2,13 +2,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsOptional, IsString, Matches, ValidateNested } from 'class-validator';
 import { BRANCH_CONTACT_PHONE_PATTERN } from './branch-contact-phone.pattern';
-import { AddressDto } from './address.dto';
+import { LocatedAddressDto } from './address.dto';
 
 export class CreatePharmacyBranchDto {
-  @ApiProperty({ type: AddressDto })
+  @ApiProperty({ type: LocatedAddressDto })
   @ValidateNested()
-  @Type(() => AddressDto)
-  address: AddressDto;
+  @Type(() => LocatedAddressDto)
+  address: LocatedAddressDto;
 
   @ApiProperty({ example: '+201001234567' })
   @Matches(BRANCH_CONTACT_PHONE_PATTERN, { message: 'phone must be a valid E.164 contact number, e.g. +201001234567' })
