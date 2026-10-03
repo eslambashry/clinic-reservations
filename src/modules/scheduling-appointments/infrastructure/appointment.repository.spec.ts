@@ -48,7 +48,7 @@ describe('AppointmentRepository terminal visit updates', () => {
 
     await expect(repository.cancel(db, 'appointment-1', 4, 'user-1', 'PATIENT_REQUEST')).resolves.toBe(true);
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: 'appointment-1', version: 4, status: 'CONFIRMED' },
+      where: { id: 'appointment-1', version: 4, status: 'CONFIRMED', visit_status: 'WAITING' },
       data: {
         status: 'CANCELLED',
         visit_status: 'CANCELLED',

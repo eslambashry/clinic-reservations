@@ -1,4 +1,4 @@
-import { isValidVisitStatusTransition, nextVisitStatus } from './visit-status.rules';
+import { canChangeBooking, isValidVisitStatusTransition, nextVisitStatus } from './visit-status.rules';
 
 describe('visit status progression', () => {
   it('allows only WAITING -> IN_DOCTOR_ROOM -> LEFT', () => {
@@ -17,5 +17,11 @@ describe('visit status progression', () => {
     ['LEFT', 'LEFT'],
   ] as const)('rejects %s -> %s', (current, target) => {
     expect(isValidVisitStatusTransition(current, target)).toBe(false);
+  });
+
+  it('allows cancelling or rescheduling only while the patient is still WAITING', () => {
+    expect(canChangeBooking('WAITING')).toBe(true);
+    expect(canChangeBooking('IN_DOCTOR_ROOM')).toBe(false);
+    expect(canChangeBooking('LEFT')).toBe(false);
   });
 });

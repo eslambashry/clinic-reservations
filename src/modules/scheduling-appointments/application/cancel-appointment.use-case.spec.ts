@@ -12,6 +12,7 @@ describe('CancelAppointmentUseCase', () => {
     slot_id: 'slot-1',
     patient_id: 'patient-1',
     status: 'CONFIRMED',
+    visit_status: 'WAITING',
     version: 1,
     doctor_clinic_affiliation_id: 'aff-1',
   };
@@ -65,6 +66,18 @@ describe('CancelAppointmentUseCase', () => {
     appointments.findById.mockResolvedValue({ ...appointment, status: 'CANCELLED' });
 
     await expect(useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_CANCELLABLE', httpStatus: 422 });
+  });
+
+  it.each(['IN_DOCTOR_ROOM', 'LEFT'])('422s (APPOINTMENT_VISIT_IN_PROGRESS) without writing anything once the visit is %s', async (visitStatus) => {
+    const { appointments, slots, refund, audit, outbox, useCase } = setup();
+    appointments.findById.mockResolvedValue({ ...appointmentWithPayment, visit_status: visitStatus });
+
+    await expect(useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_VISIT_IN_PROGRESS', httpStatus: 422 });
+    expect(appointments.cancel).not.toHaveBeenCalled();
+    expect(slots.releaseBooked).not.toHaveBeenCalled();
+    expect(refund.execute).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(outbox.emit).not.toHaveBeenCalled();
   });
 
   it('409s (APPOINTMENT_STATE_CHANGED) when the version-guarded cancel loses a concurrent race', async () => {

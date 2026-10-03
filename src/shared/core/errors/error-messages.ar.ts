@@ -55,6 +55,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   RATE_LIMITED: 'عدد المحاولات كبير خلال وقت قصير. انتظر قليلًا ثم أعد المحاولة.',
 
   // ── Accounts & staff provisioning ───────────────────────────────────────
+  EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
@@ -92,6 +93,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_NOT_RESCHEDULABLE: 'لا يمكن تغيير هذا الموعد إلا وهو مؤكَّد.',
   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
+  VISIT_STATUS_MANAGED_BY_SYSTEM: 'حالة إلغاء أو انتهاء الموعد تُحدَّث تلقائياً بواسطة النظام.',
+  APPOINTMENT_VISIT_IN_PROGRESS: 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
   APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',

@@ -10,6 +10,7 @@ import { translateCreateHoldError } from './create-hold.use-case';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
+import { canChangeBooking } from '../domain/visit-status.rules';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
@@ -82,6 +83,11 @@ export class RescheduleAppointmentUseCase {
         if (appointment.status !== 'CONFIRMED') {
           throw new BusinessRuleError('APPOINTMENT_NOT_RESCHEDULABLE', 'لا يمكن تغيير هذا الموعد إلا وهو مؤكّد.', {
             status: appointment.status,
+          });
+        }
+        if (!canChangeBooking(appointment.visit_status)) {
+          throw new BusinessRuleError('APPOINTMENT_VISIT_IN_PROGRESS', 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.', {
+            visitStatus: appointment.visit_status,
           });
         }
 
