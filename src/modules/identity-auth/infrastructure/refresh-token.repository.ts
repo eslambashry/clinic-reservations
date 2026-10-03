@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, RefreshToken } from '@prisma/client';
 
+/** Shared identity lock: membership, status, credentials and sessions use the same PostgreSQL row. */
+export async function lockUserForAuthMutation(db: Prisma.TransactionClient, userId: string): Promise<void> {
+  await db.$queryRaw(Prisma.sql`SELECT "id" FROM "users" WHERE "id" = ${userId}::uuid FOR UPDATE`);
+}
+
 @Injectable()
 export class RefreshTokenRepository {
   /** Serialize all token/device mutations for one identity, including new sibling refresh tokens. */
   async lockUserForAuthMutation(db: Prisma.TransactionClient, userId: string): Promise<void> {
-    await db.$queryRaw(Prisma.sql`SELECT "id" FROM "users" WHERE "id" = ${userId}::uuid FOR UPDATE`);
+    await lockUserForAuthMutation(db, userId);
   }
   create(
     db: Prisma.TransactionClient,

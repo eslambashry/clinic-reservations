@@ -3,6 +3,7 @@ import * as argon2 from '@node-rs/argon2';
 import { Prisma, RoleContextType, RoleMembership, UserStatus } from '@prisma/client';
 import { ConflictError } from '../../../shared/core/errors/domain-errors';
 import { generateStaffPassword } from '../domain/staff-password.util';
+import { canOwnerManageIdentity, isManagedStaffMembership } from '../domain/staff-identity.rules';
 import { RoleMembershipRepository } from '../infrastructure/role-membership.repository';
 import { UserRepository } from '../infrastructure/user.repository';
 
@@ -38,16 +39,10 @@ export interface ProvisionStaffUserResult {
  * `CreateAssistantUseCase` is just its first caller, passing
  * roleCode/contextType='CLINIC_STAFF' and contextId=the doctor's id.
  *
- * Deliberately conservative about reusing an existing `User` row (identity
- * is decoupled from role-context — File 10's DEC table — so the *same*
- * phone legitimately holding a PATIENT membership elsewhere is expected):
- * a brand-new phone (or one with no `password_hash` yet — an OTP-only
- * shell) is fine to reuse, and re-provisioning this exact owner's own
- * previously-revoked staff member is fine to overwrite (that password_hash
- * was set by this same flow originally). Anything else — a phone that's
- * already password-protected under an unrelated account — is rejected;
- * silently overwriting a stranger's password via this endpoint would be an
- * account-takeover path, not a "safe upsert."
+ * Owner-managed employees use separate identities (approved launch decision):
+ * no personal PATIENT/DOCTOR history and no other owner, even after revocation.
+ * Only this exact owner's existing employee may be reactivated. An OTP-only
+ * personal identity is never an available staff shell.
  *
  * Takes `tx` explicitly (same pattern as `GrantRoleMembershipUseCase`) so
  * the caller's own transaction (which typically also writes an audit log
@@ -65,6 +60,8 @@ export class ProvisionStaffUserUseCase {
     let existingMembership: RoleMembership | null = null;
 
     if (user) {
+      await this.users.lockForAuthMutation(tx, user.id);
+      const history = await this.roleMemberships.findAllByUser(tx, user.id);
       existingMembership = await this.roleMemberships.findByUserRoleContext(tx, {
         userId: user.id,
         roleCode: input.roleCode,
@@ -72,31 +69,23 @@ export class ProvisionStaffUserUseCase {
         contextId: input.contextId,
       });
 
+      if (!canOwnerManageIdentity(history, { role_code: input.roleCode, context_type: input.contextType, context_id: input.contextId })) {
+        if (existingMembership) {
+          throw new ConflictError('STAFF_IDENTITY_CONFLICT', 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.');
+        }
+        if (history.length > 0 && history.every(isManagedStaffMembership)) {
+          throw new ConflictError('STAFF_ASSIGNED_ELSEWHERE', 'رقم الهاتف مرتبط بفريق جهة أخرى.', { phone: input.phone });
+        }
+        throw new ConflictError('PHONE_ALREADY_REGISTERED', 'رقم الهاتف مسجّل بالفعل في حساب آخر.', { phone: input.phone });
+      }
+
       if (existingMembership?.status === 'ACTIVE') {
         throw new ConflictError('STAFF_ALREADY_PROVISIONED', 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.', {
           phone: input.phone,
         });
       }
 
-      const activeElsewhere = await this.roleMemberships.findActiveByUserRoleContextType(tx, {
-        userId: user.id,
-        roleCode: input.roleCode,
-        contextType: input.contextType,
-      });
-      if (activeElsewhere.some((m) => m.context_id !== input.contextId)) {
-        throw new ConflictError(
-          'STAFF_ASSIGNED_ELSEWHERE',
-          'رقم الهاتف مرتبط بفريق جهة أخرى.',
-          { phone: input.phone },
-        );
-      }
-
-      // Only a stranger-account risk the first time this phone is provisioned
-      // for this owner. `existingMembership` (REVOKED) means this user IS the
-      // assistant being reactivated — we set that password_hash ourselves on
-      // the original provisioning, so overwriting it now is expected, not an
-      // account-takeover path.
-      if (!existingMembership && user.password_hash) {
+      if (!existingMembership) {
         throw new ConflictError('PHONE_ALREADY_REGISTERED', 'رقم الهاتف مسجّل بالفعل في حساب آخر.', {
           phone: input.phone,
         });

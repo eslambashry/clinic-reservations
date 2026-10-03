@@ -10,8 +10,11 @@ const scope = { roleMembershipId: 'membership-1', roleCode: 'CLINIC_STAFF', cont
 describe('UpdateStaffMembershipUseCase', () => {
   function setup() {
     const tx = buildTx();
-    const users = { updateProfile: jest.fn(), setStatus: jest.fn() };
-    const roleMemberships = { findByIdForContext: jest.fn() };
+    const users = { lockForAuthMutation: jest.fn(), updateProfile: jest.fn(), setStatus: jest.fn() };
+    const roleMemberships = {
+      findByIdForContext: jest.fn(),
+      findAllByUser: jest.fn().mockResolvedValue([{ role_code: 'CLINIC_STAFF', context_type: 'CLINIC_STAFF', context_id: 'doctor-1' }]),
+    };
     const useCase = new UpdateStaffMembershipUseCase(users as any, roleMemberships as any);
     return { tx, users, roleMemberships, useCase };
   }

@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as argon2 from '@node-rs/argon2';
 import { Prisma, RoleContextType, UserStatus } from '@prisma/client';
-import { NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { canOwnerManageIdentity } from '../domain/staff-identity.rules';
 import { RoleMembershipRepository } from '../infrastructure/role-membership.repository';
 import { UserRepository } from '../infrastructure/user.repository';
 import { StaffMember } from './list-staff-by-context.use-case';
@@ -49,6 +50,16 @@ export class UpdateStaffMembershipUseCase {
     }
 
     let user = membership.user;
+    await this.users.lockForAuthMutation(tx, user.id);
+    const history = await this.roleMemberships.findAllByUser(tx, user.id);
+    if (!canOwnerManageIdentity(history, { role_code: input.roleCode, context_type: input.contextType, context_id: input.contextId })) {
+      throw new ConflictError('STAFF_IDENTITY_CONFLICT', 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.');
+    }
+    // Recheck ownership after waiting on the identity lock (a revoke may have
+    // committed while the original lookup was in flight).
+    if (!(await this.roleMemberships.findByIdForContext(tx, { id: input.roleMembershipId, roleCode: input.roleCode, contextType: input.contextType, contextId: input.contextId }))) {
+      throw new NotFoundError('Assistant', input.roleMembershipId);
+    }
     if (input.displayName !== undefined) {
       user = await this.users.updateProfile(tx, user.id, { firstName: input.displayName });
     }
