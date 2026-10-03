@@ -268,4 +268,17 @@ describe('RescheduleAppointmentUseCase', () => {
       expect(m.appointments.markRescheduled).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, new Date('2026-10-03T08:59:59.999Z'));
     });
   });
+
+  it('422s (SLOT_ALREADY_STARTED) when a patient picks a target slot that has already started (LR-015)', async () => {
+    const m = setup();
+    m.appointments.findById.mockResolvedValue(appointment);
+    m.slots.findById.mockImplementation(async (_tx: unknown, id: string) =>
+      id === 'old-slot' ? { id: 'old-slot', start_at: new Date('2099-01-01T09:00:00Z') } : { ...newSlot, start_at: new Date(Date.now() - 60_000) },
+    );
+
+    await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'SLOT_ALREADY_STARTED', httpStatus: 422 });
+    expect(m.appointments.markRescheduled).not.toHaveBeenCalled();
+    expect(m.slots.markHeld).not.toHaveBeenCalled();
+  });
 });
+

@@ -95,6 +95,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
   APPOINTMENT_VISIT_IN_PROGRESS: 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.',
   APPOINTMENT_VISIT_ENDED: 'انتهت زيارة هذا الموعد، فلا يمكن إلغاؤه أو تغييره.',
+  SLOT_ALREADY_STARTED: 'هذا الموعد بدأ بالفعل. اختر موعدًا لاحقًا.',
   APPOINTMENT_CHANGE_WINDOW_CLOSED: 'لا يمكن إلغاء الموعد أو تغييره بعد بدء موعده.',
   VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY: 'يمكن بدء الزيارة في يوم الموعد فقط.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',

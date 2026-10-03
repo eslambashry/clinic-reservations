@@ -6,11 +6,12 @@ import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { holdExpiresAt } from '../domain/appointment-lifecycle.rules';
-import { translateCreateHoldError } from './create-hold.use-case';
+import { slotAlreadyStarted, translateCreateHoldError } from './create-hold.use-case';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
 import { assertBookingChangeAllowed } from './booking-change.guard';
+import { isBeforeAppointmentStart } from '../domain/visit-status.rules';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
@@ -92,6 +93,10 @@ export class RescheduleAppointmentUseCase {
         if (!newSlot || newSlot.doctor_clinic_affiliation_id !== appointment.doctor_clinic_affiliation_id) {
           // File 12 Part 35.11: a different affiliation isn't a "reschedule" — existence-hiding 404, same pattern as CreateHoldUseCase.
           throw new NotFoundError('AppointmentSlot', input.newSlotId);
+        }
+        // LR-015: a patient cannot move onto a slot that has already started.
+        if (scope.kind === 'PATIENT' && !isBeforeAppointmentStart(newSlot.start_at, startsAfter ?? new Date())) {
+          throw slotAlreadyStarted(newSlot.id);
         }
 
         const rescheduled = await this.appointments.markRescheduled(tx, appointment.id, appointment.version, startsAfter);
