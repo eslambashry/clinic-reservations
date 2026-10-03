@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prescription, Prisma } from '@prisma/client';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -41,8 +42,8 @@ export class GetPrescriptionUseCase {
 
   async execute(prescriptionId: string, actor: AccessTokenPayload): Promise<PrescriptionDetail> {
     const prescription = await this.prescriptions.findById(this.prisma, prescriptionId);
-    const isOwner = prescription?.patient_id === actor.sub;
-    const isStaff = actor.contextType === 'PHARMACY_STAFF' || actor.contextType === 'ADMIN';
+    const isOwner = actor.contextType === 'PATIENT' && prescription?.patient_id === actor.sub;
+    const isStaff = actor.contextType === 'ADMIN';
 
     if (!prescription || (!isOwner && !isStaff)) {
       throw new NotFoundError('Prescription', prescriptionId);
@@ -51,10 +52,25 @@ export class GetPrescriptionUseCase {
       throw new NotFoundError('Prescription', prescriptionId);
     }
 
+    return this.detail(this.prisma, prescription);
+  }
+
+  /** Internal seam: pharmacy-fulfillment must authorize and lock the linked order first. */
+  async executeForOrder(db: Prisma.TransactionClient, prescriptionId: string): Promise<PrescriptionDetail> {
+    const prescription = await this.prescriptions.findById(db, prescriptionId);
+    if (!prescription || prescription.status === 'PENDING_DOCTOR_APPROVAL' || prescription.document_type !== 'PRESCRIPTION') {
+      throw new NotFoundError('Prescription', prescriptionId);
+    }
+    return this.detail(db, prescription);
+  }
+
+  private async detail(db: Prisma.TransactionClient, prescription: Prescription): Promise<PrescriptionDetail> {
+    const prescriptionId = prescription.id;
+
     const [images, items, reviews] = await Promise.all([
-      this.images.findByPrescriptionId(this.prisma, prescriptionId),
-      this.items.findByPrescriptionId(this.prisma, prescriptionId),
-      this.reviews.findByPrescriptionId(this.prisma, prescriptionId),
+      this.images.findByPrescriptionId(db, prescriptionId),
+      this.items.findByPrescriptionId(db, prescriptionId),
+      this.reviews.findByPrescriptionId(db, prescriptionId),
     ]);
 
     return {

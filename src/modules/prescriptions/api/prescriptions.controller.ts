@@ -3,8 +3,6 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nes
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { RoleContextType } from '@prisma/client';
 import { GetPrescriptionUseCase, PrescriptionDetail } from '../application/get-prescription.use-case';
-import { ListPrescriptionsResult, ListPrescriptionsUseCase } from '../application/list-prescriptions.use-case';
-import { ReviewPrescriptionResult, ReviewPrescriptionUseCase } from '../application/review-prescription.use-case';
 import { UploadPrescriptionResult, UploadPrescriptionUseCase } from '../application/upload-prescription.use-case';
 import { CreateProviderPrescriptionUseCase } from '../application/create-provider-prescription.use-case';
 import { ApproveProviderPrescriptionUseCase } from '../application/approve-provider-prescription.use-case';
@@ -21,8 +19,6 @@ import { RequireIdempotencyKey } from '../../../shared/core/idempotency/require-
 import { assertValidMediaFiles } from '../../../shared/kernel/storage/media-file-validator';
 import { buildMemoryMulterOptions } from '../../../shared/kernel/storage/multer.config';
 import { toUploadedMediaFiles } from '../../../shared/kernel/storage/multer-file.mapper';
-import { ListPrescriptionsQueryDto } from './dto/list-prescriptions-query.dto';
-import { ReviewPrescriptionDto } from './dto/review-prescription.dto';
 import { UploadPrescriptionDto } from './dto/upload-prescription.dto';
 import { UploadProviderClinicalDocumentDto } from './dto/upload-provider-clinical-document.dto';
 import { CreateProviderPrescriptionBatchDto, CreateProviderPrescriptionDto } from './dto/create-provider-prescription.dto';
@@ -41,8 +37,6 @@ export class PrescriptionsController {
   constructor(
     @Inject(UploadPrescriptionUseCase) private readonly uploadPrescription: UploadPrescriptionUseCase,
     @Inject(GetPrescriptionUseCase) private readonly getPrescription: GetPrescriptionUseCase,
-    @Inject(ListPrescriptionsUseCase) private readonly listPrescriptions: ListPrescriptionsUseCase,
-    @Inject(ReviewPrescriptionUseCase) private readonly reviewPrescription: ReviewPrescriptionUseCase,
     @Inject(CreateProviderPrescriptionUseCase) private readonly createProviderPrescription: CreateProviderPrescriptionUseCase,
     @Inject(ApproveProviderPrescriptionUseCase) private readonly approveProviderPrescription: ApproveProviderPrescriptionUseCase,
     @Inject(RejectProviderPrescriptionUseCase) private readonly rejectProviderPrescription: RejectProviderPrescriptionUseCase,
@@ -186,29 +180,11 @@ export class PrescriptionsController {
     }, user);
   }
 
-  @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF, RoleContextType.ADMIN)
+  @Roles(RoleContextType.PATIENT, RoleContextType.ADMIN)
   @Get(':prescriptionId')
-  @ApiOperation({ summary: 'Prescription detail — owning patient, pharmacy staff, or Admin' })
+  @ApiOperation({ summary: 'Prescription detail — owning patient or Admin; pharmacy staff use their branch order' })
   get(@Param('prescriptionId', ParseUUIDPipe) prescriptionId: string, @CurrentUser() user: AccessTokenPayload): Promise<PrescriptionDetail> {
     return this.getPrescription.execute(prescriptionId, user);
   }
 
-  @Roles(RoleContextType.PHARMACY_STAFF)
-  @Get()
-  @ApiOperation({ summary: 'Pharmacy-staff review queue — QUALITY_CHECK_PASSED prescriptions, oldest-first (File 12 Part 37.5)' })
-  list(@Query() query: ListPrescriptionsQueryDto): Promise<ListPrescriptionsResult> {
-    return this.listPrescriptions.execute(query);
-  }
-
-  @Roles(RoleContextType.PHARMACY_STAFF)
-  @Post(':prescriptionId/review')
-  @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Pharmacist review decision — accept/reject/needs-clarification, with the controlled-substance hard-block (File 11 05.7)' })
-  review(
-    @Param('prescriptionId', ParseUUIDPipe) prescriptionId: string,
-    @Body() dto: ReviewPrescriptionDto,
-    @CurrentUser() user: AccessTokenPayload,
-  ): Promise<ReviewPrescriptionResult> {
-    return this.reviewPrescription.execute(prescriptionId, dto, user);
-  }
 }

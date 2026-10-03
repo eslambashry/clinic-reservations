@@ -1,19 +1,21 @@
+import { PrescriptionDocumentType, PrescriptionReviewDecision, PrescriptionSource, PrescriptionStatus } from '@prisma/client';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { ReviewPrescriptionUseCase } from './review-prescription.use-case';
+import { PrescriptionRepository } from '../infrastructure/prescription.repository';
 
 function buildTx() {
-  return {} as any;
+  return { $queryRaw: jest.fn().mockResolvedValue([{ id: 'prescription-1' }]) } as any;
 }
 
 describe('ReviewPrescriptionUseCase', () => {
   const actor = { sub: 'pharmacist-1', roleMembershipId: 'membership-1', roleCode: 'PHARMACY_STAFF', contextType: 'PHARMACY_STAFF', permissions: [] } as any;
-  const prescription = { id: 'prescription-1', status: 'QUALITY_CHECK_PASSED', version: 1 };
+  const prescription = { id: 'prescription-1', source: 'PATIENT_UPLOADED', document_type: 'PRESCRIPTION', status: 'QUALITY_CHECK_PASSED', version: 1 };
   const item = { id: 'item-1', prescription_id: 'prescription-1', version: 1 };
 
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const prescriptions = { findById: jest.fn(), setStatus: jest.fn() };
+    const prescriptions = { findById: jest.fn(), setStatus: jest.fn(), lockForReview: jest.fn((db, id) => new PrescriptionRepository().lockForReview(db, id)) };
     const items = { findById: jest.fn(), setDrugCodeAndQuantity: jest.fn(), createReviewed: jest.fn() };
     const reviews = { create: jest.fn() };
     const drugCatalog = { findManyByCode: jest.fn() };
@@ -36,6 +38,44 @@ describe('ReviewPrescriptionUseCase', () => {
     prescriptions.findById.mockResolvedValue(null);
 
     await expect(useCase.execute('prescription-1', { decision: 'ACCEPTED' }, actor)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  const invalidStates = Object.values(PrescriptionSource).flatMap((source) =>
+    Object.values(PrescriptionDocumentType).flatMap((document_type) =>
+      Object.values(PrescriptionStatus)
+        .filter((status) => !(source === 'PATIENT_UPLOADED' && document_type === 'PRESCRIPTION' && status === 'QUALITY_CHECK_PASSED'))
+        .flatMap((status) => Object.values(PrescriptionReviewDecision).map((decision) => ({ source, document_type, status, decision }))),
+    ),
+  );
+
+  it.each(invalidStates)('blocks $source/$document_type/$status -> $decision before review side effects', async (state) => {
+    const { prescriptions, items, reviews, drugCatalog, audit, outbox, useCase } = setup();
+    prescriptions.findById.mockResolvedValue({ ...prescription, ...state });
+    reviews.create.mockResolvedValue({ id: 'review-1' });
+    drugCatalog.findManyByCode.mockResolvedValue([]);
+
+    await expect(useCase.execute('prescription-1', {
+      decision: state.decision,
+      controlledSubstanceConfirmed: true,
+      itemCorrections: [{ drugCode: 'PARA500', quantity: 1 }],
+    }, actor)).rejects.toMatchObject({ code: 'PRESCRIPTION_NOT_REVIEWABLE', httpStatus: 422 });
+    expect(reviews.create).not.toHaveBeenCalled();
+    expect(items.createReviewed).not.toHaveBeenCalled();
+    expect(items.setDrugCodeAndQuantity).not.toHaveBeenCalled();
+    expect(prescriptions.setStatus).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(outbox.emit).not.toHaveBeenCalled();
+    expect(drugCatalog.findManyByCode).not.toHaveBeenCalled();
+  });
+
+  it.each(Object.values(PrescriptionReviewDecision))('preserves the patient review queue decision %s', async (decision) => {
+    const { tx, prescriptions, reviews, useCase } = setup();
+    prescriptions.findById.mockResolvedValue(prescription);
+    reviews.create.mockResolvedValue({ id: 'review-1' });
+    await expect(useCase.execute('prescription-1', { decision }, actor)).resolves.toEqual({
+      status: decision === 'NEEDS_CLARIFICATION' ? 'QUALITY_CHECK_PASSED' : decision,
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('creates the review row before applying item corrections, and sets status ACCEPTED', async () => {

@@ -41,6 +41,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   TOKEN_FAMILY_REVOKED: 'تم إنهاء هذه الجلسة لأسباب أمنية. سجّل الدخول مرة أخرى.',
   SESSION_REFRESH_REQUIRED: 'يلزم تحديث الجلسة قبل تفعيل الإشعارات.',
   DEVICE_SESSION_ENDED: 'انتهت الجلسة التي طلبت تفعيل الإشعارات على هذا الجهاز.',
+  ACCOUNT_NOT_ACTIVE: 'هذا الحساب غير نشط. تواصل مع الجهة المسؤولة عن حسابك.',
 
   // ── Authorization (403) ─────────────────────────────────────────────────
   FORBIDDEN: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
@@ -59,6 +60,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
+  STAFF_IDENTITY_CONFLICT: 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.',
   PHARMACY_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذه الصيدلية.',
   LAB_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذا المعمل.',
   PHARMACY_HAS_NO_BRANCH: 'لا يمكن إنشاء حساب موظف قبل إضافة فرع للصيدلية.',
@@ -87,6 +89,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Scheduling & appointments ───────────────────────────────────────────
   SLOT_ALREADY_BOOKED: 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.',
   SLOT_ALREADY_HELD: 'هذا الموعد محجوز مؤقتًا لمريض آخر. اختر موعدًا آخر.',
+  SLOT_ALREADY_STARTED: 'هذا الموعد بدأ بالفعل. اختر موعدًا لاحقًا.',
   HOLD_EXPIRED: 'انتهت مهلة الحجز المؤقت أو تم استخدامه. ابدأ حجزًا جديدًا.',
   HOLD_STATE_CHANGED: 'تم تعديل الحجز المؤقت من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_NOT_CANCELLABLE: 'لا يمكن إلغاء هذا الموعد إلا وهو مؤكَّد.',
@@ -147,6 +150,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
   // ── Prescriptions ───────────────────────────────────────────────────────
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',
+  PRESCRIPTION_NOT_REVIEWABLE: 'هذه الروشتة غير متاحة للمراجعة الصيدلية.',
+  DOCTOR_NOT_ELIGIBLE_TO_PRESCRIBE: 'لا يمكن إصدار روشتة أو اعتمادها للطبيب في حالته الحالية.',
   CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED:
     'تحتوي الروشتة على دواء خاضع للرقابة. يلزم تأكيد صريح من الصيدلي قبل المتابعة.',
   PRESCRIPTION_NEEDS_ITEMS: 'أضف دواءً واحدًا على الأقل لإصدار الروشتة.',

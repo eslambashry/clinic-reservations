@@ -46,6 +46,13 @@ describe('ResolveDoctorScopeUseCase', () => {
     await expect(useCase.execute(actor)).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it('keeps a suspended doctor ownership scope available for historical reads and management', async () => {
+    const { doctors, affiliations, useCase } = setup();
+    doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', user_id: 'user-1', status: 'SUSPENDED', deleted_at: null });
+    affiliations.findByDoctorId.mockResolvedValue([affiliationRow({ status: 'PAUSED' })]);
+    await expect(useCase.execute(actor)).resolves.toMatchObject({ doctorId: 'doctor-1', affiliationIds: ['aff-1'] });
+  });
+
   it('resolves the doctor from the JWT subject, never from a client-supplied id', async () => {
     const { doctors, affiliations, useCase } = setup();
     doctors.findByUserId.mockResolvedValue({ id: 'doctor-1', user_id: 'user-1', deleted_at: null });

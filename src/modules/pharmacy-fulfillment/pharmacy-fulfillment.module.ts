@@ -8,6 +8,7 @@ import { CreatePharmacyOrderUseCase } from './application/create-pharmacy-order.
 import { DeclinePharmacyOrderBroadcastUseCase } from './application/decline-pharmacy-order-broadcast.use-case';
 import { FulfillPharmacyOrderUseCase } from './application/fulfill-pharmacy-order.use-case';
 import { GetPharmacyOrderUseCase } from './application/get-pharmacy-order.use-case';
+import { OrderPrescriptionAccessUseCase } from './application/order-prescription-access.use-case';
 import { ListPharmacyAuditUseCase } from './application/list-pharmacy-audit.use-case';
 import { ListPharmacyOrdersUseCase } from './application/list-pharmacy-orders.use-case';
 import { RejectPharmacyOrderUseCase } from './application/reject-pharmacy-order.use-case';
@@ -81,6 +82,7 @@ import { SchedulingAppointmentsModule } from '../scheduling-appointments/schedul
     ConfirmPharmacyOrderReceiptUseCase,
     ListPharmacyOrdersUseCase,
     GetPharmacyOrderUseCase,
+    OrderPrescriptionAccessUseCase,
     ListPharmacyAuditUseCase,
   ],
 })

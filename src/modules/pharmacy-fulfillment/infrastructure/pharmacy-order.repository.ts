@@ -49,6 +49,10 @@ function cursorFilter(cursor: ListOrdersCursor | undefined, direction: 'asc' | '
 
 @Injectable()
 export class PharmacyOrderRepository {
+  /** Hold routing stable while reading/signing or reviewing the linked prescription. */
+  async lockForPrescriptionAccess(db: Prisma.TransactionClient, id: string): Promise<void> {
+    await db.$queryRaw`SELECT id FROM pharmacy_orders WHERE id = ${id}::uuid FOR UPDATE`;
+  }
   create(db: Prisma.TransactionClient, input: NewPharmacyOrder): Promise<PharmacyOrder> {
     return db.pharmacyOrder.create({
       data: {
@@ -132,7 +136,7 @@ export class PharmacyOrderRepository {
           {
             OR: [
               { pharmacy_branch_id: branchId },
-              { status: 'RECEIVED', broadcasts: { some: { pharmacy_branch_id: branchId, response: null } } },
+              { status: 'RECEIVED', pharmacy_branch_id: null, broadcasts: { some: { pharmacy_branch_id: branchId, response: null } } },
             ],
           },
           ...(page.status ? [{ status: page.status }] : []),

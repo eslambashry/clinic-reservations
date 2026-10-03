@@ -8,6 +8,8 @@ import { CreatePharmacyOrderResult, CreatePharmacyOrderUseCase } from '../applic
 import { DeclinePharmacyOrderBroadcastResult, DeclinePharmacyOrderBroadcastUseCase } from '../application/decline-pharmacy-order-broadcast.use-case';
 import { FulfillPharmacyOrderResult, FulfillPharmacyOrderUseCase } from '../application/fulfill-pharmacy-order.use-case';
 import { GetPharmacyOrderUseCase, PharmacyOrderDetail } from '../application/get-pharmacy-order.use-case';
+import { OrderPrescriptionAccessUseCase } from '../application/order-prescription-access.use-case';
+import { ReviewPrescriptionDto } from '../../prescriptions/api/dto/review-prescription.dto';
 import { ListPharmacyOrdersResult, ListPharmacyOrdersUseCase } from '../application/list-pharmacy-orders.use-case';
 import { RejectPharmacyOrderResult, RejectPharmacyOrderUseCase } from '../application/reject-pharmacy-order.use-case';
 import { RejectPharmacyOrderSubstitutionResult, RejectPharmacyOrderSubstitutionUseCase } from '../application/reject-pharmacy-order-substitution.use-case';
@@ -63,7 +65,24 @@ export class PharmacyOrdersController {
     @Inject(ConfirmPharmacyOrderReceiptUseCase) private readonly confirmPharmacyOrderReceipt: ConfirmPharmacyOrderReceiptUseCase,
     @Inject(ListPharmacyOrdersUseCase) private readonly listPharmacyOrders: ListPharmacyOrdersUseCase,
     @Inject(GetPharmacyOrderUseCase) private readonly getPharmacyOrder: GetPharmacyOrderUseCase,
+    @Inject(OrderPrescriptionAccessUseCase) private readonly orderPrescription: OrderPrescriptionAccessUseCase,
   ) {}
+
+  @Roles(RoleContextType.PHARMACY_STAFF)
+  @Get(':pharmacyOrderId/prescription')
+  @ApiOperation({ summary: 'Read the prescription linked to a claimed or pending incoming order in the caller branch' })
+  getPrescription(@Param('pharmacyOrderId', ParseUUIDPipe) orderId: string, @CurrentUser() user: AccessTokenPayload) {
+    return this.orderPrescription.get(orderId, user);
+  }
+
+  @Roles(RoleContextType.PHARMACY_STAFF)
+  @Post(':pharmacyOrderId/prescription/review')
+  @UseInterceptors(IdempotencyInterceptor)
+  @RequireIdempotencyKey()
+  @ApiOperation({ summary: 'Review a quality-checked patient prescription linked to an order in the caller branch' })
+  reviewPrescription(@Param('pharmacyOrderId', ParseUUIDPipe) orderId: string, @Body() dto: ReviewPrescriptionDto, @CurrentUser() user: AccessTokenPayload) {
+    return this.orderPrescription.review(orderId, dto, user);
+  }
 
   @Roles(RoleContextType.PATIENT, RoleContextType.PHARMACY_STAFF, RoleContextType.DOCTOR, RoleContextType.CLINIC_STAFF)
   @Get()

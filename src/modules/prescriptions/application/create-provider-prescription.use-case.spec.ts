@@ -1,8 +1,10 @@
 import { BusinessRuleError, ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { CreateProviderPrescriptionUseCase } from './create-provider-prescription.use-case';
+import { AssertDoctorPrescribingEligibilityUseCase } from '../../provider-directory/application/assert-doctor-prescribing-eligibility.use-case';
+import { DoctorRepository } from '../../provider-directory/infrastructure/doctor.repository';
 
 function buildTx() {
-  return {} as any;
+  return { $queryRaw: jest.fn().mockResolvedValue([]), doctor: { findUnique: jest.fn().mockResolvedValue({ id: 'doctor-1', status: 'VERIFIED', deleted_at: null }) } } as any;
 }
 
 describe('CreateProviderPrescriptionUseCase', () => {
@@ -31,7 +33,7 @@ describe('CreateProviderPrescriptionUseCase', () => {
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
 
-    const useCase = new CreateProviderPrescriptionUseCase(
+    const useCase: CreateProviderPrescriptionUseCase = new (CreateProviderPrescriptionUseCase as any)(
       prisma as any,
       prescriptions as any,
       items as any,
@@ -40,10 +42,27 @@ describe('CreateProviderPrescriptionUseCase', () => {
       getDoctorAppointment as any,
       audit as any,
       outbox as any,
+      new AssertDoctorPrescribingEligibilityUseCase(new DoctorRepository()),
     );
 
     return { tx, prisma, prescriptions, items, doctorScope, patientAccess, getDoctorAppointment, audit, outbox, useCase };
   }
+
+  it.each(['PENDING', 'REJECTED', 'SUSPENDED', 'DELETED'].flatMap((status) =>
+    [false, true].flatMap((batch) => ['DOCTOR', 'CLINIC_STAFF'].map((role) => ({ status, batch, role }))),
+  ))(
+    'blocks $status supervising doctor for $role batch=$batch before clinical writes', async ({ status, role, batch }) => {
+      const { tx, prescriptions, items, audit, outbox, useCase } = setup();
+      tx.doctor.findUnique.mockResolvedValue({ id: 'doctor-1', status, deleted_at: status === 'DELETED' ? new Date() : null });
+      const actor = role === 'DOCTOR' ? doctorActor : assistantActor;
+      await expect(batch ? useCase.executeBatch([baseInput], actor) : useCase.execute(baseInput, actor))
+        .rejects.toMatchObject({ code: status === 'DELETED' ? 'RESOURCE_NOT_FOUND' : 'DOCTOR_NOT_ELIGIBLE_TO_PRESCRIBE' });
+      expect(prescriptions.create).not.toHaveBeenCalled();
+      expect(items.createManySuggested).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(outbox.emit).not.toHaveBeenCalled();
+    },
+  );
 
   it('a DOCTOR creates and signs in one step — status ACCEPTED, no approval gate', async () => {
     const { tx, prescriptions, items, audit, outbox, useCase } = setup();

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { AssertPatientInDoctorScopeUseCase } from '../../scheduling-appointments/application/assert-patient-in-doctor-scope.use-case';
 import { GetDoctorAppointmentUseCase } from '../../scheduling-appointments/application/get-doctor-appointment.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
+import { AssertDoctorPrescribingEligibilityUseCase } from '../../provider-directory/application/assert-doctor-prescribing-eligibility.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ForbiddenError } from '../../../shared/core/errors/domain-errors';
@@ -75,13 +76,17 @@ export class CreateProviderPrescriptionUseCase {
     @Inject(GetDoctorAppointmentUseCase) private readonly getDoctorAppointment: GetDoctorAppointmentUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(AssertDoctorPrescribingEligibilityUseCase) private readonly prescribingEligibility: AssertDoctorPrescribingEligibilityUseCase,
   ) {}
 
   async execute(input: CreateProviderPrescriptionInput, actor: AccessTokenPayload): Promise<CreateProviderPrescriptionResult> {
     const { isAssistant, scope } = await this.authorize(actor);
     await this.validateInput(input, actor, scope.affiliationIds);
 
-    return this.prisma.$transaction((tx) => this.createInTransaction(tx, input, actor, scope.doctorUserId, isAssistant));
+    return this.prisma.$transaction(async (tx) => {
+      await this.prescribingEligibility.execute(tx, scope.doctorId);
+      return this.createInTransaction(tx, input, actor, scope.doctorUserId, isAssistant);
+    });
   }
 
   /**
@@ -106,6 +111,7 @@ export class CreateProviderPrescriptionUseCase {
 
     const batchId = randomUUID();
     const results = await this.prisma.$transaction(async (tx) => {
+      await this.prescribingEligibility.execute(tx, scope.doctorId);
       const created: Array<CreateProviderPrescriptionResult & { patientId: string }> = [];
       for (const input of inputs) {
         const result = await this.createInTransaction(tx, input, actor, scope.doctorUserId, isAssistant, batchId);

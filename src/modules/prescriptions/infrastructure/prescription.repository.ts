@@ -59,6 +59,11 @@ export class PrescriptionRepository {
     return db.prescription.findUnique({ where: { id } });
   }
 
+  /** Serialize reviews, including clarification decisions that do not change status/version. */
+  async lockForReview(db: Prisma.TransactionClient, id: string): Promise<void> {
+    await db.$queryRaw`SELECT id FROM prescriptions WHERE id = ${id}::uuid FOR UPDATE`;
+  }
+
   /** File 12 Part 51: a doctor's own provider-originated prescriptions (direct or assistant-prepared), newest first — backs "my prescriptions"/"pending my approval". */
   findByDoctorId(db: Prisma.TransactionClient, doctorUserId: string, params: ListProviderPrescriptionsParams): Promise<Prescription[]> {
     return db.prescription.findMany({

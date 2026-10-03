@@ -6,7 +6,7 @@ const prescription = { id: 'presc-1', source: 'PATIENT_UPLOADED', status: 'ACCEP
 function setup() {
   const prisma = {} as any;
   const pharmacyOrders = { findForPatient: jest.fn(), findForBranch: jest.fn(), findForDoctor: jest.fn() };
-  const getActiveRoleMembership = { execute: jest.fn() };
+  const getActiveRoleMembership = { executeByRoleMembershipId: jest.fn() };
   const getUserSummary = { execute: jest.fn().mockResolvedValue(patient) };
   const getPrescriptionSummary = { execute: jest.fn().mockResolvedValue(prescription) };
   const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
@@ -63,7 +63,7 @@ describe('ListPharmacyOrdersUseCase', () => {
 
   it("lists the caller's branch queue for a PHARMACY_STAFF actor", async () => {
     const { pharmacyOrders, getActiveRoleMembership, useCase } = setup();
-    getActiveRoleMembership.execute.mockResolvedValue({ roleMembershipId: 'm-2', contextId: 'branch-1' });
+    getActiveRoleMembership.executeByRoleMembershipId.mockResolvedValue({ roleMembershipId: 'm-2', contextId: 'branch-1' });
     pharmacyOrders.findForBranch.mockResolvedValue([]);
 
     await useCase.execute({}, staffActor);
@@ -73,7 +73,7 @@ describe('ListPharmacyOrdersUseCase', () => {
 
   it('403s a PHARMACY_STAFF actor with no active branch assignment', async () => {
     const { getActiveRoleMembership, useCase } = setup();
-    getActiveRoleMembership.execute.mockResolvedValue(null);
+    getActiveRoleMembership.executeByRoleMembershipId.mockResolvedValue(null);
 
     await expect(useCase.execute({}, staffActor)).rejects.toMatchObject({ httpStatus: 403 });
   });
