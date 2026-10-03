@@ -1,0 +1,1333 @@
+From 009ac5bd0711ea4e2689396e4326b2365f0a8279 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 04:31:18 +0000
+Subject: [PATCH 1/3] test: keep DB-backed suites off the .env database
+
+npm test used to run every *.integration.spec.ts, which create and delete
+users, wallets, appointments and outbox rows in whatever DATABASE_URL .env
+names. Unit runs now exclude them; npm run test:integration and test:e2e
+load test/require-disposable-db.js, which requires TEST_DATABASE_URL,
+rejects a value equal to .env's DATABASE_URL/DIRECT_URL, and swaps it in
+before any spec loads (TEST_REDIS_URL likewise for Redis).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CgaVi6iSsWeYo99r1dcA2m
+---
+ CLAUDE.md                     |  5 +++--
+ MEMORY.md                     |  9 ++++----
+ jest.config.js                |  4 ++++
+ jest.integration.config.js    | 12 +++++++++++
+ package.json                  |  1 +
+ test/jest-e2e.json            | 11 ++++++++--
+ test/require-disposable-db.js | 39 +++++++++++++++++++++++++++++++++++
+ 7 files changed, 73 insertions(+), 8 deletions(-)
+ create mode 100644 jest.integration.config.js
+ create mode 100644 test/require-disposable-db.js
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index b5347e6..383e906 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -20,8 +20,9 @@ npm run start:dev          # API process, tsx watch (src/main.ts)
+ npm run start:worker:dev   # worker process, tsx watch (src/worker.ts) — outbox drain + cron jobs
+ npm run build               # tsc — compiles src/ to dist/ (both entrypoints)
+ npm run lint                 # eslint src/**/*.ts
+-npm test                     # jest (unit/integration, *.spec.ts) — passes with 0 tests until Phase 1 adds real ones
+-npm run test:e2e             # jest against test/*.e2e-spec.ts
++npm test                     # jest unit specs only — never touches a database
++npm run test:integration     # *.integration.spec.ts — requires TEST_DATABASE_URL (disposable DB, see MEMORY.md §13)
++npm run test:e2e             # jest against test/*.e2e-spec.ts — same TEST_DATABASE_URL requirement
+ npm run db:generate          # prisma generate (regenerate client after schema changes)
+ npm run db:migrate           # prisma migrate dev (local schema changes -> new migration)
+ npm run db:migrate:deploy    # prisma migrate deploy (apply existing migrations, e.g. in CI/prod)
+diff --git a/MEMORY.md b/MEMORY.md
+index 8d2325a..7a81b02 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -37,7 +37,7 @@ Runtime/framework decisions (`docs/FILE_12` Part 02–04, resolving `DEC-B01`):
+ - **Auth**: `argon2` (OTP hashing — slow/salted), SHA-256 (refresh token hashing — deterministic lookup), `@nestjs/jwt` (access tokens).
+ - **Validation**: `class-validator` + `class-transformer` on DTOs.
+ - **Dates/timezones**: `luxon` (branches carry `iana_timezone`; all storage/API timestamps are UTC).
+-- **Tests**: `jest` + `ts-jest` (unit/integration `*.spec.ts`), separate `test/jest-e2e.json` config for `*.e2e-spec.ts`.
++- **Tests**: `jest` + `ts-jest` — unit `*.spec.ts` (`jest.config.js`), DB-backed `*.integration.spec.ts` (`jest.integration.config.js`) and `*.e2e-spec.ts` (`test/jest-e2e.json`), the latter two gated on `TEST_DATABASE_URL`.
+ - **Dev runtime**: `tsx watch` for both entrypoints; `tsc` for production build → `dist/`.
+ 
+ **Global middleware/guard/interceptor order** (registered once, centrally, in `core.module.ts`): `Throttler → JwtAuthGuard → RbacGuard → handler → ResponseInterceptor/ErrorEnvelopeFilter`. Never reimplement any of this per-module — extend what's in `src/shared/core/`.
+@@ -213,8 +213,8 @@ Reference module: `src/modules/identity-auth/`.
+ 
+ ## 13. Testing Strategy
+ 
+-- **Unit/integration**: `*.spec.ts` colocated next to the code under test (e.g. `domain/*.rules.spec.ts`, `application/*.use-case.spec.ts`, `infrastructure/*.repository.integration.spec.ts`), run via `npm test` (jest + ts-jest). Passes with 0 tests until a module adds real ones — an empty suite is not a red flag pre-Phase-1.
+-- **E2E**: `test/*.e2e-spec.ts`, separate config (`test/jest-e2e.json`), run via `npm run test:e2e`.
++- **Unit**: `*.spec.ts` colocated next to the code under test (e.g. `domain/*.rules.spec.ts`, `application/*.use-case.spec.ts`), run via `npm test` (jest + ts-jest). `npm test` never touches a database: it excludes `*.integration.spec.ts`.
++- **DB-backed (integration + E2E)**: `*.integration.spec.ts` via `npm run test:integration`, and `test/*.e2e-spec.ts` via `npm run test:e2e`. Both create/delete real rows, so both refuse to start unless `TEST_DATABASE_URL` names a disposable Postgres+PostGIS (`test/require-disposable-db.js` swaps it in for `DATABASE_URL`/`DIRECT_URL` and rejects a value equal to `.env`'s). Set `TEST_REDIS_URL` too, or the suites fall back to `.env`'s Redis. Prepare the database with `prisma migrate deploy` then `npm run db:seed` (the appointment suites read the seeded `CANCELLATION_TIER`/`COMMISSION_RATE` policies).
+ - Domain-layer tests are framework-free, pure-function style (see `slot-generation.rules.spec.ts`) — assert exact boundaries/timezone conversions, not just "doesn't throw."
+ - **Concurrency-critical paths get concurrency tests written alongside the feature, not after** (File 11 Part 26, explicit requirement) — appointment hold and pharmacy first-accept-wins are the two named paths so far. A phase without a documented concurrency-critical path (e.g. Provider Directory verify/suspend, protected only by optimistic locking) intentionally has no N-simultaneous-requests test — don't add one speculatively.
+ - `npm run test:cov` for coverage; `npm run test:watch` during active development.
+@@ -229,7 +229,8 @@ npm run start:dev            # API process, tsx watch (src/main.ts)
+ npm run start:worker:dev     # worker process, tsx watch (src/worker.ts)
+ npm run build                # tsc -> dist/ (both entrypoints)
+ npm run lint                 # eslint src/**/*.ts
+-npm test                     # jest unit/integration
++npm test                     # jest unit only (no database)
++npm run test:integration     # *.integration.spec.ts — needs TEST_DATABASE_URL (disposable DB)
+ npm run test:watch
+ npm run test:cov
+ npm run test:e2e             # jest against test/*.e2e-spec.ts
+diff --git a/jest.config.js b/jest.config.js
+index 942ee16..03de5f9 100644
+--- a/jest.config.js
++++ b/jest.config.js
+@@ -3,6 +3,10 @@ module.exports = {
+   moduleFileExtensions: ['js', 'json', 'ts'],
+   rootDir: 'src',
+   testRegex: '.*\\.spec\\.ts$',
++  // `*.integration.spec.ts` write to a real Postgres and run only through
++  // `npm run test:integration` against an explicit TEST_DATABASE_URL — a
++  // plain `npm test` must never touch whatever database `.env` points at.
++  testPathIgnorePatterns: ['/node_modules/', '\\.integration\\.spec\\.ts$'],
+   transform: {
+     '^.+\\.(t|j)s$': 'ts-jest',
+   },
+diff --git a/jest.integration.config.js b/jest.integration.config.js
+new file mode 100644
+index 0000000..103e3ce
+--- /dev/null
++++ b/jest.integration.config.js
+@@ -0,0 +1,12 @@
++/** @type {import('jest').Config} */
++const base = require('./jest.config');
++
++// DB-backed suites only. `test/require-disposable-db.js` refuses to run
++// without TEST_DATABASE_URL and swaps it in for DATABASE_URL/DIRECT_URL.
++module.exports = {
++  ...base,
++  testRegex: '.*\\.integration\\.spec\\.ts$',
++  testPathIgnorePatterns: ['/node_modules/'],
++  setupFiles: ['<rootDir>/../test/require-disposable-db.js'],
++  passWithNoTests: false,
++};
+diff --git a/package.json b/package.json
+index 74bf820..7b9a8da 100644
+--- a/package.json
++++ b/package.json
+@@ -13,6 +13,7 @@
+     "test": "jest",
+     "test:watch": "jest --watch",
+     "test:cov": "jest --coverage",
++    "test:integration": "jest --config ./jest.integration.config.js --runInBand",
+     "test:e2e": "jest --config ./test/jest-e2e.json",
+     "db:generate": "prisma generate",
+     "db:migrate": "prisma migrate dev",
+diff --git a/test/jest-e2e.json b/test/jest-e2e.json
+index 91d5cd8..692f18d 100644
+--- a/test/jest-e2e.json
++++ b/test/jest-e2e.json
+@@ -1,10 +1,17 @@
+ {
+-  "moduleFileExtensions": ["js", "json", "ts"],
++  "moduleFileExtensions": [
++    "js",
++    "json",
++    "ts"
++  ],
+   "rootDir": ".",
+   "testEnvironment": "node",
+   "testRegex": ".e2e-spec.ts$",
+   "transform": {
+     "^.+\\.(t|j)s$": "ts-jest"
+   },
+-  "passWithNoTests": true
++  "passWithNoTests": true,
++  "setupFiles": [
++    "<rootDir>/require-disposable-db.js"
++  ]
+ }
+diff --git a/test/require-disposable-db.js b/test/require-disposable-db.js
+new file mode 100644
+index 0000000..137fd26
+--- /dev/null
++++ b/test/require-disposable-db.js
+@@ -0,0 +1,39 @@
++/**
++ * Jest `setupFiles` entry for every suite that writes to a real Postgres
++ * (`*.integration.spec.ts`, `test/*.e2e-spec.ts`). Those suites create and
++ * delete rows, so they must never run against whatever `.env` happens to
++ * point at (a shared Neon branch, staging, production).
++ *
++ * They run only when `TEST_DATABASE_URL` names an explicitly disposable
++ * database. That value replaces `DATABASE_URL`/`DIRECT_URL` before any spec
++ * loads; `dotenv`, Nest's `ConfigModule` and Prisma all leave an
++ * already-set process variable alone, so `.env` cannot override it.
++ *
++ *   TEST_DATABASE_URL=postgresql://medsuper:medsuper@localhost:5432/medsuper_test \
++ *   TEST_REDIS_URL=redis://localhost:6379/15 \
++ *   npm run test:integration
++ */
++const { readFileSync, existsSync } = require('node:fs');
++const { join } = require('node:path');
++const dotenv = require('dotenv');
++
++const testUrl = process.env.TEST_DATABASE_URL;
++if (!testUrl) {
++  throw new Error(
++    'DB-backed suites need TEST_DATABASE_URL pointing at a disposable Postgres; refusing to fall back to DATABASE_URL from .env.',
++  );
++}
++
++const envFile = join(__dirname, '..', '.env');
++const ambient = existsSync(envFile) ? dotenv.parse(readFileSync(envFile)) : {};
++for (const key of ['DATABASE_URL', 'DIRECT_URL']) {
++  if (ambient[key] && ambient[key] === testUrl) {
++    throw new Error(`TEST_DATABASE_URL equals ${key} in .env; point it at a separate disposable database.`);
++  }
++}
++
++process.env.DATABASE_URL = testUrl;
++process.env.DIRECT_URL = process.env.TEST_DIRECT_URL || testUrl;
++if (process.env.TEST_REDIS_URL) {
++  process.env.REDIS_URL = process.env.TEST_REDIS_URL;
++}
+-- 
+2.43.0
+
+
+From c496c7be1d7e639f11e8643063e44fed1e02e70c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 04:31:18 +0000
+Subject: [PATCH 2/3] test: align stale specs with current outbox, notification
+ and booking rules
+
+- outbox worker: assert fenced updateMany outcomes, SKIPPED with the claim
+  attempt refunded, event-id propagation, bounded attempts, stale-worker
+  no-op and claim accounting (runtime unchanged)
+- notification dispatch: production templates are PUSH-only; per-channel
+  rules are exercised with fixture templates, plus disabled-PUSH cases
+- Arabic catalog: EMAIL_NOT_EDITABLE, VISIT_STATUS_MANAGED_BY_SYSTEM
+- notification reliability: drain until the test's own event is claimed
+  instead of depending on an empty outbox
+- pharmacy races 3-5: the loser may fail on the stale version or on the
+  state machine depending on timing; both are accepted, row checks kept
+- doctor-dashboard e2e: one-step patient reschedule (894cba6) and the
+  write-once profile email (00878e1), including their negative sides
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CgaVi6iSsWeYo99r1dcA2m
+---
+ .../dispatch-notification.use-case.spec.ts    |  71 ++++++-
+ ...tification-reliability.integration.spec.ts |   8 +-
+ ...harmacy-order-workflow.integration.spec.ts |  21 +-
+ src/shared/core/errors/error-messages.ar.ts   |   2 +
+ src/shared/core/outbox/outbox.worker.spec.ts  | 200 ++++++++++++++----
+ test/doctor-dashboard.e2e-spec.ts             |  31 ++-
+ 6 files changed, 272 insertions(+), 61 deletions(-)
+
+diff --git a/src/modules/notifications/application/dispatch-notification.use-case.spec.ts b/src/modules/notifications/application/dispatch-notification.use-case.spec.ts
+index 1a93d9e..a8f9118 100644
+--- a/src/modules/notifications/application/dispatch-notification.use-case.spec.ts
++++ b/src/modules/notifications/application/dispatch-notification.use-case.spec.ts
+@@ -1,5 +1,23 @@
+ import { Settings } from 'luxon';
+ import { DispatchNotificationUseCase } from './dispatch-notification.use-case';
++import { NOTIFICATION_TEMPLATES } from '../domain/notification-templates';
++
++// Every production template is PUSH-only today (SMS has no provider, File 10
++// Part 4). The dispatcher still loops per channel, so its per-channel rules
++// (opt-out, inbox-row choice, replay) are exercised against two fixture
++// templates rather than by pretending a real template has an SMS channel.
++jest.mock('../domain/notification-templates', () => {
++  const actual = jest.requireActual('../domain/notification-templates');
++  const render = (p: Record<string, unknown>) => ({ title: 't', body: 'b', data: { id: p.id } });
++  return {
++    ...actual,
++    NOTIFICATION_TEMPLATES: {
++      ...actual.NOTIFICATION_TEMPLATES,
++      TestTwoChannelTransactional: { tier: 'TRANSACTIONAL', channels: ['PUSH', 'SMS'], extractUserId: (p: any) => p.patientId, render },
++      TestTwoChannelSafetyCritical: { tier: 'SAFETY_CRITICAL', channels: ['PUSH', 'SMS'], extractUserId: (p: any) => p.patientId, render },
++    },
++  };
++});
+ 
+ function buildTx() {
+   return {} as any;
+@@ -39,11 +57,29 @@ describe('DispatchNotificationUseCase', () => {
+     expect(prisma.$transaction).not.toHaveBeenCalled();
+   });
+ 
++  it('every production template is PUSH-only (no SMS provider is wired)', () => {
++    for (const [name, template] of Object.entries(NOTIFICATION_TEMPLATES)) {
++      if (name.startsWith('Test')) continue;
++      expect({ name, channels: template.channels }).toEqual({ name, channels: ['PUSH'] });
++    }
++  });
++
++  it('creates one Notification row for a real PUSH-only template and delivers it', async () => {
++    const { tx, notifications, deliver, useCase } = setup();
++    notifications.createOnce.mockResolvedValue({ id: 'notif-push', status: 'PENDING' });
++
++    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' }, 'event-1');
++
++    expect(notifications.createOnce).toHaveBeenCalledTimes(1);
++    expect(notifications.createOnce).toHaveBeenCalledWith(tx, expect.objectContaining({ userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'PUSH', sourceEventId: 'event-1', visibleInInbox: true }));
++    expect(deliver.execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'notif-push', channel: 'PUSH', userId: 'patient-1', templateCode: 'AppointmentConfirmed' }));
++  });
++
+   it('creates one Notification row per channel and delivers each when nothing suppresses it', async () => {
+     const { tx, notifications, deliver, useCase } = setup();
+     notifications.createOnce.mockResolvedValueOnce({ id: 'notif-push' }).mockResolvedValueOnce({ id: 'notif-sms' });
+ 
+-    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
++    await useCase.executeFromEvent('TestTwoChannelTransactional', { appointmentId: 'appt-1', patientId: 'patient-1' });
+ 
+     expect(notifications.createOnce).toHaveBeenCalledTimes(2);
+     expect(notifications.createOnce).toHaveBeenCalledWith(tx, expect.objectContaining({ userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'PUSH' }));
+@@ -57,7 +93,7 @@ describe('DispatchNotificationUseCase', () => {
+     preferences.listForUser.mockResolvedValue([{ tier: 'TRANSACTIONAL', channel: 'SMS', enabled: false }]);
+     notifications.createOnce.mockResolvedValue({ id: 'notif-push' });
+ 
+-    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
++    await useCase.executeFromEvent('TestTwoChannelTransactional', { appointmentId: 'appt-1', patientId: 'patient-1' });
+ 
+     expect(notifications.createOnce).toHaveBeenCalledTimes(1);
+     expect(notifications.createOnce).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ channel: 'PUSH' }));
+@@ -69,12 +105,33 @@ describe('DispatchNotificationUseCase', () => {
+     preferences.listForUser.mockResolvedValue([{ tier: 'SAFETY_CRITICAL', channel: 'PUSH', enabled: false }, { tier: 'SAFETY_CRITICAL', channel: 'SMS', enabled: false }]);
+     notifications.createOnce.mockResolvedValue({ id: 'notif-1' });
+ 
+-    await useCase.executeFromEvent('CriticalLabResult', { labOrderId: 'order-1', patientId: 'patient-1', resultId: 'res-1' });
++    await useCase.executeFromEvent('TestTwoChannelSafetyCritical', { id: 'x', patientId: 'patient-1' });
+ 
+     expect(notifications.createOnce).toHaveBeenCalledTimes(2);
+     expect(deliver.execute).toHaveBeenCalledTimes(2);
+   });
+ 
++  it('the real CriticalLabResult template ignores a disabled PUSH preference', async () => {
++    const { notifications, preferences, deliver, useCase } = setup();
++    preferences.listForUser.mockResolvedValue([{ tier: 'SAFETY_CRITICAL', channel: 'PUSH', enabled: false }]);
++    notifications.createOnce.mockResolvedValue({ id: 'notif-1', status: 'PENDING' });
++
++    await useCase.executeFromEvent('CriticalLabResult', { labOrderId: 'order-1', patientId: 'patient-1', resultId: 'res-1' });
++
++    expect(notifications.createOnce).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ tier: 'SAFETY_CRITICAL', channel: 'PUSH' }));
++    expect(deliver.execute).toHaveBeenCalledTimes(1);
++  });
++
++  it('a TRANSACTIONAL PUSH the user disabled produces no row and no delivery', async () => {
++    const { notifications, preferences, deliver, useCase } = setup();
++    preferences.listForUser.mockResolvedValue([{ tier: 'TRANSACTIONAL', channel: 'PUSH', enabled: false }]);
++
++    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
++
++    expect(notifications.createOnce).not.toHaveBeenCalled();
++    expect(deliver.execute).not.toHaveBeenCalled();
++  });
++
+   it('creates the row but skips delivery when quiet hours suppress a TRANSACTIONAL notification', async () => {
+     const { notifications, policyConfig, deliver, useCase } = setup();
+     // 2026-01-01T12:00:00Z is 14:00 in Africa/Cairo (UTC+2, no DST) — a fixed, deterministic local hour, not the real system clock.
+@@ -84,7 +141,7 @@ describe('DispatchNotificationUseCase', () => {
+ 
+     await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
+ 
+-    expect(notifications.createOnce).toHaveBeenCalledTimes(2);
++    expect(notifications.createOnce).toHaveBeenCalledTimes(1);
+     expect(deliver.execute).not.toHaveBeenCalled();
+   });
+ 
+@@ -96,14 +153,14 @@ describe('DispatchNotificationUseCase', () => {
+ 
+     await useCase.executeFromEvent('CriticalLabResult', { labOrderId: 'order-1', patientId: 'patient-1', resultId: 'res-1' });
+ 
+-    expect(deliver.execute).toHaveBeenCalledTimes(2);
++    expect(deliver.execute).toHaveBeenCalledTimes(1);
+   });
+ 
+   it('keys every row on the source outbox event and shows exactly one of them in the inbox', async () => {
+     const { tx, notifications, useCase } = setup();
+     notifications.createOnce.mockResolvedValueOnce({ id: 'notif-push', status: 'PENDING' }).mockResolvedValueOnce({ id: 'notif-sms', status: 'PENDING' });
+ 
+-    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' }, 'event-1');
++    await useCase.executeFromEvent('TestTwoChannelTransactional', { id: 'x', patientId: 'patient-1' }, 'event-1');
+ 
+     expect(notifications.createOnce).toHaveBeenNthCalledWith(1, tx, expect.objectContaining({ channel: 'PUSH', sourceEventId: 'event-1', visibleInInbox: true }));
+     expect(notifications.createOnce).toHaveBeenNthCalledWith(2, tx, expect.objectContaining({ channel: 'SMS', sourceEventId: 'event-1', visibleInInbox: false }));
+@@ -113,7 +170,7 @@ describe('DispatchNotificationUseCase', () => {
+     const { notifications, deliver, useCase } = setup();
+     notifications.createOnce.mockResolvedValueOnce({ id: 'notif-push', status: 'SENT' }).mockResolvedValueOnce({ id: 'notif-sms', status: 'FAILED' });
+ 
+-    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' }, 'event-1');
++    await useCase.executeFromEvent('TestTwoChannelTransactional', { id: 'x', patientId: 'patient-1' }, 'event-1');
+ 
+     expect(deliver.execute).toHaveBeenCalledTimes(1);
+     expect(deliver.execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'notif-sms', channel: 'SMS' }));
+diff --git a/src/modules/notifications/infrastructure/notification-reliability.integration.spec.ts b/src/modules/notifications/infrastructure/notification-reliability.integration.spec.ts
+index 59512d3..02b0859 100644
+--- a/src/modules/notifications/infrastructure/notification-reliability.integration.spec.ts
++++ b/src/modules/notifications/infrastructure/notification-reliability.integration.spec.ts
+@@ -108,7 +108,13 @@ describe('Notification delivery reliability (integration, real Postgres)', () =>
+     const worker = new OutboxWorker(prisma);
+     const handled = jest.fn().mockResolvedValue(undefined);
+     worker.registerHandler({ eventName, handle: handled });
+-    await worker.drain();
++    // `drain()` claims the oldest BATCH_SIZE rows of the whole table, so rows
++    // other suites left PENDING can fill the first batches (each is SKIPPED
++    // for want of a handler and leaves the claim set). Keep draining until
++    // this event has been claimed instead of depending on suite order.
++    for (let i = 0; i < 50 && handled.mock.calls.length === 0; i += 1) {
++      await worker.drain();
++    }
+ 
+     expect(handled).toHaveBeenCalledTimes(1);
+     expect(await prisma.outboxEvent.findUnique({ where: { id } })).toMatchObject({ status: 'PROCESSED', attempts: 1 });
+diff --git a/src/modules/pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts b/src/modules/pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts
+index 6df9d47..0a0c381 100644
+--- a/src/modules/pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts
++++ b/src/modules/pharmacy-fulfillment/infrastructure/pharmacy-order-workflow.integration.spec.ts
+@@ -10,7 +10,7 @@ import { RejectPharmacyOrderUseCase } from '../application/reject-pharmacy-order
+ import { SubmitPharmacyOrderQuoteUseCase } from '../application/submit-pharmacy-order-quote.use-case';
+ import { AppConfigModule } from '../../../shared/config/config.module';
+ import { RequestContextModule } from '../../../shared/core/context/request-context.module';
+-import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
++import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+ import { OutboxModule } from '../../../shared/core/outbox/outbox.module';
+ import { WebhookEventModule } from '../../../shared/core/webhooks/webhook-event.module';
+ import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
+@@ -34,6 +34,19 @@ dotenv.config();
+  * pharmacy/branch pairs (Pharmacy A / Branch A1, Pharmacy B / Branch B1)
+  * back the authorization/IDOR assertions.
+  */
++/**
++ * The loser of a same-row race can fail two legitimate ways depending on
++ * timing: it read the row before the winner committed (stale `version` ->
++ * OptimisticLockError, 409) or after (the state machine rejects the
++ * transition -> that transition's BusinessRuleError, 422). Either way its
++ * write never lands; the row assertions after each race prove that part.
++ */
++function expectLostRace(reason: unknown, stateRuleCode: string): void {
++  if (reason instanceof OptimisticLockError) return;
++  expect(reason).toBeInstanceOf(BusinessRuleError);
++  expect((reason as BusinessRuleError).code).toBe(stateRuleCode);
++}
++
+ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
+   let moduleRef: TestingModule;
+   let prisma: PrismaService;
+@@ -325,7 +338,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
+       const rejected = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+       expect(fulfilled).toHaveLength(1);
+       expect(rejected).toHaveLength(1);
+-      expect(rejected[0].reason).toBeInstanceOf(OptimisticLockError);
++      expectLostRace(rejected[0].reason, 'PHARMACY_ORDER_NOT_UNDER_REVIEW');
+ 
+       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
+       expect(row.status).toBe('ACCEPTED');
+@@ -346,7 +359,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
+       const rejected = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+       expect(fulfilled).toHaveLength(1);
+       expect(rejected).toHaveLength(1);
+-      expect(rejected[0].reason).toBeInstanceOf(OptimisticLockError);
++      expectLostRace(rejected[0].reason, 'PHARMACY_ORDER_NOT_READY_FOR_FULFILLMENT');
+ 
+       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
+       expect(row.status).toBe('READY_FOR_PICKUP');
+@@ -366,7 +379,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
+       const rejected = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
+       expect(fulfilled).toHaveLength(1);
+       expect(rejected).toHaveLength(1);
+-      expect(rejected[0].reason).toBeInstanceOf(OptimisticLockError);
++      expectLostRace(rejected[0].reason, 'PHARMACY_ORDER_NOT_READY_TO_COMPLETE');
+ 
+       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
+       expect(row.status).toBe('FULFILLED');
+diff --git a/src/shared/core/errors/error-messages.ar.ts b/src/shared/core/errors/error-messages.ar.ts
+index 8cc6f86..3516f12 100644
+--- a/src/shared/core/errors/error-messages.ar.ts
++++ b/src/shared/core/errors/error-messages.ar.ts
+@@ -56,6 +56,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+ 
+   // ── Accounts & staff provisioning ───────────────────────────────────────
+   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
++  EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
+   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
+   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
+   PHARMACY_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذه الصيدلية.',
+@@ -93,6 +94,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
+   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
+   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
++  VISIT_STATUS_MANAGED_BY_SYSTEM: 'حالة إلغاء أو انتهاء الموعد تُحدَّث تلقائياً بواسطة النظام.',
+   APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
+   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
+   SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
+diff --git a/src/shared/core/outbox/outbox.worker.spec.ts b/src/shared/core/outbox/outbox.worker.spec.ts
+index d3f6a2a..b86ef1d 100644
+--- a/src/shared/core/outbox/outbox.worker.spec.ts
++++ b/src/shared/core/outbox/outbox.worker.spec.ts
+@@ -1,76 +1,192 @@
++import { OUTBOX_CONSTANTS } from '../../config/constants';
+ import { OutboxWorker } from './outbox.worker';
+ 
+ /**
+- * Regression cover for the queue-stall bug: events with no registered handler
+- * used to be put back to PENDING, so once `BATCH_SIZE` of them accumulated
+- * they refilled every claim batch and no newer event was ever drained again.
++ * Regression cover for the outbox drain side:
++ * - the queue-stall bug (events with no handler used to go back to PENDING
++ *   and refill every claim batch forever);
++ * - fenced outcome writes (every write after the claim is an `updateMany`
++ *   conditioned on `status='PROCESSING'` AND the claim's `updated_at`, so a
++ *   slow worker whose lease was reclaimed cannot overwrite the reclaimer);
++ * - claim-time attempt accounting bounded by `MAX_ATTEMPTS`.
+  */
+ describe('OutboxWorker', () => {
++  const claimedAt = new Date('2026-10-03T10:00:00.000Z');
++
+   function setup() {
+     const outboxEvent = {
+       update: jest.fn().mockResolvedValue({}),
+-      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
++      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
++      findMany: jest.fn(),
+     };
+-    const prisma = { outboxEvent } as any;
++    const tx = { outboxEvent, $queryRaw: jest.fn() };
++    const prisma = {
++      outboxEvent,
++      $transaction: jest.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
++    } as any;
+     const worker = new OutboxWorker(prisma);
+-    return { prisma, outboxEvent, worker };
++    return { prisma, tx, outboxEvent, worker };
++  }
++
++  function claimed(overrides: Record<string, unknown> = {}) {
++    return {
++      id: 'evt-1',
++      event_name: 'SomethingNobodyConsumes',
++      payload: {},
++      status: 'PROCESSING',
++      attempts: 1,
++      updated_at: claimedAt,
++      ...overrides,
++    } as any;
+   }
+ 
+-  const event = { id: 'evt-1', event_name: 'SomethingNobodyConsumes', payload: {} } as any;
++  const fence = (id: string) => ({ id, status: 'PROCESSING', updated_at: claimedAt });
+ 
+-  it('marks an unhandled event SKIPPED rather than returning it to the queue', async () => {
+-    const { outboxEvent, worker } = setup();
++  describe('missing handler', () => {
++    it('marks the event SKIPPED with a write fenced on the claim', async () => {
++      const { outboxEvent, worker } = setup();
+ 
+-    await (worker as any).processOne(event);
++      await (worker as any).processOne(claimed());
+ 
+-    expect(outboxEvent.update).toHaveBeenCalledWith({
+-      where: { id: 'evt-1' },
+-      data: { status: 'SKIPPED' },
++      expect(outboxEvent.updateMany).toHaveBeenCalledWith({
++        where: fence('evt-1'),
++        data: { status: 'SKIPPED', attempts: { decrement: 1 } },
++      });
+     });
+-  });
+ 
+-  it('never puts an unhandled event back to PENDING (what stalled the queue)', async () => {
+-    const { outboxEvent, worker } = setup();
++    it('never puts an unhandled event back to PENDING (what stalled the queue)', async () => {
++      const { outboxEvent, worker } = setup();
++
++      await (worker as any).processOne(claimed());
++
++      const writes = [...outboxEvent.update.mock.calls, ...outboxEvent.updateMany.mock.calls];
++      expect(writes.some(([args]) => args?.data?.status === 'PENDING')).toBe(false);
++    });
++
++    it('refunds the attempt the claim consumed, so SKIPPED never burns retry budget', async () => {
++      const { outboxEvent, worker } = setup();
++
++      await (worker as any).processOne(claimed({ attempts: 3 }));
++
++      const [[args]] = outboxEvent.updateMany.mock.calls;
++      expect(args.data.attempts).toEqual({ decrement: 1 });
++    });
++
++    it('re-queues previously skipped events when their handler finally registers', () => {
++      const { outboxEvent, worker } = setup();
++
++      worker.registerHandler({ eventName: 'SomethingNobodyConsumes', handle: jest.fn() });
++
++      expect(outboxEvent.updateMany).toHaveBeenCalledWith({
++        where: { event_name: 'SomethingNobodyConsumes', status: 'SKIPPED' },
++        data: { status: 'PENDING' },
++      });
++    });
+ 
+-    await (worker as any).processOne(event);
++    it('does not fail handler registration when the re-queue write fails', async () => {
++      const { outboxEvent, worker } = setup();
++      outboxEvent.updateMany.mockRejectedValueOnce(new Error('db down'));
+ 
+-    const wentBackToPending = outboxEvent.update.mock.calls.some(
+-      ([args]: [{ data?: { status?: string } }]) => args?.data?.status === 'PENDING',
+-    );
+-    expect(wentBackToPending).toBe(false);
++      expect(() => worker.registerHandler({ eventName: 'X', handle: jest.fn() })).not.toThrow();
++      await new Promise((resolve) => setImmediate(resolve));
++    });
+   });
+ 
+-  it('does not count a missing handler as a delivery attempt', async () => {
+-    const { outboxEvent, worker } = setup();
++  describe('handled event', () => {
++    it('passes the payload and the event id (consumers dedupe on it) and marks PROCESSED', async () => {
++      const { outboxEvent, worker } = setup();
++      const handle = jest.fn().mockResolvedValue(undefined);
++      worker.registerHandler({ eventName: 'Consumed', handle });
++      outboxEvent.updateMany.mockClear();
++
++      await (worker as any).processOne(claimed({ id: 'evt-2', event_name: 'Consumed', payload: { a: 1 } }));
++
++      expect(handle).toHaveBeenCalledWith({ a: 1 }, 'evt-2');
++      expect(outboxEvent.updateMany).toHaveBeenCalledWith({
++        where: fence('evt-2'),
++        data: { status: 'PROCESSED', processed_at: expect.any(Date) },
++      });
++      expect(outboxEvent.update).not.toHaveBeenCalled();
++    });
++
++    it('returns a failed event to PENDING without re-counting the attempt the claim already took', async () => {
++      const { outboxEvent, worker } = setup();
++      worker.registerHandler({ eventName: 'Flaky', handle: jest.fn().mockRejectedValue(new Error('smtp timeout')) });
++      outboxEvent.updateMany.mockClear();
++
++      await (worker as any).processOne(claimed({ event_name: 'Flaky', attempts: 2 }));
++
++      expect(outboxEvent.updateMany).toHaveBeenCalledWith({
++        where: fence('evt-1'),
++        data: { status: 'PENDING', attempts: 2, last_error: 'smtp timeout' },
++      });
++    });
++
++    it('moves the event to FAILED once the claim reaches MAX_ATTEMPTS', async () => {
++      const { outboxEvent, worker } = setup();
++      worker.registerHandler({ eventName: 'Broken', handle: jest.fn().mockRejectedValue('boom') });
++      outboxEvent.updateMany.mockClear();
++
++      await (worker as any).processOne(claimed({ event_name: 'Broken', attempts: OUTBOX_CONSTANTS.MAX_ATTEMPTS }));
++
++      expect(outboxEvent.updateMany).toHaveBeenCalledWith({
++        where: fence('evt-1'),
++        data: { status: 'FAILED', attempts: OUTBOX_CONSTANTS.MAX_ATTEMPTS, last_error: 'boom' },
++      });
++    });
+ 
+-    await (worker as any).processOne(event);
++    it('a stale worker whose lease was reclaimed changes nothing (fenced write matches 0 rows)', async () => {
++      const { outboxEvent, worker } = setup();
++      worker.registerHandler({ eventName: 'Slow', handle: jest.fn().mockResolvedValue(undefined) });
++      outboxEvent.updateMany.mockClear();
++      outboxEvent.updateMany.mockResolvedValue({ count: 0 });
+ 
+-    const [[args]] = outboxEvent.update.mock.calls;
+-    expect(args.data).not.toHaveProperty('attempts');
++      await expect((worker as any).processOne(claimed({ event_name: 'Slow' }))).resolves.toBeUndefined();
++
++      const [[args]] = outboxEvent.updateMany.mock.calls;
++      expect(args.where).toEqual(fence('evt-1'));
++      expect(outboxEvent.update).not.toHaveBeenCalled();
++    });
+   });
+ 
+-  it('re-queues previously skipped events when their handler finally registers', () => {
+-    const { outboxEvent, worker } = setup();
++  describe('claimBatch', () => {
++    it('dead-letters exhausted rows, then claims with an attempt increment and returns the claimed rows', async () => {
++      const { tx, outboxEvent, worker } = setup();
++      tx.$queryRaw.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
++      outboxEvent.findMany.mockResolvedValue([claimed({ id: 'a' }), claimed({ id: 'b' })]);
++
++      const rows = await (worker as any).claimBatch();
++
++      const [[deadLetter], [claim]] = outboxEvent.updateMany.mock.calls;
++      expect(deadLetter.where.attempts).toEqual({ gte: OUTBOX_CONSTANTS.MAX_ATTEMPTS });
++      expect(deadLetter.data.status).toBe('FAILED');
++      expect(claim).toEqual({
++        where: { id: { in: ['a', 'b'] } },
++        data: { status: 'PROCESSING', attempts: { increment: 1 } },
++      });
++      expect(rows.map((r: { id: string }) => r.id)).toEqual(['a', 'b']);
++    });
+ 
+-    worker.registerHandler({ eventName: 'SomethingNobodyConsumes', handle: jest.fn() });
++    it('claims nothing and writes no PROCESSING rows when the queue is empty', async () => {
++      const { tx, outboxEvent, worker } = setup();
++      tx.$queryRaw.mockResolvedValue([]);
+ 
+-    expect(outboxEvent.updateMany).toHaveBeenCalledWith({
+-      where: { event_name: 'SomethingNobodyConsumes', status: 'SKIPPED' },
+-      data: { status: 'PENDING' },
++      await expect((worker as any).claimBatch()).resolves.toEqual([]);
++      expect(outboxEvent.updateMany).toHaveBeenCalledTimes(1);
++      expect(outboxEvent.findMany).not.toHaveBeenCalled();
+     });
+   });
+ 
+-  it('routes an event to its handler and marks it PROCESSED', async () => {
+-    const { outboxEvent, worker } = setup();
+-    const handle = jest.fn().mockResolvedValue(undefined);
+-    outboxEvent.updateMany.mockResolvedValue({ count: 0 });
+-    worker.registerHandler({ eventName: 'Consumed', handle });
++  it('drain() does not overlap with a run that is still in progress', async () => {
++    const { prisma, worker } = setup();
++    let release!: (rows: unknown[]) => void;
++    prisma.$transaction.mockImplementationOnce(() => new Promise((resolve) => (release = resolve)));
+ 
+-    await (worker as any).processOne({ id: 'evt-2', event_name: 'Consumed', payload: { a: 1 } });
++    const first = worker.drain();
++    await worker.drain();
++    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+ 
+-    expect(handle).toHaveBeenCalledWith({ a: 1 });
+-    expect(outboxEvent.update).toHaveBeenCalledWith(
+-      expect.objectContaining({ data: expect.objectContaining({ status: 'PROCESSED' }) }),
+-    );
++    release([]);
++    await first;
+   });
+ });
+diff --git a/test/doctor-dashboard.e2e-spec.ts b/test/doctor-dashboard.e2e-spec.ts
+index 5ddaee2..cdfe743 100644
+--- a/test/doctor-dashboard.e2e-spec.ts
++++ b/test/doctor-dashboard.e2e-spec.ts
+@@ -280,14 +280,24 @@ describe('Doctor Dashboard (e2e)', () => {
+       expect(doctor.specialty_code).toBe(specialtyCode);
+     });
+ 
+-    it('updates the account name/email through the shared /v1/auth/me endpoint', async () => {
++    it('updates the account name through the shared /v1/auth/me endpoint, but never an existing email', async () => {
+       const response = await request(server())
+         .patch('/v1/auth/me')
+         .set('Authorization', `Bearer ${doctorAToken}`)
+-        .send({ email: `doctor.a.updated.${suffix}@example.com` })
++        .send({ display_name: 'Amr Adel-Updated' })
+         .expect(200);
+-
+       expect(response.body.success).toBe(true);
++
++      // Once set, an email is an account identifier (00878e1), not profile data.
++      const rejected = await request(server())
++        .patch('/v1/auth/me')
++        .set('Authorization', `Bearer ${doctorAToken}`)
++        .send({ email: `doctor.a.updated.${suffix}@example.com` })
++        .expect(422);
++      expect(rejected.body.error.code).toBe('EMAIL_NOT_EDITABLE');
++
++      const user = await prisma.user.findFirstOrThrow({ where: { email: `doctor.a.${suffix}@example.com` } });
++      expect(user).toMatchObject({ first_name: 'Amr', last_name: 'Adel-Updated' });
+     });
+   });
+ 
+@@ -765,7 +775,7 @@ describe('Doctor Dashboard (e2e)', () => {
+       await request(server()).get('/v1/appointments').set('Authorization', `Bearer ${doctorAToken}`).expect(403);
+     });
+ 
+-    it('still returns an unconfirmed HOLD for a patient-initiated reschedule (unchanged contract)', async () => {
++    it('completes a patient-initiated reschedule in one step on the same payment (894cba6)', async () => {
+       const booked = await bookConfirmedAppointment(affiliationAId, new Date('2027-02-06T09:00:00Z'));
+       const newSlot = await freshOpenSlot(affiliationAId, new Date('2027-02-06T10:00:00Z'));
+ 
+@@ -776,9 +786,16 @@ describe('Doctor Dashboard (e2e)', () => {
+         .send({ newSlotId: newSlot.id })
+         .expect(201);
+ 
+-      expect(response.body.data).toMatchObject({ status: 'HELD', previousAppointmentId: booked.appointmentId });
+-      expect(response.body.data).toHaveProperty('holdId');
+-      expect(response.body.data).toHaveProperty('expiresAt');
++      expect(response.body.data).toMatchObject({ status: 'CONFIRMED', slotId: newSlot.id, previousAppointmentId: booked.appointmentId });
++      expect(response.body.data).not.toHaveProperty('holdId');
++
++      const [previous, replacement] = await Promise.all([
++        prisma.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } }),
++        prisma.appointment.findUniqueOrThrow({ where: { id: response.body.data.appointmentId } }),
++      ]);
++      expect(previous.status).toBe('RESCHEDULED');
++      expect(replacement.status).toBe('CONFIRMED');
++      expect(replacement.payment_intent_id).toBe(previous.payment_intent_id);
+     }, 60000);
+ 
+     it('still gates schedule-template admin CRUD to ADMIN only', async () => {
+-- 
+2.43.0
+
+
+From 33a1025aaaebc71f19314a8b23211e4937b81e05 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 04:31:18 +0000
+Subject: [PATCH 3/3] docs: add V1 launch readiness register and appointment PM
+ decision pack
+
+Single canonical source for both repos: evidence log, issue register,
+reproduced attended-appointment cancel/reschedule gap (P0, awaiting PM),
+appointment lifecycle map, PM-APPT-01..05, and the initial V1 feature
+readiness matrix.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CgaVi6iSsWeYo99r1dcA2m
+---
+ docs/V1_LAUNCH_READINESS.md | 541 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 541 insertions(+)
+ create mode 100644 docs/V1_LAUNCH_READINESS.md
+
+diff --git a/docs/V1_LAUNCH_READINESS.md b/docs/V1_LAUNCH_READINESS.md
+new file mode 100644
+index 0000000..53e1ce1
+--- /dev/null
++++ b/docs/V1_LAUNCH_READINESS.md
+@@ -0,0 +1,541 @@
++# MedSuper V1 Launch Readiness
++
++The single canonical launch-readiness source for both `clinic-reservations`
++(backend) and `med-super` (Flutter). It holds the evidence log, issue
++register, PM decision register and V1 feature readiness matrix. Update it in
++place; do not fork it into per-repo or per-date copies.
++
++Plan: *MedSuper Backend and Flutter Launch-Readiness Master Plan* (started 2026-10-03).
++
++| | Backend `clinic-reservations` | Flutter `med-super` |
++|---|---|---|
++| Baseline ref | `staging` @ `894cba6` | `staging` @ `9537165` (the plan recorded `93ebe2e`, which is not on the remote; `staging` had moved) |
++| Working branch | `claude/medsuperv1-launch-readiness-4hgv73` | `claude/medsuperv1-launch-readiness-4hgv73` |
++
++Status words used below: `PRODUCTION READY`, `NEEDS HARDENING`,
++`PM DECISION REQUIRED`, `FEATURE FLAGGED`, `FUTURE`, `BLOCKED`. `UNVERIFIED`
++marks anything without evidence yet. "Implemented", "tested" and "verified"
++are not the same thing and are not used interchangeably here.
++
++---
++
++## 1. Evidence log
++
++All runs were in a cloud container, Node 22.22, Flutter 3.47.4, Dio 5.11.0.
++
++### Baseline (before any change)
++
++| Check | Result |
++|---|---|
++| Backend `npm test` | 12 suites failed / 157 passed; 57 tests failed / 931 passed. 9 of the failing suites were `*.integration.spec.ts` that tried to reach the `.env` database (placeholder host, unreachable) |
++| Backend `npm run lint` | 0 errors, 1 warning (`update-user-profile.use-case.ts:37` unused `_dropped`) |
++| Backend `npm run build` | pass |
++| Flutter `flutter analyze` | 0 errors, 0 warnings, 104 info |
++| Flutter `flutter test` | 486 passed, 1 failed (`detail_screens_test.dart`: "a future appointment explains that visit controls are not ready") |
++
++### After this batch
++
++| Check | Environment | Result |
++|---|---|---|
++| Backend `npm test` (unit only now) | no database | 160 suites / 952 tests pass |
++| Backend `npm run test:integration` | disposable local Postgres 16 + PostGIS 3.4 (port 55432) and Redis (port 56379), `prisma migrate deploy` (48 migrations) + `npm run db:seed` | 9 suites / 47 tests pass, three consecutive runs, each with 30 forced handler-less PENDING outbox events |
++| Backend `npm run lint` / `build` | — | unchanged: 1 warning / pass |
++| Flutter `flutter test` | — | all pass (adds 9 timezone, 11 transport and 2 reschedule-contract tests) |
++| Flutter `flutter analyze` | — | 104 info, no new findings |
++| Backend `npm run test:e2e` | same disposable DB | 5 suites / 110 tests pass (§1.1) |
++
++Mutation checks: reverting the outbox SKIPPED/fencing behavior fails 3 and 2
++outbox tests respectively; restoring the old Flutter `AuthInterceptor` fails
++the concurrent-401 and replay-5xx tests; the timezone tests fail 5/9 against
++the old fixed-offset code.
++
++### 1.1 E2E
++
++`npm run test:e2e` on the same disposable stack: 5 suites / 110 tests pass
++(doctor dashboard, provider assistants, provider clinical requests,
++scheduling availability, provider directory). Baseline: 2 failures, both
++stale expectations against deliberate rule changes (LR-022).
++
++### Not run / environment limits
++
++- No production, staging or shared database was touched. The `.env` in the
++  backend checkout holds placeholder hosts only.
++- Docker daemon unavailable; the disposable Postgres was a local `initdb`
++  cluster under `/var/tmp`. One cluster died mid-run when its scratch data
++  directory's permissions were reset (environmental, not a product failure);
++  it was rebuilt and all evidence above comes from the rebuilt cluster.
++- No Android SDK signing, no iOS/macOS toolchain, no emulator or device: no
++  rendered-UI, release-build or device evidence exists yet.
++- No real provider credentials (SMS, FCM, Paymob, ImageKit).
++
++---
++
++## 2. Issue register
++
++| ID | Surface | Type | Pri | Status |
++|---|---|---|---|---|
++| LR-001 | backend tests | environment / safety | P1 | Fixed |
++| LR-002 | backend outbox | stale test | P2 | Fixed |
++| LR-003 | backend notifications | stale test | P2 | Fixed |
++| LR-004 | backend errors | stale test | P3 | Fixed |
++| LR-005 | backend notifications | stale test (order-dependent) | P2 | Fixed |
++| LR-006 | backend pharmacy | stale test (timing-dependent) | P2 | Fixed |
++| LR-007 | Flutter provider dashboard | stale test | P2 | Fixed (policy open, PM-APPT-03) |
++| LR-008 | Flutter booking | defect (timezone) | P1 | Fixed |
++| LR-009 | Flutter transport | defect (retry) | P2 | Fixed |
++| LR-010 | Flutter transport | defect (auth/session) | P1 | Fixed |
++| LR-011 | appointments | product decision / financial | **P0** | **PM DECISION REQUIRED** (PM-APPT-01, -02) |
++| LR-012 | appointments | product decision | P1 | **PM DECISION REQUIRED** (PM-APPT-04) |
++| LR-013 | appointments / assistants | product decision / authz | P1 | **PM DECISION REQUIRED** (PM-APPT-05) |
++| LR-014 | appointments visit status | product decision | P2 | **PM DECISION REQUIRED** (PM-APPT-03) |
++| LR-015 | appointments booking | defect candidate | P2 | Open, reproduction pending |
++| LR-016 | notifications safety-critical | release gate / product | P1 | Open |
++| LR-017 | Prisma schema | contract drift | P3 | Open |
++| LR-018 | Flutter dates | hardening | P2 | Open |
++| LR-019 | docs | stale documentation | P3 | Open (Phase 5) |
++| LR-020 | release | external gates | P1 | Open, see §5 |
++| LR-021 | Flutter ↔ backend reschedule | contract mismatch | P1 | Fixed |
++| LR-022 | backend e2e | stale test | P2 | Fixed |
++
++### LR-001 — `npm test` wrote to whatever database `.env` named
++
++- **Evidence**: `jest.config.js` matched every `*.spec.ts`, including nine
++  `*.integration.spec.ts` that call `dotenv.config()` and then create and
++  delete users, wallets, appointments and outbox rows. There is no CI
++  workflow, so `npm test` is only run by hand, against whatever `.env`
++  points at (a shared Neon branch, staging, or production).
++- **Repair**: `npm test` now excludes `*.integration.spec.ts`. New
++  `npm run test:integration` (`jest.integration.config.js`), plus
++  `test:e2e`, load `test/require-disposable-db.js`, which refuses to start
++  without `TEST_DATABASE_URL`, refuses a value equal to `.env`'s
++  `DATABASE_URL`/`DIRECT_URL`, and swaps it in before any spec loads.
++  `TEST_REDIS_URL` does the same for Redis.
++- **Verification**: positive, both suites ran green against the disposable DB.
++  Negative, `test:integration` with no `TEST_DATABASE_URL` fails before any
++  spec runs, and `npm test --listTests` contains no integration spec.
++
++### LR-002…LR-006 — stale backend tests
++
++- **LR-002** `outbox.worker.spec.ts` still asserted the pre-fencing `update`
++  calls and a one-argument handler. Rewritten (12 tests) around current
++  behavior: fenced `updateMany` (`status='PROCESSING'` + claim `updated_at`),
++  SKIPPED with the claim attempt refunded, never back to PENDING, event-id
++  propagation, PENDING-without-recount under `MAX_ATTEMPTS`, FAILED at
++  `MAX_ATTEMPTS`, stale-worker no-op, dead-lettering and claim accounting in
++  `claimBatch`, no overlapping drains. Runtime unchanged.
++- **LR-003** `dispatch-notification.use-case.spec.ts` assumed PUSH+SMS
++  templates; every production template is PUSH-only today. The per-channel
++  mechanism (opt-out, single inbox row, replay without re-delivery) is now
++  tested with two fixture templates, real templates are pinned to PUSH, and
++  new cases cover disabled TRANSACTIONAL PUSH (no row) and disabled
++  SAFETY_CRITICAL PUSH (still delivered).
++- **LR-004** `EMAIL_NOT_EDITABLE` and `VISIT_STATUS_MANAGED_BY_SYSTEM` were
++  thrown with Arabic messages but missing from `AR_ERROR_MESSAGES`; added
++  with the throw sites' exact wording.
++- **LR-005** `notification-reliability` drained the shared outbox table once
++  and expected its own event to be in the first `BATCH_SIZE` (20) rows. Any
++  older backlog made it fail (reproduced with 30 backlog rows). The test now
++  drains until its event is claimed (bounded at 50 drains).
++- **LR-006** pharmacy races 3–5 expected the loser to always get
++  `OptimisticLockError`; when the loser reads after the winner commits it
++  correctly gets the transition's 422 instead. `expectLostRace` accepts
++  exactly those two outcomes. The row-state assertions (one winner, correct
++  final state/version) are unchanged.
++
++### LR-007 — Flutter visit-status hint test
++
++`9bd5f7c` (2026-09-25) deliberately removed the client's visit-status time
++window; the backend never had one. The test now pins current behavior
++(future appointment offers the next action) and points at PM-APPT-03.
++The `available_near_time`/`outside_window` translation keys are unused but
++kept in case PM-APPT-03 reinstates a window.
++
++### LR-008 — Patient slot times one hour early during Egyptian DST
++
++- **Evidence**: `slot_grouping.dart` used a fixed `+02:00` for
++  `Africa/Cairo` ("Egypt has observed no DST since 2014"). Egypt reinstated
++  DST in 2023. The backend (luxon, ICU tzdata 2025b) generates slots with
++  real rules: 2026-10-03T07:00Z is 10:00 in the clinic, the app showed 09:00.
++  Wrong from the last Friday of April to the last Thursday of October, i.e.
++  on the day this plan started. Day grouping and "today/tomorrow" were also
++  wrong around midnight.
++- **Repair**: `lib/core/utils/iana_zone.dart` resolves the branch's
++  `ianaTimezone` with the `timezone` package (IANA 2025b, same release as
++  the backend; already a transitive dependency via
++  `flutter_local_notifications`, now direct). `slot_grouping.dart` and the
++  dev mock's slot generator use it. Unknown/missing zones still render as
++  explicitly labelled UTC; the device zone is never used.
++- **Verification**: `test/features/provider_profile/domain/slot_grouping_test.dart`
++  covers summer, winter, both 2026 DST transitions, the day boundary,
++  clinic-time "today", unknown zone, null zone and a non-Cairo zone. 5 of 9
++  failed before the fix.
++
++### LR-009 — 5xx retry never ran
++
++- **Evidence** (installed Dio 5.11.0): error interceptors run in add-order,
++  and `handler.reject()` defaults to `callFollowingErrorInterceptor: false`.
++  `ErrorInterceptor` rejected, so `RetryInterceptor` (added after it) never
++  saw any error that had a response. Reproduced through the real
++  `buildDioClient` chain with a scripted transport: GET 503 and keyed POST 502
++  each produced one transport call. `dio_client.dart` documented the
++  opposite order.
++- **Repair**: `ErrorInterceptor` hands its normalized error on with
++  `handler.next`; the ordering comment is corrected.
++- **Safety**: retry stays limited to GET and POSTs carrying an
++  `Idempotency-Key`, which is reused across attempts. The backend's
++  idempotency interceptor releases the key on handler error (safe
++  re-execution), replays the cached response if the first attempt actually
++  completed, and answers `409 IDEMPOTENCY_KEY_REUSE` while it is still
++  running, so no duplicate write is possible.
++- **Verification**: `test/core/network/dio_client_chain_test.dart`: GET
++  503→200 retried; keyed POST retried with the same key; un-keyed POST never
++  retried; bounded at 1+3 attempts surfacing `ApiException`; 4xx never
++  retried.
++
++### LR-010 — Concurrent token expiry failed requests; a server error during replay logged the user out
++
++- **Evidence**: `AuthInterceptor` used an `_isRefreshing` skip flag, so a
++  second request that got 401 during a refresh failed with 401 instead of
++  waiting (e.g. several screens loading on app resume). The replay of the
++  original request ran inside the same `try` as the refresh, so a 5xx or
++  timeout on the replay hit `catch (_) { clearTokens() }`, i.e. logout on a
++  server error. Both reproduced through the real chain.
++- **Repair**: single-flight refresh (one shared future), replay with the
++  stored token if another request already refreshed, one refresh per request
++  (no loops), and tokens are cleared only when the refresh itself fails. One
++  refresh per burst matters: the backend revokes every session when a
++  rotated refresh token is replayed.
++- **Verification**: five auth tests in `dio_client_chain_test.dart`; the two
++  concurrency/replay tests fail against the old interceptor.
++
++### LR-011 — Attended or past appointments can be cancelled (refund) or rescheduled (new visit, same payment)
++
++- **Evidence**: `CancelAppointmentUseCase` and `RescheduleAppointmentUseCase`
++  require only `status === 'CONFIRMED'`. No time check, no visit-status check.
++  Nothing ever moves an appointment out of `CONFIRMED` (LR-012).
++- **Reproduction** (disposable DB, real use-cases, throwaway spec not
++  committed): a PAY_AT_CLINIC appointment on 2026-09-02, visit `LEFT`,
++  cancelled by its patient on 2026-10-03 → `CANCELLED`, refund 90 / fee 10.
++  A second attended appointment rescheduled to 2026-11-02 → new `CONFIRMED`
++  appointment, visit `WAITING`, same `payment_intent_id`.
++- **Exposure**: Flutter hides the patient Cancel button unless
++  `CONFIRMED`+`WAITING` (`AppointmentSummary.isCancellable`), so this is
++  reachable through the API with the patient's own token, a stale client, or
++  before the 5-minute `TIME_EXPIRED` job runs. The client check is not an
++  authorization boundary.
++- **Candidate implementation**: unmerged branch
++  `feat/lock-appointment-changes-after-visit-start` (`8642082`) blocks cancel
++  and reschedule unless `visit_status = WAITING`, in the use-cases and in
++  the repository `WHERE`. It covers the in-room/left case but not the
++  past-and-never-attended case.
++- **Status**: the cutoff rule is a product decision → PM-APPT-01/02. Not
++  implemented.
++
++### LR-012 — Appointment status never reaches COMPLETED / NO_SHOW
++
++`AppointmentStatus` has `CHECKED_IN`, `IN_PROGRESS`, `COMPLETED`, `NO_SHOW`,
++but no runtime path sets them (only seed data). Visit progress lives in
++`visit_status`; `ExpireWaitingVisitsUseCase` moves overdue `WAITING` visits to
++`TIME_EXPIRED` but leaves `status` at `CONFIRMED`. Pharmacy order creation
++and fulfilment accept `COMPLETED` appointments, so they are written for a
++status nothing produces. → PM-APPT-04.
++
++### LR-013 — Assistant (CLINIC_STAFF) authority is broader than documented
++
++`ResolveAppointmentScopeUseCase` returns a `CLINIC_STAFF` scope over the
++provisioning doctor's affiliations, and `/v1/doctors/me/appointments/*`
++allows `DOCTOR` and `CLINIC_STAFF`. An assistant can therefore cancel
++(always as `PROVIDER_REQUEST`, full refund), reschedule and advance visit
++status on their own. The use-case doc comments still say CLINIC_STAFF is
++"deferred". → PM-APPT-05.
++
++### LR-014 — Visit status has no time window
++
++Either side can mark a next-month appointment `WAITING → IN_DOCTOR_ROOM`
++today. → PM-APPT-03.
++
++### LR-015 — Holds on slots whose start time has passed (candidate)
++
++`CreateHoldUseCase` checks that the slot is `OPEN`, not that it is in the
++future. Not reproduced yet; checking whether past slots stay `OPEN` and are
++reachable is the next step. Overlaps with PM-APPT-01 (minimum booking
++lead time).
++
++### LR-016 — SAFETY_CRITICAL lab result is push-only
++
++`CriticalLabResult` is `SAFETY_CRITICAL` and PUSH-only. With no SMS provider
++(File 10 Part 4 open decision) and FCM not yet verified in production, a
++patient with no registered device gets only an inbox row. Needs either a
++verified FCM path plus a stated fallback, or an explicit product acceptance.
++
++### LR-017 — Schema drift on `specialties.code`
++
++Migration `20260923140000_specialty_code_to_uuid` leaves
++`DEFAULT gen_random_uuid()` on `specialties.code`; `prisma/schema` has no
++default, so `prisma migrate diff` reports `ALTER COLUMN "code" DROP DEFAULT`
++and the next `migrate dev` would generate it. Decide which side is intended
++and align it in a reviewed migration (not a rewrite of the existing one).
++
++### LR-018 — Appointment times rendered in the device zone
++
++Patient appointment detail, reschedule, pharmacy review and several provider
++dashboard screens format UTC instants with `toLocal()`. Correct for devices
++set to Egyptian time; wrong for a patient or doctor whose phone is in
++another zone. The slot picker now uses the branch zone (LR-008); the rest
++should follow with `ianaLocation`.
++
++### LR-019 — Stale documentation (Phase 5)
++
++- `med-super/CLAUDE.md` still says the backend is capped at Phase 3 and
++  calls `provider_dashboard` mock-only, and lists `features/` without
++  `appointments`, `notifications`, `wallet`, which exist.
++- `ResolveAppointmentScopeUseCase` / `CancelAppointmentUseCase` comments say
++  CLINIC_STAFF is deferred (LR-013).
++- `clinic-reservations/CLAUDE.md` "Project state" describes phases that later
++  sections and the code have moved past.
++
++### LR-020 — External release gates
++
++See §5.
++
++### LR-021 — Patient reschedule broke against backend `staging`
++
++- **Evidence**: backend `894cba6` (the `staging` head, 2026-10-03) made
++  patient reschedule one step: it returns `{status: 'CONFIRMED',
++  appointmentId, slotId, previousAppointmentId}` and carries the original
++  payment over. Flutter `staging` still parsed the old hold shape
++  (`json['holdId'] as String`, which throws on null) and then sent the user
++  to `BookingConfirmScreen` to confirm and pay. Result: the server
++  rescheduled, the app reported a failure, and a retry hit 422 on the
++  now-`RESCHEDULED` appointment.
++- **Repair** (Flutter): `RescheduledAppointmentDto`/`RescheduledAppointment`;
++  datasource, repository and use-case return it; `RescheduleScreen` goes
++  straight to a "rescheduled" success screen (new `reschedule_confirmed*`
++  keys in `en`/`ar`); the reschedule-only `BookingConfirmArgs`/`initialHold`
++  path is removed; the dev mock returns the real shape and creates the
++  replacement appointment.
++- **Verification**: `test/features/appointments/data/reschedule_contract_test.dart`
++  parses the exact backend shape and drives hold → confirm → reschedule →
++  repeat-reschedule (422) through the real Dio chain against the mock. The
++  backend side is covered by the updated e2e test (LR-022), which also checks
++  the replacement keeps the same `payment_intent_id`. Not yet exercised on a
++  device against a running backend.
++
++### LR-022 — Stale backend e2e expectations
++
++`doctor-dashboard.e2e-spec.ts` still expected (a) a patient reschedule to
++return an unconfirmed hold (changed deliberately in `894cba6`) and (b) a
++profile email change to succeed (`EMAIL_NOT_EDITABLE`, deliberately added in
++`00878e1`). Both now assert the current rules, including the negative side:
++an email change is 422 and leaves the row unchanged, and the replacement
++appointment keeps the original payment intent.
++
++---
++
++## 3. PM decision register — appointment lifecycle
++
++### Current lifecycle (from source, `staging` @ `894cba6`)
++
++```
++Slot:        OPEN ──hold──▶ HELD ──confirm──▶ BOOKED ──cancel/reschedule──▶ OPEN
++Hold:        ACTIVE ──confirm──▶ CONVERTED   ACTIVE ──TTL (5 min; Fawry 15, wallet 10)──▶ EXPIRED
++Appointment: CONFIRMED ──cancel──▶ CANCELLED        (patient, doctor, assistant)
++             CONFIRMED ──reschedule──▶ RESCHEDULED  + new CONFIRMED appointment, same payment
++             CONFIRMED forever otherwise (COMPLETED / NO_SHOW / CHECKED_IN / IN_PROGRESS never set)
++Visit:       WAITING ──▶ IN_DOCTOR_ROOM ──▶ LEFT   (doctor or assistant, strict order, no time window)
++             WAITING ──slot end + APPOINTMENT_END_GRACE_MINUTES (worker, every 5 min)──▶ TIME_EXPIRED
++             any ──cancel──▶ CANCELLED
++```
++
++| Action | Who | State required | Time limit | Money | Audit / notify |
++|---|---|---|---|---|---|
++| Hold + confirm | patient; staff walk-in via `/branch/:id/create` | slot `OPEN` | none checked (LR-015) | capture at confirm (pay-at-clinic ledger / wallet / online) | audited; `AppointmentConfirmed` + doctor/assistant events |
++| Cancel | patient (reason `PATIENT_REQUEST`), doctor or assistant (must be `PROVIDER_REQUEST`) | `CONFIRMED` | **none** | patient: `CANCELLATION_TIER` fee (seed 10%); provider: full refund | audited; patient + doctor/assistant events |
++| Reschedule | patient, doctor, assistant | `CONFIRMED`; same affiliation | **none** | payment carried over, no new charge | audited; events |
++| Visit status | doctor, assistant | `CONFIRMED`, next in order | **none** | none | audited (`<from>_TO_<to>`) |
++| Stale version / races | all | optimistic `version` + `WHERE status=…` guards; partial unique index on active holds | — | — | conflicts → 409 |
++
++Concurrency is sound and covered by integration tests (one winner of N holds,
++one winner of N confirms). The gaps are rule gaps, not race gaps.
++
++### PM-APPT-01 — Patient cancellation and reschedule cutoff
++
++**Current behavior**: none; a patient can cancel or reschedule any `CONFIRMED`
++appointment at any time, including after it happened (LR-011, reproduced).
++
++**Problem**: refunds for attended visits; free repeat visits via reschedule;
++no-shows can recover their money; doctors lose slots minutes before start.
++
++**Actors**: patient, doctor, assistant, operations/finance.
++
++- **Option A: lock at scheduled start.** Patient may cancel/reschedule until
++  `slot.start_at`; after that, only provider/admin paths. Simple, closes
++  the past-appointment hole, still allows last-minute changes.
++- **Option B: lock N hours before start** (configurable `policy_configs`
++  value per region). Protects doctor schedules too; needs N chosen and
++  shown in the UI.
++- **Option C: tiered fee by lead time** (e.g. free > 24 h, fee inside), lock
++  at start. Most flexible, most to explain and test; extends the existing
++  `CANCELLATION_TIER` shape.
++
++**Recommended**: A now, enforced server-side in both use-cases and the
++repository `WHERE` (start time compared to `now()` in the DB), with B/C as
++a follow-up once operations data exists. A closes the P0 with no new
++business number to invent.
++
++**Impact**: backend: one guard + `422 APPOINTMENT_CHANGE_WINDOW_CLOSED` in
++cancel and reschedule (patient scope), Arabic catalog entry, unit and
++integration tests (past appointment, in-progress, boundary second). Flutter:
++`isCancellable` / reschedule entry also check `startAt > now`. No migration
++for A; B/C add a `policy_configs` row. No payment logic change.
++
++**Decision requested**: approve A (or choose B/C and the value of N / tiers).
++
++### PM-APPT-02 — Changes once the visit has started (IN_DOCTOR_ROOM / LEFT)
++
++**Current behavior**: patient, doctor and assistant can all cancel or
++reschedule an appointment whose visit is `IN_DOCTOR_ROOM` or `LEFT`.
++
++**Options**:
++- **A: lock for everyone once `IN_DOCTOR_ROOM`.** Exactly what the unmerged
++  `feat/lock-appointment-changes-after-visit-start` (`8642082`) implements
++  (`422 APPOINTMENT_VISIT_IN_PROGRESS`). Corrections go through an admin
++  path that does not exist yet.
++- **B: lock for patients; providers may still cancel with a mandatory
++  reason** (e.g. emergency). Keeps flexibility, needs a reason code and
++  audit, and refund rules for a visit that started.
++
++**Recommended**: A, by merging the existing branch after review and
++re-running the integration suite. LEFT is terminal for booking changes;
++corrections become an admin/finance operation.
++
++**Impact**: backend: already implemented on the branch (use-cases,
++repository `WHERE`, tests, catalog). Flutter: hide cancel/reschedule
++unless `WAITING` on the provider side too (patient side already does).
++
++**Decision requested**: approve A and merge the branch, or choose B.
++
++### PM-APPT-03 — Visit-status time window
++
++**Current behavior**: no window on either side (client window removed in
++`9bd5f7c` for early arrivals and late finishes).
++
++**Options**:
++- **A: no window** (status quo). Maximum flexibility; a mistaken tap on a
++  future appointment changes it.
++- **B: appointment day only, in the branch's IANA zone** (server-side).
++  Covers early arrival and overruns the same day; blocks future/past days.
++- **C: configurable window around `start_at`.** Precise, but needs numbers.
++
++**Recommended**: B. It matches clinic reality without inventing minute
++values, and uses the branch timezone the schema already stores.
++
++**Impact**: backend: day comparison in the branch zone in
++`UpdateAppointmentVisitStatusUseCase`, plus a new 422 code. Flutter:
++re-use the kept `available_near_time` / `outside_window` strings, and
++`ianaLocation` for the day check. Tests: before/after midnight in summer and
++winter.
++
++**Decision requested**: A, B or C.
++
++### PM-APPT-04 — Terminal appointment states (COMPLETED / NO_SHOW)
++
++**Current behavior**: appointments stay `CONFIRMED` forever; `visit_status`
++carries progress; `TIME_EXPIRED` is visit-level only.
++
++**Options**:
++- **A: derive.** `LEFT` ⇒ `status COMPLETED`, `TIME_EXPIRED` ⇒ `NO_SHOW`, in
++  the same transaction / worker job. Makes PM-APPT-01/02 trivially
++  enforceable by status and fixes pharmacy's `COMPLETED` checks.
++- **B: keep `visit_status` as the only source** and remove the unused enum
++  values from use (document `CONFIRMED` + `LEFT` as "done").
++
++**Recommended**: A. No-show then needs its own follow-up rule (refund? fee?),
++which is a separate decision; until then, NO_SHOW changes no money.
++
++**Impact**: backend: two writes added to existing paths, reconciliation of
++existing rows by a reviewed data migration (not run against live data
++without approval), list/filter DTOs. Flutter: status labels.
++
++**Decision requested**: A or B; and, separately, the no-show money rule.
++
++### PM-APPT-05 — Assistant (CLINIC_STAFF) authority
++
++**Current behavior**: assistants can independently cancel (full refund),
++reschedule and change visit status for all of their doctor's branches
++(LR-013).
++
++**Options**:
++- **A: assistants may do visit status and reschedule; cancellation needs
++  the doctor.** (Draft + approve, mirroring clinical requests.)
++- **B: assistants have full appointment authority** (current code), audited
++  under their own membership.
++- **C: assistants limited to the branch they are assigned to**, otherwise as B.
++
++**Recommended**: C+A: branch-scoped, with cancellation reserved to the
++doctor. Cancellation moves money; reschedule and visit flow are the daily
++operational work assistants exist for.
++
++**Impact**: backend: scope narrowed to assigned branches, role check on the
++cancel route; Flutter: assistant UI hides cancel. Tests: assistant negative
++paths.
++
++**Decision requested**: A, B or C (or a combination).
++
++---
++
++## 4. V1 feature readiness matrix (initial)
++
++Evidence is limited to what §1 lists. Rows marked `UNVERIFIED` have not
++been reviewed in this plan yet; they are not implied green.
++
++| Feature | Actor | Backend | Flutter | Authz | Tests | Integration | Launch state | Blocker / next step |
++|---|---|---|---|---|---|---|---|---|
++| OTP login, refresh, logout | all | implemented | wired; refresh fixed (LR-010) | public + refresh-token | unit; device-session race integration green | no real SMS | **BLOCKED** | SMS provider (File 10 Part 4); production fails closed by design |
++| Provider discovery / doctor profile | patient | implemented | wired | public | doctor-search integration green | UNVERIFIED vs real API | NEEDS HARDENING | contract parity (Phase 4) |
++| Available slots | patient | implemented | wired; DST fixed (LR-008) | public | slot repository integration + 9 Flutter tz tests | UNVERIFIED vs real API | NEEDS HARDENING | LR-015, LR-018 |
++| Booking (hold + confirm) | patient | implemented | wired | patient | hold/confirm concurrency integration green | UNVERIFIED end to end | NEEDS HARDENING | payment path gates (§5) |
++| Cancellation | patient / doctor / assistant | implemented | wired | scoped, rule gaps | integration green | — | **PM DECISION REQUIRED** | PM-APPT-01, -02, -05 (P0) |
++| Rescheduling | patient / doctor / assistant | implemented (one step, payment carried over) | wired; contract fixed (LR-021) | scoped, rule gaps | integration + e2e green | not on device | **PM DECISION REQUIRED** | PM-APPT-01, -02, -05 (P0) |
++| Visit status | doctor / assistant | implemented | wired | scoped | unit | — | **PM DECISION REQUIRED** | PM-APPT-03, -04 |
++| Appointment lists / detail | patient / doctor | implemented | wired | scoped | integration (patient list) | UNVERIFIED | NEEDS HARDENING | LR-018 |
++| Wallet balance / history | patient | implemented | wired | patient | wallet concurrency integration green | UNVERIFIED | NEEDS HARDENING | contract parity |
++| Wallet top-up (Paymob) | patient | implemented | wired, external checkout | patient | unit | no live gateway | **BLOCKED** | Paymob production credentials + live webhook (DEC-001) |
++| Wallet transfer / refund request / linked cards / pay bills | patient | none | UI behind `isMock`, `Navigator`-only, release builds refuse the mock URL | — | — | — | **FUTURE** (FEATURE FLAGGED in UI) | backend contract when scheduled; keep UI, no production calls |
++| Prescriptions (patient upload) | patient | implemented | wired | patient | drug-code trigger integration green | UNVERIFIED | NEEDS HARDENING | upload/media review (Phase 3) |
++| Provider clinical requests | doctor / assistant | implemented | wired | scoped | unit + e2e spec (§1.1) | UNVERIFIED | NEEDS HARDENING | Part 51.10 gates |
++| Pharmacy fulfilment | pharmacy staff (dashboard) | implemented | order creation only | branch-scoped | workflow + broadcast integration green | dashboard UNVERIFIED | NEEDS HARDENING | dashboard verification |
++| Laboratory (referral orders) | patient / lab staff | implemented | partial | — | UNVERIFIED | patient lab-order 400 reported, not reproduced | UNVERIFIED | reproduce the 400 (Phase 4) |
++| Notifications | all | implemented, PUSH only | wired | recipient-scoped | dispatch unit + reliability integration green | FCM not verified | **BLOCKED** | FCM credentials; LR-016 |
++| Outbox / worker | system | implemented | — | — | unit + integration green | not deployed here | NEEDS HARDENING | Phase 7 ops (restart, health) |
++| Audit | system | implemented | — | — | via use-case tests | — | UNVERIFIED | — |
++| Media upload (ImageKit) | patient / provider | implemented | wired | UNVERIFIED | UNVERIFIED | no credentials | UNVERIFIED | Phase 3 upload review |
++| Android release | — | — | signing config present | — | — | no signed build | **BLOCKED** | signed release build + device smoke |
++| iOS release | — | — | — | — | — | no macOS toolchain | **BLOCKED** | external verification |
++
++---
++
++## 5. External release gates
++
++None of these can be closed from mocks.
++
++- SMS/OTP provider: not selected (`LoggingOtpSender` only; production fails closed).
++- FCM/APNs: `FIREBASE_PROJECT_ID` path unverified in a real project.
++- Paymob: production credentials, live HMAC webhook, refund path.
++- ImageKit: production keys, private-file access review.
++- Database: backup **and restore** rehearsal, migration rehearsal, rollback procedure.
++- Mobile: Android signed release build + device smoke; iOS signing/build on macOS.
++
++---
++
++## 6. Next steps (in plan order)
++
++1. **PM**: decide PM-APPT-01…05 (P0 blocks release). After approval:
++   implement, merge/adapt `feat/lock-appointment-changes-after-visit-start`,
++   re-run the integration suite.
++2. Phase 3 security review: upload/media, clinical-request cross-patient and
++   cross-provider negatives, payments webhook replay/late webhook on the
++   disposable stack. Reproduce LR-015.
++3. Phase 4 contract parity, starting with the patient lab-order 400.
++4. Phase 5 documentation reset (LR-019) once the decisions above land.
++5. Phases 6–7: rendered UI on a device/emulator, ops rehearsal (§5).
+-- 
+2.43.0
+
