@@ -7,8 +7,9 @@ function setup() {
   const labOrderItems = { findByOrderId: jest.fn(), setUnitPrice: jest.fn() };
   const getActiveRoleMembership = { execute: jest.fn() };
   const audit = { record: jest.fn() };
-  const useCase = new SubmitLabQuoteUseCase(prisma as any, labOrders as any, labOrderItems as any, getActiveRoleMembership as any, audit as any);
-  return { tx, labOrders, labOrderItems, getActiveRoleMembership, audit, useCase };
+  const outbox = { emit: jest.fn() };
+  const useCase = new SubmitLabQuoteUseCase(prisma as any, labOrders as any, labOrderItems as any, getActiveRoleMembership as any, audit as any, outbox as any);
+  return { tx, labOrders, labOrderItems, getActiveRoleMembership, audit, outbox, useCase };
 }
 
 describe('SubmitLabQuoteUseCase', () => {
@@ -18,9 +19,9 @@ describe('SubmitLabQuoteUseCase', () => {
   const validInput = { totalPrice: '450.00', appointmentAt: futureIso, prepInstructions: 'صائم 8 ساعات', queueNumber: 5 };
 
   it('quotes a REQUESTED order with items, splitting price presentationally', async () => {
-    const { tx, labOrders, labOrderItems, getActiveRoleMembership, audit, useCase } = setup();
+    const { tx, labOrders, labOrderItems, getActiveRoleMembership, audit, outbox, useCase } = setup();
     getActiveRoleMembership.execute.mockResolvedValue(membership);
-    labOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'REQUESTED', lab_branch_id: 'branch-1' });
+    labOrders.findById.mockResolvedValue({ id: 'order-1', version: 1, status: 'REQUESTED', lab_branch_id: 'branch-1', patient_id: 'patient-1' });
     labOrderItems.findByOrderId.mockResolvedValue([{ id: 'item-1' }, { id: 'item-2' }]);
 
     const result = await useCase.execute('order-1', validInput, actor);
@@ -28,6 +29,7 @@ describe('SubmitLabQuoteUseCase', () => {
     expect(labOrderItems.setUnitPrice).toHaveBeenCalledWith(tx, 'order-1', '225.00');
     expect(labOrders.submitQuote).toHaveBeenCalledWith(tx, 'order-1', 1, expect.objectContaining({ totalPrice: '450.00', queueNumber: 5, currency: 'EGP' }));
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'laboratory.lab-order.quote-sent', reasonCode: '#5' }));
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'LabOrderStatusChanged', expect.objectContaining({ recipientUserId: 'patient-1', status: 'QUOTED' }));
     expect(result).toEqual({ labOrderId: 'order-1', status: 'QUOTED' });
   });
 

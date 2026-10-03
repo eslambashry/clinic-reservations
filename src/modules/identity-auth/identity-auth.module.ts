@@ -14,8 +14,10 @@ import { ListStaffByContextUseCase } from './application/list-staff-by-context.u
 import { ListUserDeviceTokensUseCase } from './application/list-user-device-tokens.use-case';
 import { OTP_SENDER } from './application/ports/otp-sender.port';
 import { ProvisionStaffUserUseCase } from './application/provision-staff-user.use-case';
+import { PruneDeviceTokensUseCase } from './application/prune-device-tokens.use-case';
 import { RefreshTokenUseCase } from './application/refresh-token.use-case';
 import { RegisterDeviceUseCase } from './application/register-device.use-case';
+import { UnregisterDeviceUseCase } from './application/unregister-device.use-case';
 import { RequestOtpUseCase } from './application/request-otp.use-case';
 import { ResetPasswordUseCase } from './application/reset-password.use-case';
 import { RevokeStaffMembershipUseCase } from './application/revoke-staff-membership.use-case';
@@ -94,7 +96,9 @@ import { UserRepository } from './infrastructure/user.repository';
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
     RegisterDeviceUseCase,
+    UnregisterDeviceUseCase,
     ListUserDeviceTokensUseCase,
+    PruneDeviceTokensUseCase,
     GetUserContactInfoUseCase,
     UserRepository,
     OtpRequestRepository,
@@ -117,6 +121,7 @@ import { UserRepository } from './infrastructure/user.repository';
     UpdateStaffMembershipUseCase,
     RevokeStaffMembershipUseCase,
     ListUserDeviceTokensUseCase,
+    PruneDeviceTokensUseCase,
     GetUserContactInfoUseCase,
     UserRepository,
     RoleMembershipRepository,

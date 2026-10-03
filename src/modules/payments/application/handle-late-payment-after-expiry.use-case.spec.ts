@@ -11,11 +11,20 @@ describe('HandleLatePaymentAfterExpiryUseCase', () => {
   function setup() {
     const tx = buildTx();
     const paymentIntents = { findById: jest.fn(), markCaptured: jest.fn(), markRefunded: jest.fn() };
+    const paymentAttempts = { findLatestByPaymentIntentId: jest.fn() };
     const refunds = { create: jest.fn() };
     const outbox = { emit: jest.fn() };
     const gateway = { refund: jest.fn() };
-    const useCase = new HandleLatePaymentAfterExpiryUseCase(paymentIntents as any, refunds as any, outbox as any, gateway as any);
-    return { tx, paymentIntents, refunds, outbox, gateway, useCase };
+    const fawryGateway = { refund: jest.fn() };
+    const useCase = new HandleLatePaymentAfterExpiryUseCase(
+      paymentIntents as any,
+      paymentAttempts as any,
+      refunds as any,
+      outbox as any,
+      gateway as any,
+      fawryGateway as any,
+    );
+    return { tx, paymentIntents, paymentAttempts, refunds, outbox, gateway, fawryGateway, useCase };
   }
 
   it('captures then immediately auto-refunds via the gateway when a success webhook arrives after the hold already expired', async () => {
@@ -53,5 +62,32 @@ describe('HandleLatePaymentAfterExpiryUseCase', () => {
 
     expect(paymentIntents.markCaptured).not.toHaveBeenCalled();
     expect(gateway.refund).not.toHaveBeenCalled();
+  });
+
+  it('refunds via the Fawry gateway (not Paymob), keyed off the stored referenceCode, for a FAWRY intent', async () => {
+    const { tx, paymentIntents, paymentAttempts, gateway, fawryGateway, useCase } = setup();
+    const fawryIntent = { ...intent, method: 'FAWRY' };
+    paymentIntents.findById.mockResolvedValueOnce(fawryIntent).mockResolvedValueOnce({ ...fawryIntent, version: 2, status: 'CAPTURED' });
+    paymentIntents.markCaptured.mockResolvedValue(true);
+    paymentAttempts.findLatestByPaymentIntentId.mockResolvedValue({ metadata: { referenceCode: '963455678' } });
+    fawryGateway.refund.mockResolvedValue({});
+
+    await useCase.execute(tx, input);
+
+    expect(fawryGateway.refund).toHaveBeenCalledWith('963455678', '200.00', 'Hold expired before payment confirmed');
+    expect(gateway.refund).not.toHaveBeenCalled();
+    expect(paymentIntents.markRefunded).toHaveBeenCalledWith(tx, 'intent-1', 2, 'REFUNDED');
+  });
+
+  it('flags for manual follow-up (does not throw) when a FAWRY intent has no stored referenceCode', async () => {
+    const { tx, paymentIntents, paymentAttempts, outbox, useCase } = setup();
+    const fawryIntent = { ...intent, method: 'FAWRY' };
+    paymentIntents.findById.mockResolvedValueOnce(fawryIntent).mockResolvedValueOnce({ ...fawryIntent, version: 2, status: 'CAPTURED' });
+    paymentIntents.markCaptured.mockResolvedValue(true);
+    paymentAttempts.findLatestByPaymentIntentId.mockResolvedValue(null);
+
+    await useCase.execute(tx, input);
+
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'PaymentAutoRefunded', expect.objectContaining({ requiresManualFollowUp: true }));
   });
 });

@@ -10,12 +10,81 @@ services:
       - '5432:5432'
     volumes:
       - medsuper_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U medsuper -d medsuper']
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
       - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    environment:
+      DATABASE_URL: postgresql://medsuper:medsuper@postgres:5432/medsuper?schema=public
+      DIRECT_URL: postgresql://medsuper:medsuper@postgres:5432/medsuper?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      DATABASE_URL: postgresql://medsuper:medsuper@postgres:5432/medsuper?schema=public
+      DIRECT_URL: postgresql://medsuper:medsuper@postgres:5432/medsuper?schema=public
+      REDIS_ENABLED: 'true'
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a fresh local JWT_ACCESS_SECRET in the ignored .env file}
+      IMAGEKIT_URL_ENDPOINT: ${IMAGEKIT_URL_ENDPOINT:?Set the public ImageKit endpoint in the ignored .env file}
+      IMAGEKIT_PRIVATE_KEY: ${IMAGEKIT_PRIVATE_KEY:?Rotate this key, then set it in the ignored .env file}
+    ports:
+      - '3000:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    command: ['node', 'dist/worker.js']
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://medsuper:medsuper@postgres:5432/medsuper?schema=public
+      DIRECT_URL: postgresql://medsuper:medsuper@postgres:5432/medsuper?schema=public
+      REDIS_ENABLED: 'true'
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set a fresh local JWT_ACCESS_SECRET in the ignored .env file}
+      IMAGEKIT_URL_ENDPOINT: ${IMAGEKIT_URL_ENDPOINT:?Set the public ImageKit endpoint in the ignored .env file}
+      IMAGEKIT_PRIVATE_KEY: ${IMAGEKIT_PRIVATE_KEY:?Rotate this key, then set it in the ignored .env file}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   medsuper_postgres_data:

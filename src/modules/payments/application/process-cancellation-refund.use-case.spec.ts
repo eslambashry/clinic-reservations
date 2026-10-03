@@ -91,6 +91,47 @@ describe('ProcessCancellationRefundUseCase', () => {
     expect(ledger.create).not.toHaveBeenCalled();
   });
 
+  describe('partial payment (intent.amount < consult fee) — refunds operate on what was actually paid', () => {
+    const partialIntent = { ...capturedIntent, amount: '50.00', full_amount: '300.00' };
+    const partialEarning = { provider_type: 'DOCTOR', provider_id: 'doctor-1', entry_type: 'EARNING', amount: '42.50' };
+
+    it('refunds 50.00 (not 300, not 250) when the existing policy allows a full refund', async () => {
+      const { tx, paymentIntents, refunds, ledger, useCase } = setup();
+      paymentIntents.findById.mockResolvedValue(partialIntent);
+      paymentIntents.markRefunded.mockResolvedValue(true);
+      ledger.findByRelatedPaymentIntentId.mockResolvedValue([partialEarning]);
+
+      const result = await useCase.execute(tx, { paymentIntentId: 'intent-1', feePercent: 0 });
+
+      expect(result).toEqual({ refundAmount: '50.00', feeApplied: '0.00' });
+      expect(refunds.create).toHaveBeenCalledWith(tx, expect.objectContaining({ amount: '50.00' }));
+      expect(ledger.create).toHaveBeenCalledWith(tx, expect.objectContaining({ entryType: 'ADJUSTMENT', amount: '-42.50' }));
+    });
+
+    it('applies the existing cancellation fee to the paid amount only (20% of 50 = 10 fee, 40 refund)', async () => {
+      const { tx, paymentIntents, ledger, useCase } = setup();
+      paymentIntents.findById.mockResolvedValue(partialIntent);
+      paymentIntents.markRefunded.mockResolvedValue(true);
+      ledger.findByRelatedPaymentIntentId.mockResolvedValue([partialEarning]);
+
+      const result = await useCase.execute(tx, { paymentIntentId: 'intent-1', feePercent: 20 });
+
+      expect(result).toEqual({ refundAmount: '40.00', feeApplied: '10.00' });
+      expect(ledger.create).toHaveBeenCalledWith(tx, expect.objectContaining({ amount: '-34.00' }));
+    });
+
+    it('keeps no-refund policies intact: a 100% fee refunds nothing', async () => {
+      const { tx, paymentIntents, ledger, useCase } = setup();
+      paymentIntents.findById.mockResolvedValue(partialIntent);
+      paymentIntents.markRefunded.mockResolvedValue(true);
+      ledger.findByRelatedPaymentIntentId.mockResolvedValue([partialEarning]);
+
+      const result = await useCase.execute(tx, { paymentIntentId: 'intent-1', feePercent: 100 });
+
+      expect(result).toEqual({ refundAmount: '0.00', feeApplied: '50.00' });
+    });
+  });
+
   it('reverses an EARNING entry (online/wallet-paid appointment) on a full refund — the bug fix', async () => {
     const { tx, ledger, paymentIntents, useCase } = setup();
     const earningEntry = { provider_type: 'DOCTOR', provider_id: 'doctor-1', entry_type: 'EARNING', amount: '170.00' };

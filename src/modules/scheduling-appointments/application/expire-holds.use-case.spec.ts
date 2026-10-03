@@ -10,7 +10,7 @@ describe('ExpireHoldsUseCase', () => {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const holds = { findActiveExpired: jest.fn(), markExpired: jest.fn() };
     const slots = { markOpen: jest.fn() };
-    const cancelOnlinePayment = { execute: jest.fn() };
+    const cancelOnlinePayment = { execute: jest.fn(), notifyGatewayIfNeeded: jest.fn() };
     const useCase = new ExpireHoldsUseCase(prisma as any, holds as any, slots as any, cancelOnlinePayment as any);
     return { tx, holds, slots, cancelOnlinePayment, useCase };
   }
@@ -73,5 +73,26 @@ describe('ExpireHoldsUseCase', () => {
     await useCase.execute();
 
     expect(cancelOnlinePayment.execute).not.toHaveBeenCalled();
+  });
+
+  it('notifies the gateway (post-commit, outside the transaction) with the cancelled intent info for a hold that had one', async () => {
+    const { holds, cancelOnlinePayment, useCase } = setup();
+    holds.findActiveExpired.mockResolvedValue([{ id: 'hold-1', slot_id: 'slot-1', payment_intent_id: 'intent-1' }]);
+    holds.markExpired.mockResolvedValue(true);
+    cancelOnlinePayment.execute.mockResolvedValue({ method: 'FAWRY', fawryReferenceNumber: '963455678' });
+
+    await useCase.execute();
+
+    expect(cancelOnlinePayment.notifyGatewayIfNeeded).toHaveBeenCalledWith({ method: 'FAWRY', fawryReferenceNumber: '963455678' });
+  });
+
+  it('still calls notifyGatewayIfNeeded (with null) for a hold with no linked PaymentIntent — a safe no-op there', async () => {
+    const { holds, cancelOnlinePayment, useCase } = setup();
+    holds.findActiveExpired.mockResolvedValue([{ id: 'hold-1', slot_id: 'slot-1', payment_intent_id: null }]);
+    holds.markExpired.mockResolvedValue(true);
+
+    await useCase.execute();
+
+    expect(cancelOnlinePayment.notifyGatewayIfNeeded).toHaveBeenCalledWith(null);
   });
 });

@@ -10,6 +10,7 @@ import { CreateHoldUseCase } from '../application/create-hold.use-case';
 import { GetAppointmentUseCase } from '../application/get-appointment.use-case';
 import { ListAppointmentsUseCase } from '../application/list-appointments.use-case';
 import { RescheduleAppointmentUseCase } from '../application/reschedule-appointment.use-case';
+import { ResolveAppointmentPaymentAmountUseCase } from '../application/resolve-appointment-payment-amount.use-case';
 import { ResolveAppointmentScopeUseCase } from '../application/resolve-appointment-scope.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AuditLogRepository } from '../../audit/infrastructure/audit-log.repository';
@@ -57,7 +58,8 @@ describe('Appointment booking loop (integration)', () => {
   let getAppointment: GetAppointmentUseCase;
 
   const suffix = randomUUID().slice(0, 8);
-  const specialtyCode = `TEST_SPECIALTY_HOLD_${suffix}`;
+  // `specialties.code` is a UUID; the suffix above still names the other fixtures.
+  const specialtyCode = randomUUID();
   const CONCURRENT_PATIENTS = 5;
 
   let clinicId: string;
@@ -88,6 +90,7 @@ describe('Appointment booking loop (integration)', () => {
         // this instead of hard-coding `patient_id === actor.sub`.
         ResolveDoctorScopeUseCase,
         ResolveAppointmentScopeUseCase,
+        ResolveAppointmentPaymentAmountUseCase,
         PaymentIntentRepository,
         PaymentSplitRepository,
         RefundRepository,
@@ -114,7 +117,7 @@ describe('Appointment booking loop (integration)', () => {
     listAppointments = moduleRef.get(ListAppointmentsUseCase);
     getAppointment = moduleRef.get(GetAppointmentUseCase);
 
-    await prisma.specialty.create({ data: { code: specialtyCode, name_en: 'Test Specialty', name_ar: 'تخصص اختبار' } });
+    await prisma.specialty.create({ data: { code: specialtyCode, name_ar: 'تخصص اختبار' } });
 
     const clinic = await prisma.clinic.create({ data: { legal_name: `Test Clinic ${suffix}`, brand_name: `Test Clinic ${suffix}`, status: 'VERIFIED' } });
     clinicId = clinic.id;
@@ -255,7 +258,7 @@ describe('Appointment booking loop (integration)', () => {
     expect(refreshedSlot.status).toBe('OPEN');
   }, 20000);
 
-  it('reschedules a confirmed appointment to a fresh hold, then confirming it links back to the original appointment', async () => {
+  it('reschedules a confirmed appointment in one step: new CONFIRMED appointment links back and keeps the same payment intent', async () => {
     const oldSlot = await freshOpenSlot(new Date('2026-09-01T12:00:00Z'));
     const newSlot = await freshOpenSlot(new Date('2026-09-01T13:00:00Z'));
     const patientId = patientUserIds[1];
@@ -263,14 +266,10 @@ describe('Appointment booking loop (integration)', () => {
 
     const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: oldSlot.id, patientId }, actor);
     const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+    const original = await prisma.appointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId } });
 
     const rescheduled = await rescheduleAppointment.execute(confirmed.appointmentId, { newSlotId: newSlot.id }, actor);
-    expect(rescheduled).toMatchObject({ slotId: newSlot.id, status: 'HELD', previousAppointmentId: confirmed.appointmentId });
-    // Narrows the union added in File 12 Part 49.9: a PATIENT actor always
-    // gets the unconfirmed-hold arm; the CONFIRMED arm is provider-only.
-    if (rescheduled.status !== 'HELD') {
-      throw new Error('a patient-initiated reschedule must return an unconfirmed hold');
-    }
+    expect(rescheduled).toMatchObject({ slotId: newSlot.id, status: 'CONFIRMED', previousAppointmentId: confirmed.appointmentId });
 
     const oldAppointment = await prisma.appointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId } });
     expect(oldAppointment.status).toBe('RESCHEDULED');
@@ -278,11 +277,13 @@ describe('Appointment booking loop (integration)', () => {
     const oldSlotRefreshed = await prisma.appointmentSlot.findUniqueOrThrow({ where: { id: oldSlot.id } });
     expect(oldSlotRefreshed.status).toBe('OPEN');
     const newSlotRefreshed = await prisma.appointmentSlot.findUniqueOrThrow({ where: { id: newSlot.id } });
-    expect(newSlotRefreshed.status).toBe('HELD');
+    expect(newSlotRefreshed.status).toBe('BOOKED');
 
-    const newlyConfirmed = await confirmAppointment.execute(rescheduled.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
-    const newAppointment = await prisma.appointment.findUniqueOrThrow({ where: { id: newlyConfirmed.appointmentId } });
+    const newAppointment = await prisma.appointment.findUniqueOrThrow({ where: { id: rescheduled.appointmentId } });
+    expect(newAppointment.status).toBe('CONFIRMED');
     expect(newAppointment.rescheduled_from_appointment_id).toBe(confirmed.appointmentId);
+    // No second charge: the replacement points at the original payment intent.
+    expect(newAppointment.payment_intent_id).toBe(original.payment_intent_id);
   }, 20000);
 
   it('lists and gets the caller\'s own confirmed appointments, cursor-paginated by slot start_at', async () => {

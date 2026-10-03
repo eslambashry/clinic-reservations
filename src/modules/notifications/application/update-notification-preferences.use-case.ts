@@ -20,7 +20,8 @@ export class UpdateNotificationPreferencesUseCase {
   ) {}
 
   async execute(userId: string, inputs: UpdateNotificationPreferenceInput[]): Promise<void> {
-    for (const input of inputs) {
+    const pushInputs = inputs.filter((input) => input.channel === 'PUSH');
+    for (const input of pushInputs) {
       if (!input.enabled && !isUserDisableable(input.tier)) {
         throw new BusinessRuleError('SAFETY_CRITICAL_NOTIFICATION_NOT_DISABLEABLE', 'لا يمكن تعطيل الإشعارات الحرِجة المتعلقة بسلامتك.', {
           tier: input.tier,
@@ -29,7 +30,7 @@ export class UpdateNotificationPreferencesUseCase {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      for (const input of inputs) {
+      for (const input of pushInputs) {
         await this.preferences.upsert(tx, { userId, tier: input.tier, channel: input.channel, enabled: input.enabled });
       }
     });

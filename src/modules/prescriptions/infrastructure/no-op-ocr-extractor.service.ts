@@ -7,33 +7,19 @@ import { OcrExtractorPort, OcrSuggestedItem } from '../application/ports/ocr-ext
  * manual pharmacist entry if OCR isn't ready"). Never treat this as real
  * OCR.
  *
- * OPEN DECISION (not File-10/12-ratified — flagged here, not silently
- * assumed): this stub returns one fabricated free-text item per uploaded
- * file instead of the zero it originally returned, purely so
- * `POST /v1/pharmacy-orders` has something to broadcast in an environment
- * with no OCR AND no pharmacist-side reviewer to manually enter items
- * (`PATIENT_STAFF`'s own review endpoint is the documented real fallback,
- * but nothing in this codebase drives it end-to-end yet). Revert to
- * returning `[]` the moment either a real OCR vendor is chosen or a manual
- * review flow is exercised — a fabricated drug name reaching an order is
- * not acceptable outside local dev/QA.
+ * OCR is intentionally unavailable until a vendor is selected. Keep the
+ * uploaded prescription image as the source of truth; never invent a drug
+ * name to make an order appear populated. Orders may still be created from
+ * the image and priced by the pharmacist.
  */
 @Injectable()
 export class NoOpOcrExtractor implements OcrExtractorPort {
   private readonly logger = new Logger(NoOpOcrExtractor.name);
 
-  async extract(fileUrl: string): Promise<OcrSuggestedItem[]> {
+  async extract(_fileUrl: string): Promise<OcrSuggestedItem[]> {
     this.logger.warn(
-      `[DEV-ONLY OCR] No OCR vendor configured (DEC-005 OPEN) — fabricating one placeholder item (undecided stopgap, see file comment) for ${fileUrl}`,
+      'No OCR vendor configured; uploaded prescription image will be reviewed manually.',
     );
-    return [
-      {
-        drugNameFreeText: '[DEV PLACEHOLDER] Unidentified medication — no OCR vendor configured',
-        dose: null,
-        frequency: null,
-        durationDays: null,
-        quantity: 1,
-      },
-    ];
+    return [];
   }
 }

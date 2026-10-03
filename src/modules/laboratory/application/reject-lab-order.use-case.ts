@@ -4,6 +4,7 @@ import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
+import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { assertOrderIsRejectable, hasLiveSample } from '../domain/lab-order.rules';
 import { encodeCustodyAction } from '../domain/custody-action.util';
 import { GetCustodyEventsUseCase } from './get-custody-events.use-case';
@@ -33,6 +34,7 @@ export class RejectLabOrderUseCase {
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(GetCustodyEventsUseCase) private readonly getCustodyEvents: GetCustodyEventsUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
   async execute(labOrderId: string, input: RejectLabOrderInput, actor: AccessTokenPayload): Promise<RejectLabOrderResult> {
@@ -62,6 +64,19 @@ export class RejectLabOrderUseCase {
         resourceId: labOrderId,
         reasonCode: input.note?.trim() || input.reason,
       });
+
+      await this.outbox.emit(tx, 'LabOrderStatusChanged', {
+        labOrderId,
+        status: 'REJECTED',
+        recipientUserId: order.patient_id,
+      });
+      if (order.doctor_id) {
+        await this.outbox.emit(tx, 'LabOrderStatusChanged', {
+          labOrderId,
+          status: 'REJECTED',
+          recipientUserId: order.created_by_user_id ?? order.doctor_id,
+        });
+      }
 
       return { labOrderId, status: 'REJECTED' as const };
     });

@@ -40,7 +40,7 @@ export class ProviderRegistrationController {
     const specialties = await this.listSpecialties.execute();
     return {
       // English-first: no content-negotiation exists anywhere else in this API to justify picking name_ar here.
-      specialties: specialties.map((specialty) => ({ id: specialty.code, label: specialty.name_en })),
+      specialties: specialties.map((specialty) => ({ id: specialty.code, label: specialty.name_ar })),
       cities: [],
     };
   }

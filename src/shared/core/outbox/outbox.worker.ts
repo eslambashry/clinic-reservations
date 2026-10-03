@@ -33,6 +33,26 @@ export class OutboxWorker {
   /** Called from a consuming module's `onModuleInit` — see the interface doc. */
   registerHandler(handler: OutboxEventHandler): void {
     this.handlers.set(handler.eventName, handler);
+
+    // Anything skipped for want of this exact handler can now be delivered.
+    // Without this, events that arrived before the consuming module existed
+    // would stay SKIPPED forever even once it does — the handler is only ever
+    // registered at boot, so this is the one moment that can recover them.
+    void this.prisma.outboxEvent
+      .updateMany({
+        where: { event_name: handler.eventName, status: 'SKIPPED' },
+        data: { status: 'PENDING' },
+      })
+      .then(({ count }) => {
+        if (count > 0) {
+          this.logger.log(`Re-queued ${count} previously skipped "${handler.eventName}" event(s) now that a handler exists.`);
+        }
+      })
+      .catch((error: unknown) => {
+        // Never fail module init over this — the events stay SKIPPED and can
+        // still be re-queued by hand.
+        this.logger.warn(`Could not re-queue skipped "${handler.eventName}" events: ${error instanceof Error ? error.message : String(error)}`);
+      });
   }
 
   @Interval(OUTBOX_CONSTANTS.POLL_INTERVAL_MS)
@@ -55,9 +75,29 @@ export class OutboxWorker {
 
   private async claimBatch(): Promise<OutboxEvent[]> {
     return this.prisma.$transaction(async (tx) => {
+      // A PROCESSING row nobody has touched for STALE_PROCESSING_MINUTES was
+      // claimed by a worker that crashed before recording an outcome; it is
+      // reclaimed here instead of being stranded forever. Each claim counts
+      // against the bounded attempt budget, including a crash after a handler
+      // performed an external side effect. The claim below
+      // bumps `updated_at` (Prisma `@updatedAt`), and every outcome write is
+      // fenced on that value, so a slow original worker cannot overwrite the
+      // reclaimer's result.
+      await tx.outboxEvent.updateMany({
+        where: {
+          attempts: { gte: OUTBOX_CONSTANTS.MAX_ATTEMPTS },
+          OR: [
+            { status: 'PENDING' },
+            { status: 'PROCESSING', updated_at: { lt: new Date(Date.now() - OUTBOX_CONSTANTS.STALE_PROCESSING_MINUTES * 60_000) } },
+          ],
+        },
+        data: { status: 'FAILED', last_error: 'Worker lease expired after maximum attempts.' },
+      });
       const claimed = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT "id" FROM "outbox_events"
-        WHERE "status" = 'PENDING'
+        WHERE ("status" = 'PENDING' AND "attempts" < ${OUTBOX_CONSTANTS.MAX_ATTEMPTS}::int)
+           OR ("status" = 'PROCESSING' AND "attempts" < ${OUTBOX_CONSTANTS.MAX_ATTEMPTS}::int
+             AND "updated_at" < NOW() - make_interval(mins => ${OUTBOX_CONSTANTS.STALE_PROCESSING_MINUTES}::int))
         ORDER BY "created_at" ASC
         LIMIT ${OUTBOX_CONSTANTS.BATCH_SIZE}
         FOR UPDATE SKIP LOCKED
@@ -70,7 +110,7 @@ export class OutboxWorker {
       const ids = claimed.map((row) => row.id);
       await tx.outboxEvent.updateMany({
         where: { id: { in: ids } },
-        data: { status: 'PROCESSING' },
+        data: { status: 'PROCESSING', attempts: { increment: 1 } },
       });
 
       return tx.outboxEvent.findMany({ where: { id: { in: ids } } });
@@ -82,26 +122,40 @@ export class OutboxWorker {
     if (!handler) {
       // No consumer wired up yet for this event — expected during
       // incremental build-out (e.g. Identity emits `UserRegistered` well
-      // before Notifications/Phase 8 exists to consume it). `claimBatch`
-      // already flipped this row to PROCESSING; revert it to PENDING
-      // (without touching `attempts`) so it's retried once a handler
-      // registers — this is not a failure, so it must not count toward
-      // `MAX_ATTEMPTS` or reach FAILED.
-      await this.prisma.outboxEvent.update({
-        where: { id: event.id },
-        data: { status: 'PENDING' },
+      // before Notifications/Phase 8 exists to consume it).
+      //
+      // This must NOT go back to PENDING. `claimBatch` takes the oldest
+      // `BATCH_SIZE` PENDING rows, so once that many consumer-less events
+      // accumulate they refill the batch on every poll and no newer event is
+      // ever claimed again — the queue stalls silently and completely.
+      // Observed live: ~21 such rows had stalled the queue for a full day,
+      // holding back real notifications behind them.
+      //
+      // SKIPPED keeps the row (nothing is lost, and it can be flipped back to
+      // PENDING once a consumer exists) while taking it out of the claim set.
+      // It is not a failure, so `attempts` is untouched and it never reaches
+      // FAILED.
+      await this.prisma.outboxEvent.updateMany({
+        where: { id: event.id, status: 'PROCESSING', updated_at: event.updated_at },
+        // No handler means no attempt occurred. Undo the claim accounting so
+        // SKIPPED rows remain outside the retry budget as before.
+        data: { status: 'SKIPPED', attempts: { decrement: 1 } },
       });
-      this.logger.debug(
-        `No handler registered yet for outbox event "${event.event_name}" (${event.id}) — reverted to PENDING.`,
+      // `warn`, not `debug`: a permanently unconsumed event is a wiring gap
+      // someone needs to see, and the previous `debug` hid exactly the
+      // condition that stalled the queue.
+      this.logger.warn(
+        `No handler registered for outbox event "${event.event_name}" (${event.id}) — marked SKIPPED. ` +
+          `Re-queue with: UPDATE outbox_events SET status='PENDING' WHERE event_name='${event.event_name}' AND status='SKIPPED';`,
       );
       return;
     }
 
     try {
-      await handler.handle(event.payload);
+      await handler.handle(event.payload, event.id);
 
-      await this.prisma.outboxEvent.update({
-        where: { id: event.id },
+      await this.prisma.outboxEvent.updateMany({
+        where: { id: event.id, status: 'PROCESSING', updated_at: event.updated_at },
         data: { status: 'PROCESSED', processed_at: new Date() },
       });
     } catch (error) {
@@ -110,12 +164,13 @@ export class OutboxWorker {
   }
 
   private async recordFailure(event: OutboxEvent, error: unknown): Promise<void> {
-    const attempts = event.attempts + 1;
+    // Claiming already consumed this attempt, including the crash case.
+    const attempts = event.attempts;
     const exhausted = attempts >= OUTBOX_CONSTANTS.MAX_ATTEMPTS;
     const message = error instanceof Error ? error.message : String(error);
 
-    await this.prisma.outboxEvent.update({
-      where: { id: event.id },
+    await this.prisma.outboxEvent.updateMany({
+      where: { id: event.id, status: 'PROCESSING', updated_at: event.updated_at },
       data: {
         status: exhausted ? 'FAILED' : 'PENDING',
         attempts,

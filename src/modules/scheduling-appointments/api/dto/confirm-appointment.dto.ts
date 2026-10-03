@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 /**
  * File 12 Part 35.4 / Part 50.4: `ONLINE` is still accepted by the DTO
@@ -20,4 +20,10 @@ export class ConfirmAppointmentDto {
   @IsOptional()
   @IsUUID()
   paymentIntentId?: string;
+
+  @ApiPropertyOptional({ example: '50.00', description: 'INTERNAL_WALLET only: optional partial amount (configured minimum up to the consult fee). Omit to pay in full. Rejected for PAY_AT_CLINIC.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  paymentAmount?: string;
 }

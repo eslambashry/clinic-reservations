@@ -3,6 +3,7 @@ import { LabOrder, LabOrderStatus } from '@prisma/client';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { ForbiddenError } from '../../../shared/core/errors/domain-errors';
@@ -15,7 +16,6 @@ import { LabOrderItemRepository } from '../infrastructure/lab-order-item.reposit
 import { LabOrderNoteRepository } from '../infrastructure/lab-order-note.repository';
 import { ListOrdersCursor, LabOrderRepository } from '../infrastructure/lab-order.repository';
 import { LabResultRepository } from '../infrastructure/lab-result.repository';
-import { TestCatalogRepository } from '../infrastructure/test-catalog.repository';
 
 export interface ListLabOrdersInput {
   status?: LabOrderStatus;
@@ -47,8 +47,8 @@ export class ListLabOrdersUseCase {
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(LabResultRepository) private readonly labResults: LabResultRepository,
     @Inject(LabOrderNoteRepository) private readonly labOrderNotes: LabOrderNoteRepository,
-    @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(GetCustodyEventsUseCase) private readonly getCustodyEvents: GetCustodyEventsUseCase,
@@ -70,6 +70,9 @@ export class ListLabOrdersUseCase {
         throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع معمل نشِط.');
       }
       rows = await this.labOrders.findForBranch(this.prisma, membership.contextId, page);
+    } else if (actor.contextType === 'DOCTOR' || actor.contextType === 'CLINIC_STAFF') {
+      const scope = await this.resolveDoctorScope.execute(actor);
+      rows = await this.labOrders.findByDoctorId(this.prisma, scope.doctorUserId, page, actor.contextType === 'CLINIC_STAFF' ? actor.sub : undefined);
     } else {
       throw new ForbiddenError('FORBIDDEN', 'صلاحيات حسابك لا تسمح بعرض طلبات التحاليل.');
     }
@@ -88,7 +91,7 @@ export class ListLabOrdersUseCase {
 
   /**
    * Batched enrichment: one custody-events read for the whole page
-   * (`GetCustodyEventsUseCase`), but patient/prescription/catalog lookups
+   * (`GetCustodyEventsUseCase`), but patient/prescription lookups
    * remain per-row — an accepted N+1 for an MVP staff console, same
    * "not a performance target" tradeoff `ListPharmacyOrdersUseCase` already
    * documents.
@@ -109,9 +112,6 @@ export class ListLabOrdersUseCase {
           throw new Error(`LabOrder ${order.id} references a missing patient.`);
         }
 
-        const catalog = await this.testCatalog.findByCodes(this.prisma, items.map((i) => i.catalog_code));
-        const catalogNameByCode = new Map(catalog.map((c) => [c.code, c.display_name]));
-
         const noteAuthorIds = [...new Set(notes.map((n) => n.author_id))];
         const authorSummaries = await Promise.all(noteAuthorIds.map((id) => this.getUserSummary.execute(this.prisma, id)));
         const authorNameById = new Map(
@@ -123,7 +123,7 @@ export class ListLabOrdersUseCase {
           r.file_url ? { ...r, file_url: this.mediaStorage.getSignedUrl(r.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS) } : r,
         );
 
-        return buildLabOrderDetail(order, patient, prescription, items, catalogNameByCode, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
+        return buildLabOrderDetail(order, patient, prescription, items, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
       }),
     );
   }

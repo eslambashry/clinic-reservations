@@ -158,6 +158,8 @@ describe('Doctor-initiated appointment actions', () => {
         audit as any,
         outbox as any,
         appointmentScope as any,
+        { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1', clinicBranchId: 'branch-1' }) } as any,
+        { execute: jest.fn().mockResolvedValue([]) } as any,
       );
       return { tx, appointments, slots, holds, audit, outbox, useCase };
     }

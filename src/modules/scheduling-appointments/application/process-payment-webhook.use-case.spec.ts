@@ -39,6 +39,10 @@ describe('ProcessPaymentWebhookUseCase', () => {
       verifyWebhookSignature: jest.fn().mockReturnValue(true),
       parseWebhookEvent: jest.fn().mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: '999', success: true }),
     };
+    const fawryGateway = {
+      verifyWebhookSignature: jest.fn().mockReturnValue(true),
+      parseWebhookEvent: jest.fn().mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: 'fawry-999', success: true }),
+    };
     const findPayment = { execute: jest.fn() };
     const captureOnlinePayment = { execute: jest.fn() };
     const markFailed = { execute: jest.fn() };
@@ -55,6 +59,7 @@ describe('ProcessPaymentWebhookUseCase', () => {
       prisma as any,
       webhookEvents as any,
       gateway as any,
+      fawryGateway as any,
       findPayment as any,
       captureOnlinePayment as any,
       markFailed as any,
@@ -72,6 +77,7 @@ describe('ProcessPaymentWebhookUseCase', () => {
       tx,
       webhookEvents,
       gateway,
+      fawryGateway,
       findPayment,
       captureOnlinePayment,
       markFailed,
@@ -114,6 +120,37 @@ describe('ProcessPaymentWebhookUseCase', () => {
     const result = await useCase.execute({ provider: 'paymob', rawBody, hmac });
 
     expect(result).toEqual({ handled: false });
+  });
+
+  it('reports unhandled for an unknown provider, before touching webhook_events', async () => {
+    const { webhookEvents, useCase } = setup();
+
+    const result = await useCase.execute({ provider: 'stripe', rawBody, hmac });
+
+    expect(result).toEqual({ handled: false });
+    expect(webhookEvents.tryRecordFirstDelivery).not.toHaveBeenCalled();
+  });
+
+  it('routes provider=fawry to the Fawry gateway, never Paymob\'s', async () => {
+    const { gateway, fawryGateway, findPayment, useCase } = setup();
+    findPayment.execute.mockResolvedValue(walletTopUpPayment);
+
+    await useCase.execute({ provider: 'fawry', rawBody, hmac: undefined });
+
+    expect(fawryGateway.verifyWebhookSignature).toHaveBeenCalledWith(rawBody, undefined);
+    expect(fawryGateway.parseWebhookEvent).toHaveBeenCalledWith(rawBody);
+    expect(gateway.verifyWebhookSignature).not.toHaveBeenCalled();
+    expect(gateway.parseWebhookEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unverified Fawry webhook the same way as an unverified Paymob one', async () => {
+    const { fawryGateway, webhookEvents, useCase } = setup();
+    fawryGateway.verifyWebhookSignature.mockReturnValue(false);
+
+    const result = await useCase.execute({ provider: 'fawry', rawBody, hmac: undefined });
+
+    expect(result).toEqual({ handled: false });
+    expect(webhookEvents.tryRecordFirstDelivery).not.toHaveBeenCalled();
   });
 
   describe('WALLET_TOPUP payable', () => {
@@ -180,6 +217,52 @@ describe('ProcessPaymentWebhookUseCase', () => {
       expect(audit.record).toHaveBeenCalled();
       expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentConfirmed', expect.objectContaining({ appointmentId: 'appointment-1' }));
       expect(result).toEqual({ handled: true });
+    });
+
+    describe('partial payment', () => {
+      function arrangeSuccess(payment: any) {
+        const s = setup();
+        s.findPayment.execute.mockResolvedValue(payment);
+        s.holds.findByPaymentIntentId.mockResolvedValue(activeHold);
+        s.holds.markConverted.mockResolvedValue(undefined);
+        s.slots.findById.mockResolvedValue(slot);
+        s.slots.markBooked.mockResolvedValue(true);
+        s.affiliationBilling.execute.mockResolvedValue(billing);
+        s.appointments.create.mockResolvedValue({ id: 'appointment-1' });
+        return s;
+      }
+
+      it('persists remaining_balance = stored full_amount - amount actually paid (300 fee, 50 paid -> 250)', async () => {
+        const { tx, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, amount: '50.00', fullAmount: '300.00' });
+
+        await useCase.execute({ provider: 'paymob', rawBody, hmac });
+
+        expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: '250.00' }));
+      });
+
+      it('persists 0.00 when the full amount was paid online', async () => {
+        const { tx, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, amount: '300.00', fullAmount: '300.00' });
+
+        await useCase.execute({ provider: 'paymob', rawBody, hmac });
+
+        expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: '0.00' }));
+      });
+
+      it('leaves remaining_balance unset for an intent with no full_amount (pre-existing rows)', async () => {
+        const { tx, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, fullAmount: null });
+
+        await useCase.execute({ provider: 'paymob', rawBody, hmac });
+
+        expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: undefined }));
+      });
+
+      it('a retried success webhook creates no second appointment (intent already CAPTURED)', async () => {
+        const { appointments, useCase } = arrangeSuccess({ ...appointmentPayment, intentStatus: 'CAPTURED', fullAmount: '300.00', amount: '50.00' });
+
+        await useCase.execute({ provider: 'paymob', rawBody, hmac });
+
+        expect(appointments.create).not.toHaveBeenCalled();
+      });
     });
 
     it('does NOT confirm and instead auto-refunds when the hold already expired before the webhook arrived (scenario: webhook after expiration)', async () => {

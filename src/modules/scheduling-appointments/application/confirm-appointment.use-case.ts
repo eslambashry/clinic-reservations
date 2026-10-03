@@ -6,17 +6,20 @@ import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/cap
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
+import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
 
 export interface ConfirmAppointmentInput {
   paymentMethod: 'PAY_AT_CLINIC' | 'INTERNAL_WALLET' | 'ONLINE';
   paymentIntentId?: string;
+  /** INTERNAL_WALLET only — see `ResolveAppointmentPaymentAmountUseCase`. Rejected for PAY_AT_CLINIC, whose behavior is unchanged. */
+  paymentAmount?: string;
 }
 
 export interface ConfirmAppointmentResult {
@@ -49,6 +52,7 @@ export class ConfirmAppointmentUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ListAssistantUserIdsForBranchUseCase) private readonly assistantUserIds: ListAssistantUserIdsForBranchUseCase,
+    @Inject(ResolveAppointmentPaymentAmountUseCase) private readonly resolvePaymentAmount: ResolveAppointmentPaymentAmountUseCase,
   ) {}
 
   async execute(holdId: string, input: ConfirmAppointmentInput, actor: AccessTokenPayload): Promise<ConfirmAppointmentResult> {
@@ -103,6 +107,17 @@ export class ConfirmAppointmentUseCase {
 
       const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
 
+      // Partial payment applies to INTERNAL_WALLET only; PAY_AT_CLINIC is a
+      // single in-person collection of the whole fee and stays unchanged (a
+      // client sending an amount there is rejected, never silently ignored).
+      if (input.paymentMethod === 'PAY_AT_CLINIC' && input.paymentAmount !== undefined) {
+        throw new BusinessRuleError('PAYMENT_AMOUNT_NOT_SUPPORTED', 'الدفع الجزئي غير متاح مع الدفع في العيادة.');
+      }
+      const resolved =
+        input.paymentMethod === 'INTERNAL_WALLET'
+          ? await this.resolvePaymentAmount.execute(tx, { requestedAmount: input.paymentAmount, consultFee: billing.consultFee })
+          : null;
+
       // idempotencyKey: hold:${hold.id}, not the (still-unwired) client
       // Idempotency-Key header — safe/unique because holds.markConverted's
       // optimistic lock above already guarantees this code path runs at
@@ -111,12 +126,13 @@ export class ConfirmAppointmentUseCase {
       // guarantee is why `CaptureInternalWalletPaymentUseCase` needs no
       // separate double-debit protection of its own.
       const capture =
-        input.paymentMethod === 'INTERNAL_WALLET'
+        resolved
           ? await this.walletCapture.execute(tx, {
               payerUserId: actor.sub,
               payableType: 'APPOINTMENT',
               payableId: appointmentId,
-              amount: billing.consultFee,
+              amount: resolved.paymentAmount,
+              fullAmount: resolved.fullAmount,
               currency: billing.currency,
               providerType: 'DOCTOR',
               providerId: billing.doctorId,
@@ -140,6 +156,7 @@ export class ConfirmAppointmentUseCase {
         doctorClinicAffiliationId: slot.doctor_clinic_affiliation_id,
         rescheduledFromAppointmentId: hold.rescheduled_from_appointment_id ?? undefined,
         paymentIntentId: capture.paymentIntentId,
+        remainingBalance: resolved?.remainingBalance,
       });
 
       await this.audit.record(tx, {

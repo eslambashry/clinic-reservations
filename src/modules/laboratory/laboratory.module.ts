@@ -9,6 +9,7 @@ import { CollectSampleUseCase } from './application/collect-sample.use-case';
 import { ConfirmLabBookingUseCase } from './application/confirm-lab-booking.use-case';
 import { CreateLabBranchUseCase } from './application/create-lab-branch.use-case';
 import { CreateLabOrderUseCase } from './application/create-lab-order.use-case';
+import { CreateProviderLabOrderUseCase } from './application/create-provider-lab-order.use-case';
 import { CreateLabStaffUseCase } from './application/create-lab-staff.use-case';
 import { CreateLaboratoryUseCase } from './application/create-laboratory.use-case';
 import { DeleteLabStaffUseCase } from './application/delete-lab-staff.use-case';
@@ -46,16 +47,16 @@ import { LabOrderItemRepository } from './infrastructure/lab-order-item.reposito
 import { LabOrderNoteRepository } from './infrastructure/lab-order-note.repository';
 import { LabOrderRepository } from './infrastructure/lab-order.repository';
 import { LabResultRepository } from './infrastructure/lab-result.repository';
-import { TestCatalogRepository } from './infrastructure/test-catalog.repository';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
+import { SchedulingAppointmentsModule } from '../scheduling-appointments/scheduling-appointments.module';
 
 /**
  * Laboratory module (File 12 Part 47, 2026-09-02) — un-postponed at the
  * user's explicit direction. Owns `laboratories`, `lab_branches`,
- * `test_catalog`, `lab_orders`, `lab_order_items`, `lab_result_documents`,
+ * `lab_orders`, `lab_order_items`, `lab_result_documents`,
  * `lab_order_notes` (`prisma/schema/laboratory.prisma`) — no other module
  * reaches into these tables directly (File 12 Part 05).
  *
@@ -69,7 +70,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * extended — no dedicated custody-event table.
  *
  * `PrescriptionsModule` is imported only for `GetPrescriptionSummaryUseCase`
- * (optional prescription-linked orders' image projection) — never that
+ * (required referral-linked orders' image projection) — never that
  * module's `infrastructure/`. `LabBranch` lookups are served by this
  * module's own `LabBranchRepository`. `LabBranchesController`/
  * `GetLabBranchUseCase` (Part 48) add one self-scoped
@@ -87,7 +88,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * that module does own.
  */
 @Module({
-  imports: [AuditModule, IdentityAuthModule, PrescriptionsModule, ProviderDirectoryModule],
+  imports: [AuditModule, IdentityAuthModule, PrescriptionsModule, ProviderDirectoryModule, SchedulingAppointmentsModule],
   controllers: [LabOrdersController, LabAuditController, LabBranchesController, LaboratoriesController, LabStaffController],
   providers: [
     // infrastructure
@@ -99,12 +100,12 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
     LabBranchSearchRepository,
     LaboratoryRepository,
     LabStaffAssignmentRepository,
-    TestCatalogRepository,
     // application
     GetCustodyEventsUseCase,
     GetLabBranchUseCase,
     SearchLabBranchesUseCase,
     CreateLabOrderUseCase,
+    CreateProviderLabOrderUseCase,
     ListLabOrdersUseCase,
     GetLabOrderUseCase,
     SubmitLabQuoteUseCase,

@@ -16,6 +16,7 @@ describe('RefreshTokenUseCase', () => {
     id: 'token-1',
     user_id: 'user-1',
     token_hash: `hashed:${rawToken}`,
+    session_id: 'session-1',
     device_id: null,
     revoked_at: null as Date | null,
     expires_at: new Date(now.getTime() + 60_000),
@@ -33,11 +34,12 @@ describe('RefreshTokenUseCase', () => {
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const refreshTokens = { findByTokenHash: jest.fn(), revokeAllActiveForUser: jest.fn(), revoke: jest.fn() };
+    const refreshTokens = { findByTokenHash: jest.fn(), lockUserForAuthMutation: jest.fn(), revokeAllActiveForUser: jest.fn(), revoke: jest.fn() };
+    const devices = { deleteAllForUser: jest.fn() };
     const roleMemberships = { findActiveByUser: jest.fn() };
     const tokens = { rotate: jest.fn() };
-    const useCase = new RefreshTokenUseCase(prisma as any, refreshTokens as any, roleMemberships as any, tokens as any);
-    return { tx, prisma, refreshTokens, roleMemberships, tokens, useCase };
+    const useCase = new RefreshTokenUseCase(prisma as any, refreshTokens as any, roleMemberships as any, tokens as any, devices as any);
+    return { tx, prisma, refreshTokens, devices, roleMemberships, tokens, useCase };
   }
 
   it('rejects an unrecognized token hash', async () => {
@@ -49,11 +51,13 @@ describe('RefreshTokenUseCase', () => {
   });
 
   it('treats replay of an already-rotated token as a theft signal: revokes every active token for the user and 401s TOKEN_FAMILY_REVOKED', async () => {
-    const { refreshTokens, useCase } = setup();
+    const { tx, refreshTokens, devices, useCase } = setup();
     refreshTokens.findByTokenHash.mockResolvedValue({ ...storedToken, revoked_at: now });
 
     await expect(useCase.execute({ refreshToken: rawToken })).rejects.toMatchObject({ code: 'TOKEN_FAMILY_REVOKED', httpStatus: 401 });
     expect(refreshTokens.revokeAllActiveForUser).toHaveBeenCalledWith(expect.anything(), 'user-1');
+    expect(refreshTokens.lockUserForAuthMutation).toHaveBeenCalledWith(tx, 'user-1');
+    expect(devices.deleteAllForUser).toHaveBeenCalledWith(tx, 'user-1');
   });
 
   it('rejects an expired-but-not-revoked token', async () => {
@@ -92,6 +96,7 @@ describe('RefreshTokenUseCase', () => {
 
     expect(result).toEqual({ accessToken: 'new-access', refreshToken: 'new-refresh', expiresIn: 1800 });
     expect(refreshTokens.revoke).toHaveBeenCalledWith(tx, 'token-1');
-    expect(tokens.rotate).toHaveBeenCalledWith(tx, membership, 'token-1', undefined);
+    // Rotation stays inside the presented token's login session.
+    expect(tokens.rotate).toHaveBeenCalledWith(tx, membership, 'token-1', 'session-1', undefined);
   });
 });

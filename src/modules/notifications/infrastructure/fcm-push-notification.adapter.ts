@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { App, initializeApp, getApps, cert } from 'firebase-admin/app';
+import { App, applicationDefault, initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getMessaging, Messaging } from 'firebase-admin/messaging';
 import { DomainError, ExternalProviderError } from '../../../shared/core/errors/domain-errors';
 import { AppConfig } from '../../../shared/config/configuration';
@@ -26,7 +26,7 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
 
   async send(tokens: string[], message: PushNotificationMessage): Promise<PushSendResult> {
     if (tokens.length === 0) {
-      return { invalidTokens: [] };
+      return { acceptedTokens: [], retryableTokens: [], invalidTokens: [] };
     }
 
     try {
@@ -34,19 +34,45 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
         tokens,
         notification: { title: message.title, body: message.body },
         data: message.data ? this.stringifyData(message.data) : undefined,
+        // Android replaces a tray item with the same tag. Using the stable
+        // inbox notification ID collapses an at-least-once retry of the same
+        // event without merging distinct notifications for the user.
+        ...(typeof message.data?.notificationId === 'string'
+          ? { android: { notification: { tag: message.data.notificationId } } }
+          : {}),
       });
 
       const invalidTokens: string[] = [];
+      const acceptedTokens: string[] = [];
+      const retryableTokens: string[] = [];
       response.responses.forEach((result, index) => {
-        if (!result.success) {
+        if (result.success) {
+          acceptedTokens.push(tokens[index]);
+        } else if (FcmPushNotificationAdapter.isUnrecoverableTokenError(result.error?.code)) {
           invalidTokens.push(tokens[index]);
+        } else {
+          retryableTokens.push(tokens[index]);
         }
       });
-      return { invalidTokens };
+      return { acceptedTokens, retryableTokens, invalidTokens };
     } catch (error) {
+      if (error instanceof DomainError && error.code === 'PUSH_PROVIDER_NOT_CONFIGURED') {
+        throw error;
+      }
       this.logger.error({ err: error }, 'FCM send failed');
       throw new ExternalProviderError('Firebase', 502, error);
     }
+  }
+
+  /**
+   * Only these two FCM error codes mean the token itself is permanently
+   * dead and should be pruned. Everything else (`messaging/internal-error`,
+   * quota, transient network failures) is a retryable send failure against
+   * a token that is still perfectly valid — treating those as "invalid"
+   * would delete live devices on every FCM hiccup.
+   */
+  private static isUnrecoverableTokenError(code: string | undefined): boolean {
+    return code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token';
   }
 
   /** FCM's `data` payload requires every value to be a string. */
@@ -58,22 +84,34 @@ export class FcmPushNotificationAdapter implements PushNotificationPort {
     if (this.messaging) {
       return this.messaging;
     }
-    if (!this.config.projectId || !this.config.clientEmail || !this.config.privateKey) {
+    const hasClientEmail = Boolean(this.config.clientEmail);
+    const hasPrivateKey = Boolean(this.config.privateKey);
+    if (!this.config.projectId || hasClientEmail !== hasPrivateKey) {
       throw new DomainError(500, 'PUSH_PROVIDER_NOT_CONFIGURED', 'خدمة الإشعارات غير مُهيّأة حاليًا.', {
-        missingEnvVars: ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'].filter(
-          (name) => !process.env[name],
-        ),
+        missingEnvVars: [
+          ...(!this.config.projectId ? ['FIREBASE_PROJECT_ID'] : []),
+          ...(hasClientEmail !== hasPrivateKey
+            ? [hasClientEmail ? 'FIREBASE_PRIVATE_KEY' : 'FIREBASE_CLIENT_EMAIL']
+            : []),
+        ],
       });
     }
+
+    // Cloud Run should use its attached service identity and ADC. Service-account
+    // keys remain supported for non-Google hosts, but are not needed in GCP.
+    const credential = hasClientEmail && hasPrivateKey
+      ? cert({
+          projectId: this.config.projectId,
+          clientEmail: this.config.clientEmail!,
+          privateKey: this.config.privateKey!,
+        })
+      : applicationDefault();
 
     const app: App =
       getApps()[0] ??
       initializeApp({
-        credential: cert({
-          projectId: this.config.projectId,
-          clientEmail: this.config.clientEmail,
-          privateKey: this.config.privateKey,
-        }),
+        projectId: this.config.projectId,
+        credential,
       });
     this.messaging = getMessaging(app);
     return this.messaging;

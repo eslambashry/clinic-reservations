@@ -16,6 +16,8 @@ export interface CaptureInternalWalletPaymentInput {
   payableType: PayableType;
   payableId: string;
   amount: string;
+  /** Full price when `amount` is a partial payment toward it — stored on the intent; commission still applies to `amount` unchanged. */
+  fullAmount?: string;
   currency: string;
   providerType: ProviderType;
   providerId: string;
@@ -89,6 +91,7 @@ export class CaptureInternalWalletPaymentUseCase {
       currency: input.currency,
       idempotencyKey: input.idempotencyKey,
       method: 'INTERNAL_WALLET',
+      fullAmount: input.fullAmount,
     });
 
     const rate = await this.policyConfig.getValue<{ ratePercent: number }>(

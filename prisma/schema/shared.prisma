@@ -59,6 +59,7 @@ model OutboxEvent {
   version      Int               @default(1)
 
   @@index([status, created_at])
+  @@index([status, updated_at])
   @@map("outbox_events")
 }
 
@@ -178,6 +179,18 @@ enum PrescriptionSource {
   @@map("prescriptions_source_enum")
 }
 
+/// Describes what a stored image is asking the downstream operator to do.
+/// Legacy patient uploads remain PRESCRIPTION so existing pharmacy and lab
+/// referral behavior is preserved; provider uploads can distinguish a
+/// medication order from a lab referral and the backend can enforce that
+/// boundary.
+enum PrescriptionDocumentType {
+  PRESCRIPTION
+  LAB_REFERRAL
+
+  @@map("prescriptions_document_type_enum")
+}
+
 enum PrescriptionStatus {
   UPLOADED
   QUALITY_CHECK_PASSED
@@ -185,6 +198,14 @@ enum PrescriptionStatus {
   ACCEPTED
   REJECTED
   CANCELLED
+  /// Provider clinical requests (File 12 Part 51): an assistant
+  /// (`CLINIC_STAFF`)-prepared, doctor-issued prescription draft that has not
+  /// yet been signed off by the supervising doctor. Deliberately excluded
+  /// from every existing `ACCEPTED`/`QUALITY_CHECK_PASSED` read site
+  /// (`GetAcceptedPrescriptionForOrderUseCase`, the pharmacy-staff review
+  /// queue) so it fails closed everywhere by construction, not by an added
+  /// check — see `docs/FILE_12_...md` Part 51 for the full reasoning.
+  PENDING_DOCTOR_APPROVAL
 
   @@map("prescriptions_status_enum")
 }
@@ -234,13 +255,9 @@ enum PharmacyOrderRejectionReason {
 enum FulfillmentType {
   PICKUP
   DELIVERY
-  /// 2026-09-04 addition: patient collects the medication at their clinic
-  /// instead of a pharmacy branch. Deliberately routed through the exact
-  /// same rules as PICKUP everywhere (`nextStatusAfterFulfill`, branch
-  /// delivery-capability checks, audit action mapping) — there is no linked
-  /// clinic/appointment record and no new `PharmacyOrderStatus` for it, per
-  /// the product decision to keep this a labeling-only third option rather
-  /// than a distinct workflow.
+  /// 2026-09-24: the pharmacy sends the medication to the clinic, like home
+  /// delivery. Requires a delivery-capable pharmacy branch and follows the
+  /// OUT_FOR_DELIVERY / courier handoff lifecycle.
   CLINIC_HANDOVER
 
   @@map("pharmacy_orders_fulfillment_type_enum")
@@ -405,6 +422,9 @@ enum PolicyType {
   COMMISSION_RATE
   CANCELLATION_TIER
   NOTIFICATION_QUIET_HOURS
+  /// `{ "minAmount": "50.00" }` — smallest online appointment payment
+  /// allowed (capped at the consult fee itself for cheaper doctors).
+  MIN_APPOINTMENT_PAYMENT
 
   @@map("policy_configs_policy_type_enum")
 }
@@ -414,6 +434,13 @@ enum OutboxEventStatus {
   PROCESSING
   PROCESSED
   FAILED
+  /// Drained while no module had registered a handler for its `event_name`.
+  /// A terminal state only in the sense that the worker stops re-reading it:
+  /// nothing is lost, and once a consumer exists these rows can be flipped
+  /// back to PENDING to be delivered. Keeping them PENDING instead is what
+  /// let ~21 consumer-less events permanently fill the `LIMIT`-bounded claim
+  /// batch and stall the whole queue.
+  SKIPPED
 
   @@map("outbox_events_status_enum")
 }

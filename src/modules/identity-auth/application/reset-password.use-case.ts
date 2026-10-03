@@ -4,6 +4,7 @@ import { DomainError } from '../../../shared/core/errors/domain-errors';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { OtpRequestRepository } from '../infrastructure/otp-request.repository';
 import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository';
+import { DeviceRepository } from '../infrastructure/device.repository';
 import { UserRepository } from '../infrastructure/user.repository';
 
 export interface ResetPasswordInput {
@@ -24,6 +25,7 @@ export class ResetPasswordUseCase {
     @Inject(OtpRequestRepository) private readonly otpRequests: OtpRequestRepository,
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
+    @Inject(DeviceRepository) private readonly devices: DeviceRepository,
   ) {}
 
   async execute(input: ResetPasswordInput): Promise<ResetPasswordResult> {
@@ -50,6 +52,7 @@ export class ResetPasswordUseCase {
       if (!user) {
         throw new DomainError(400, 'INVALID_CODE', 'رمز التحقق غير صحيح. راجع الرمز وأعد المحاولة.');
       }
+      await this.refreshTokens.lockUserForAuthMutation(tx, user.id);
 
       const passwordHash = await argon2.hash(input.newPassword);
       await this.users.setPassword(tx, user.id, passwordHash);
@@ -58,6 +61,7 @@ export class ResetPasswordUseCase {
       // path) — a password reset must invalidate every existing session,
       // not just the current device.
       await this.refreshTokens.revokeAllActiveForUser(tx, user.id);
+      await this.devices.deleteAllForUser(tx, user.id);
 
       this.logger.log(`Password reset for user ${user.id} — all active refresh tokens revoked.`);
     });

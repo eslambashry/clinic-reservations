@@ -16,10 +16,12 @@ import { InitiateWalletTopUpUseCase } from './application/initiate-wallet-top-up
 import { ListProviderLedgerEntriesUseCase } from './application/list-provider-ledger-entries.use-case';
 import { ListWalletTransactionsUseCase } from './application/list-wallet-transactions.use-case';
 import { MarkOnlinePaymentFailedUseCase } from './application/mark-online-payment-failed.use-case';
+import { FAWRY_GATEWAY } from './application/ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY } from './application/ports/payment-gateway.port';
 import { ProcessCancellationRefundUseCase } from './application/process-cancellation-refund.use-case';
 import { ProcessWalletTopUpUseCase } from './application/process-wallet-top-up.use-case';
 import { RecordProviderPayoutUseCase } from './application/record-provider-payout.use-case';
+import { FawryPaymentGatewayAdapter } from './infrastructure/fawry-payment-gateway.adapter';
 import { PaymentAttemptRepository } from './infrastructure/payment-attempt.repository';
 import { PaymentIntentRepository } from './infrastructure/payment-intent.repository';
 import { PaymentSplitRepository } from './infrastructure/payment-split.repository';
@@ -54,6 +56,11 @@ import { AuditModule } from '../audit/audit.module';
  * change: reuses the already-reserved `PAYOUT` ledger entry type). Needs
  * `AuditModule` for the first time in this module, since recording a payout
  * is audited like any other admin action.
+ *
+ * `FAWRY_GATEWAY`/`FawryPaymentGatewayAdapter`: `FAWRY` moved off Paymob to
+ * a direct FawryPay integration — Paymob's current docs no longer show
+ * Fawry as a supported method (see `PaymentGatewayPort`'s doc comment).
+ * Exported the same way `PAYMENT_GATEWAY` already was, for the same callers.
  */
 @Module({
   imports: [AuditModule],
@@ -67,6 +74,7 @@ import { AuditModule } from '../audit/audit.module';
     WalletRepository,
     WalletTransactionRepository,
     { provide: PAYMENT_GATEWAY, useClass: PaymobPaymentGatewayAdapter },
+    { provide: FAWRY_GATEWAY, useClass: FawryPaymentGatewayAdapter },
     CapturePayAtClinicPaymentUseCase,
     ProcessCancellationRefundUseCase,
     InitiateOnlinePaymentUseCase,
@@ -87,6 +95,7 @@ import { AuditModule } from '../audit/audit.module';
   ],
   exports: [
     PAYMENT_GATEWAY,
+    FAWRY_GATEWAY,
     CapturePayAtClinicPaymentUseCase,
     ProcessCancellationRefundUseCase,
     InitiateOnlinePaymentUseCase,

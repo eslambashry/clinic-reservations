@@ -49,6 +49,14 @@ export class UpdateAppointmentVisitStatusUseCase {
         );
       }
 
+      if (input.status === 'CANCELLED' || input.status === 'TIME_EXPIRED') {
+        throw new BusinessRuleError(
+          'VISIT_STATUS_MANAGED_BY_SYSTEM',
+          'حالة إلغاء أو انتهاء الموعد تُحدَّث تلقائياً بواسطة النظام.',
+          { requestedStatus: input.status },
+        );
+      }
+
       if (!isValidVisitStatusTransition(appointment.visit_status, input.status)) {
         throw new BusinessRuleError(
           'INVALID_VISIT_STATUS_TRANSITION',

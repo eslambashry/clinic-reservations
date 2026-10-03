@@ -7,6 +7,10 @@ export interface PushNotificationMessage {
 }
 
 export interface PushSendResult {
+  /** Accepted by FCM for handoff; this does not prove device display. */
+  acceptedTokens: string[];
+  /** Per-target temporary failures. Retry only these targets. */
+  retryableTokens: string[];
   /** Tokens FCM reported as invalid/unregistered — the caller can use this to prune stale `devices` rows later; not acted on here to keep this port a pure sender. */
   invalidTokens: string[];
 }

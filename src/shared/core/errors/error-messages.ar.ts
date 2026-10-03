@@ -39,6 +39,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   TOKEN_EXPIRED: 'انتهت صلاحية جلستك. سجّل الدخول مرة أخرى للمتابعة.',
   INVALID_REFRESH_TOKEN: 'لم تعد جلستك صالحة. سجّل الدخول مرة أخرى.',
   TOKEN_FAMILY_REVOKED: 'تم إنهاء هذه الجلسة لأسباب أمنية. سجّل الدخول مرة أخرى.',
+  SESSION_REFRESH_REQUIRED: 'يلزم تحديث الجلسة قبل تفعيل الإشعارات.',
+  DEVICE_SESSION_ENDED: 'انتهت الجلسة التي طلبت تفعيل الإشعارات على هذا الجهاز.',
 
   // ── Authorization (403) ─────────────────────────────────────────────────
   FORBIDDEN: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
@@ -69,6 +71,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   UNIQUE_CONSTRAINT_VIOLATION: 'هذا الإجراء يتعارض مع سجل موجود بالفعل.',
   OPTIMISTIC_LOCK_CONFLICT: 'تم تعديل هذا السجل من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   IDEMPOTENCY_KEY_REUSE: 'هناك طلب مطابق قيد التنفيذ بالفعل. انتظر حتى ينتهي قبل إعادة المحاولة.',
+  IDEMPOTENCY_KEY_REQUIRED: 'أرسل مفتاح عدم التكرار قبل تنفيذ هذا الإجراء.',
   GATEWAY_UNAVAILABLE: 'الخدمة غير متاحة مؤقتًا. أعد المحاولة بعد قليل.',
   INTERNAL_ERROR: 'حدث خطأ غير متوقع. أعد المحاولة، وإن استمرت المشكلة تواصل مع الدعم.',
 
@@ -91,6 +94,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
   APPOINTMENT_VISIT_IN_PROGRESS: 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
+  APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
   SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
   INVALID_DATE_RANGE: 'النطاق الزمني المطلوب غير صحيح.',
@@ -104,9 +108,19 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   BRANCH_HAS_BOOKINGS: 'لا يمكن حذف الفرع لأنه يحتوي على مواعيد محجوزة.',
   PROVIDER_TYPE_NOT_SUPPORTED: 'هذا النوع من مقدّمي الخدمة غير مدعوم في هذا الإجراء.',
   DOCTOR_APPLICATION_NOT_PENDING: 'لا يمكن رفض طلب طبيب لم يعد قيد المراجعة.',
+  // The throw sites build a more specific Arabic sentence naming the counts
+  // (`arErrorMessage` keeps an Arabic message from the throw site); these are
+  // the catalog fallbacks.
+  SPECIALTY_IN_USE: 'لا يمكن حذف هذا التخصص لارتباطه بأطباء أو تخصصات فرعية.',
+  SPECIALTY_PARENT_CYCLE: 'لا يمكن جعل التخصص تابعاً لنفسه أو لأحد تخصصاته الفرعية.',
 
   // ── Payments ────────────────────────────────────────────────────────────
   PAYMENT_METHOD_NOT_SUPPORTED: 'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
+  PAYMENT_AMOUNT_BELOW_MINIMUM: 'المبلغ أقل من الحد الأدنى المسموح به للدفع.',
+  PAYMENT_AMOUNT_EXCEEDS_FEE: 'المبلغ أكبر من قيمة الكشف.',
+  PAYMENT_AMOUNT_INVALID: 'مبلغ الدفع غير صالح.',
+  PAYMENT_AMOUNT_NOT_SUPPORTED: 'الدفع الجزئي غير متاح مع الدفع في العيادة.',
+  MIN_APPOINTMENT_PAYMENT_NOT_CONFIGURED: 'الحد الأدنى للدفع غير مُهيّأ لهذه المنطقة. تواصل مع الدعم.',
   PAYMENT_INTENT_NOT_REFUNDABLE: 'لا يمكن استرداد مبلغ لم يتم تحصيله.',
   PAYMENT_INTENT_STATE_CHANGED: 'تم تعديل عملية الدفع من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   PAYMENT_CAPTURE_FAILED: 'تعذّر تحصيل الدفعة. أعد المحاولة.',
@@ -130,6 +144,13 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',
   CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED:
     'تحتوي الروشتة على دواء خاضع للرقابة. يلزم تأكيد صريح من الصيدلي قبل المتابعة.',
+  PRESCRIPTION_NEEDS_ITEMS: 'أضف دواءً واحدًا على الأقل لإصدار الروشتة.',
+  PRESCRIPTION_NEEDS_FILES: 'أرفق صورة واحدة على الأقل للطلب.',
+  PRESCRIPTION_HAS_NO_CONTENT: 'أضف دواءً أو أرفق صورة للروشتة قبل إرسالها للصيدلية.',
+  DOCUMENT_NOT_A_PRESCRIPTION: 'لا يمكن إرسال إحالة المعمل إلى الصيدلية.',
+  PAYMENT_BILLING_DATA_REQUIRED: 'بيانات الفوترة مطلوبة لطريقة الدفع المحددة.',
+  DUPLICATE_BATCH_PATIENT: 'لا يمكن إضافة المريض نفسه أكثر من مرة في نفس الدفعة.',
+  BATCH_NEEDS_REQUESTS: 'أضف طلب مريض واحد على الأقل إلى الدفعة.',
 
   // ── Pharmacy fulfillment ────────────────────────────────────────────────
   PHARMACY_ORDER_ALREADY_EXISTS: 'يوجد طلب صيدلية نشِط لهذه الروشتة بالفعل.',
@@ -137,6 +158,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   NO_PHARMACY_BRANCHES_AVAILABLE: 'لا توجد فروع صيدليات موثَّقة قريبة من الموقع المحدَّد.',
   PHARMACY_ORDER_LOCATION_REQUIRED: 'حدِّد موقعك أو اختر فرع صيدلية لإتمام الطلب.',
   PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE: 'فرع الصيدلية المختار لا يوفّر خدمة التوصيل.',
+  PHARMACY_HANDOVER_APPOINTMENT_REQUIRED: 'اختر موعد العيادة المرتبط بطلب الدواء.',
+  PHARMACY_HANDOVER_APPOINTMENT_UNEXPECTED: 'اربط الموعد فقط عند اختيار التسليم إلى العيادة.',
+  PHARMACY_HANDOVER_APPOINTMENT_INACTIVE: 'الموعد المختار غير صالح لتسليم الدواء إلى العيادة.',
   ORDER_ALREADY_CLAIMED: 'استلم فرع صيدلية آخر هذا الطلب قبلك.',
   BROADCAST_ALREADY_RESPONDED: 'سبق لهذا الفرع الرد على هذا الطلب.',
   PHARMACY_ORDER_NOT_UNDER_REVIEW: 'هذا الطلب ليس في انتظار تسعير.',
@@ -153,9 +177,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   INVALID_ESTIMATED_READY_MINUTES: 'مدة التجهيز المتوقّعة خارج النطاق المسموح به.',
 
   // ── Laboratory ──────────────────────────────────────────────────────────
-  LAB_ORDER_NEEDS_TESTS_OR_PRESCRIPTION: 'اختر تحليلًا واحدًا على الأقل أو أرفق روشتة.',
+  LAB_ORDER_REFERRAL_REQUIRED: 'أرفق إحالة معملية لطلب التحاليل.',
   LAB_BRANCH_NOT_HOME_COLLECTION_CAPABLE: 'فرع المعمل المختار لا يوفّر سحب العيّنة من المنزل.',
-  UNKNOWN_TEST_CODE: 'يوجد تحليل غير معروف ضمن الطلب. راجع التحاليل المختارة.',
   LAB_ORDER_ITEM_ID_REQUIRED: 'هذا الطلب يحتوي على تحاليل مسجّلة — حدّد التحليل المطلوب تسجيل نتيجته.',
   LAB_ORDER_NOT_REQUESTED: 'التسعير متاح فقط لطلب في انتظار عرض سعر.',
   LAB_ORDER_NOT_QUOTED: 'تأكيد الحجز يتطلّب عرض سعر مُرسَلًا في انتظار رد المريض.',
@@ -198,6 +221,7 @@ export const AR_RESOURCE_NAMES: Readonly<Record<string, string>> = {
   LabOrderItem: 'التحليل المطلوب',
   LabResultDocument: 'ملف نتيجة التحليل',
   Notification: 'الإشعار',
+  Patient: 'المريض',
   PaymentIntent: 'عملية الدفع',
   Pharmacy: 'الصيدلية',
   PharmacyBranch: 'فرع الصيدلية',

@@ -3,6 +3,7 @@ import { PharmacyOrder, PharmacyOrderStatus } from '@prisma/client';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ForbiddenError } from '../../../shared/core/errors/domain-errors';
 import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
@@ -53,6 +54,7 @@ export class ListPharmacyOrdersUseCase {
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
   ) {}
 
   async execute(input: ListPharmacyOrdersInput, actor: AccessTokenPayload): Promise<ListPharmacyOrdersResult> {
@@ -70,6 +72,9 @@ export class ListPharmacyOrdersUseCase {
         throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
       }
       rows = await this.pharmacyOrders.findForBranch(this.prisma, membership.contextId, page);
+    } else if (actor.contextType === 'DOCTOR' || actor.contextType === 'CLINIC_STAFF') {
+      const scope = await this.resolveDoctorScope.execute(actor);
+      rows = await this.pharmacyOrders.findForDoctor(this.prisma, scope.doctorUserId, page, actor.contextType === 'CLINIC_STAFF' ? actor.sub : undefined);
     } else {
       throw new ForbiddenError('FORBIDDEN', 'صلاحيات حسابك لا تسمح بعرض طلبات الصيدلية.');
     }

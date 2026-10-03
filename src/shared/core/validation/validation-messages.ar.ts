@@ -115,8 +115,6 @@ const AR_FIELD_LABELS: Readonly<Record<string, string>> = {
   labOrderId: 'طلب التحاليل',
   labOrderItemId: 'التحليل المطلوب',
   resultId: 'النتيجة',
-  testCodes: 'رموز التحاليل',
-  catalogCode: 'رمز التحليل',
   collectionType: 'طريقة سحب العيّنة',
   prepInstructions: 'تعليمات التحضير',
   queueNumber: 'رقم الدور',

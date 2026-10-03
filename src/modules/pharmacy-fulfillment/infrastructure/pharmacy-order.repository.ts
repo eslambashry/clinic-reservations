@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { FulfillmentType, PharmacyOrder, PharmacyOrderRejectionReason, PharmacyOrderStatus, Prisma } from '@prisma/client';
+import { FulfillmentType, PharmacyOrder, PharmacyOrderRejectionReason, PharmacyOrderStatus, Prisma, RoleContextType } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
 
 export interface NewPharmacyOrder {
   prescriptionId: string;
   patientId: string;
   fulfillmentType: FulfillmentType;
+  appointmentId?: string;
+  handoverClinicBranchId?: string;
+  createdByUserId?: string;
+  createdByRole?: RoleContextType;
 }
 
 export interface FlatQuote {
@@ -51,6 +55,10 @@ export class PharmacyOrderRepository {
         prescription_id: input.prescriptionId,
         patient_id: input.patientId,
         fulfillment_type: input.fulfillmentType,
+        appointment_id: input.appointmentId,
+        handover_clinic_branch_id: input.handoverClinicBranchId,
+        created_by_user_id: input.createdByUserId,
+        created_by_role: input.createdByRole,
       },
     });
   }
@@ -141,6 +149,22 @@ export class PharmacyOrderRepository {
     return db.pharmacyOrder.findMany({
       where: {
         AND: [{ patient_id: patientId }, ...(page.status ? [{ status: page.status }] : []), ...cursorFilter(page.cursor, page.sortDirection)],
+      },
+      orderBy: [{ created_at: page.sortDirection }, { id: page.sortDirection }],
+      take: page.limit,
+    });
+  }
+
+  /** Provider order history; assistant reads are narrowed to orders they submitted. */
+  findForDoctor(db: Prisma.TransactionClient, doctorUserId: string, page: ListOrdersPage, createdByUserId?: string): Promise<PharmacyOrder[]> {
+    return db.pharmacyOrder.findMany({
+      where: {
+        AND: [
+          { prescription: { doctor_id: doctorUserId } },
+          ...(createdByUserId ? [{ created_by_user_id: createdByUserId }] : []),
+          ...(page.status ? [{ status: page.status }] : []),
+          ...cursorFilter(page.cursor, page.sortDirection),
+        ],
       },
       orderBy: [{ created_at: page.sortDirection }, { id: page.sortDirection }],
       take: page.limit,

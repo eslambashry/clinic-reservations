@@ -50,7 +50,12 @@ export class VerificationDocumentsController {
       },
     },
   })
-  @Roles(RoleContextType.ADMIN, RoleContextType.DOCTOR)
+  // PATIENT is included because a self-registered doctor is still
+  // PATIENT-context until an admin verifies them — without it they could
+  // never upload the very documents that verification depends on. The
+  // use-case enforces that any non-admin caller can only attach documents to
+  // their own doctor record, so this grants no access beyond that.
+  @Roles(RoleContextType.ADMIN, RoleContextType.DOCTOR, RoleContextType.PATIENT)
   @ApiOperation({
     summary:
       'Admin: attach a verification document for any provider. Doctor: attach a verification document for their own doctor record only — multipart upload, jpeg/png/pdf, stored private (Part 32.7 superseded by ImageKit)',

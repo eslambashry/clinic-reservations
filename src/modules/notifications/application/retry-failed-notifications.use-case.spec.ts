@@ -6,8 +6,9 @@ describe('RetryFailedNotificationsUseCase', () => {
     const prisma = {} as any;
     const notifications = { findRetryable: jest.fn() };
     const deliver = { execute: jest.fn() };
-    const useCase = new RetryFailedNotificationsUseCase(prisma, notifications as any, deliver as any);
-    return { prisma, notifications, deliver, useCase };
+    const policyConfig = { getValue: jest.fn().mockResolvedValue(null) };
+    const useCase = new RetryFailedNotificationsUseCase(prisma, notifications as any, policyConfig as any, deliver as any);
+    return { prisma, notifications, policyConfig, deliver, useCase };
   }
 
   it('queries with the configured max attempts / batch size and re-delivers every candidate', async () => {
@@ -61,5 +62,31 @@ describe('RetryFailedNotificationsUseCase', () => {
 
     expect(deliver.execute).not.toHaveBeenCalled();
     expect(result).toEqual({ retried: 0 });
+  });
+it('leaves quiet-hours-respecting PENDING rows alone while the window is open', async () => {
+    const { notifications, policyConfig, deliver, useCase } = setup();
+    // Window covers every hour of the day, so the sweep is always inside it.
+    policyConfig.getValue.mockResolvedValue({ startHour: 0, endHour: 24 });
+    notifications.findRetryable.mockResolvedValue([
+      { id: 'n1', user_id: 'u1', tier: 'TRANSACTIONAL', channel: 'PUSH', template_code: 'AppointmentConfirmed', title: 't', body: 'b', data: null },
+    ]);
+
+    const result = await useCase.execute();
+
+    expect(deliver.execute).not.toHaveBeenCalled();
+    expect(result.retried).toBe(0);
+  });
+
+  it('still delivers SAFETY_CRITICAL rows during quiet hours', async () => {
+    const { notifications, policyConfig, deliver, useCase } = setup();
+    policyConfig.getValue.mockResolvedValue({ startHour: 0, endHour: 24 });
+    notifications.findRetryable.mockResolvedValue([
+      { id: 'n1', user_id: 'u1', tier: 'SAFETY_CRITICAL', channel: 'PUSH', template_code: 'CriticalLabResult', title: 't', body: 'b', data: null },
+    ]);
+
+    const result = await useCase.execute();
+
+    expect(deliver.execute).toHaveBeenCalledTimes(1);
+    expect(result.retried).toBe(1);
   });
 });

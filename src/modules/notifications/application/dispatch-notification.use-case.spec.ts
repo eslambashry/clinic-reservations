@@ -15,7 +15,7 @@ describe('DispatchNotificationUseCase', () => {
   function setup() {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const notifications = { create: jest.fn() };
+    const notifications = { createOnce: jest.fn() };
     const preferences = { listForUser: jest.fn().mockResolvedValue([]) };
     const policyConfig = { getValue: jest.fn().mockResolvedValue(null) };
     const deliver = { execute: jest.fn() };
@@ -41,13 +41,13 @@ describe('DispatchNotificationUseCase', () => {
 
   it('creates one Notification row per channel and delivers each when nothing suppresses it', async () => {
     const { tx, notifications, deliver, useCase } = setup();
-    notifications.create.mockResolvedValueOnce({ id: 'notif-push' }).mockResolvedValueOnce({ id: 'notif-sms' });
+    notifications.createOnce.mockResolvedValueOnce({ id: 'notif-push' }).mockResolvedValueOnce({ id: 'notif-sms' });
 
     await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
 
-    expect(notifications.create).toHaveBeenCalledTimes(2);
-    expect(notifications.create).toHaveBeenCalledWith(tx, expect.objectContaining({ userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'PUSH' }));
-    expect(notifications.create).toHaveBeenCalledWith(tx, expect.objectContaining({ userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'SMS' }));
+    expect(notifications.createOnce).toHaveBeenCalledTimes(2);
+    expect(notifications.createOnce).toHaveBeenCalledWith(tx, expect.objectContaining({ userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'PUSH' }));
+    expect(notifications.createOnce).toHaveBeenCalledWith(tx, expect.objectContaining({ userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'SMS' }));
     expect(deliver.execute).toHaveBeenCalledTimes(2);
     expect(deliver.execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'notif-push', channel: 'PUSH', userId: 'patient-1' }));
   });
@@ -55,23 +55,23 @@ describe('DispatchNotificationUseCase', () => {
   it('skips a channel the user explicitly disabled — no row created, nothing delivered', async () => {
     const { notifications, preferences, deliver, useCase } = setup();
     preferences.listForUser.mockResolvedValue([{ tier: 'TRANSACTIONAL', channel: 'SMS', enabled: false }]);
-    notifications.create.mockResolvedValue({ id: 'notif-push' });
+    notifications.createOnce.mockResolvedValue({ id: 'notif-push' });
 
     await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
 
-    expect(notifications.create).toHaveBeenCalledTimes(1);
-    expect(notifications.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ channel: 'PUSH' }));
+    expect(notifications.createOnce).toHaveBeenCalledTimes(1);
+    expect(notifications.createOnce).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ channel: 'PUSH' }));
     expect(deliver.execute).toHaveBeenCalledTimes(1);
   });
 
   it('SAFETY_CRITICAL is delivered even when a preference row says disabled (File 10 §11)', async () => {
     const { notifications, preferences, deliver, useCase } = setup();
     preferences.listForUser.mockResolvedValue([{ tier: 'SAFETY_CRITICAL', channel: 'PUSH', enabled: false }, { tier: 'SAFETY_CRITICAL', channel: 'SMS', enabled: false }]);
-    notifications.create.mockResolvedValue({ id: 'notif-1' });
+    notifications.createOnce.mockResolvedValue({ id: 'notif-1' });
 
     await useCase.executeFromEvent('CriticalLabResult', { labOrderId: 'order-1', patientId: 'patient-1', resultId: 'res-1' });
 
-    expect(notifications.create).toHaveBeenCalledTimes(2);
+    expect(notifications.createOnce).toHaveBeenCalledTimes(2);
     expect(deliver.execute).toHaveBeenCalledTimes(2);
   });
 
@@ -80,11 +80,11 @@ describe('DispatchNotificationUseCase', () => {
     // 2026-01-01T12:00:00Z is 14:00 in Africa/Cairo (UTC+2, no DST) — a fixed, deterministic local hour, not the real system clock.
     Settings.now = () => Date.parse('2026-01-01T12:00:00Z');
     policyConfig.getValue.mockResolvedValue({ startHour: 10, endHour: 18 });
-    notifications.create.mockResolvedValue({ id: 'notif-1' });
+    notifications.createOnce.mockResolvedValue({ id: 'notif-1' });
 
     await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' });
 
-    expect(notifications.create).toHaveBeenCalledTimes(2);
+    expect(notifications.createOnce).toHaveBeenCalledTimes(2);
     expect(deliver.execute).not.toHaveBeenCalled();
   });
 
@@ -92,10 +92,30 @@ describe('DispatchNotificationUseCase', () => {
     const { notifications, policyConfig, deliver, useCase } = setup();
     Settings.now = () => Date.parse('2026-01-01T12:00:00Z'); // same fixed 14:00 Cairo time as above, still inside the quiet window
     policyConfig.getValue.mockResolvedValue({ startHour: 10, endHour: 18 });
-    notifications.create.mockResolvedValue({ id: 'notif-1' });
+    notifications.createOnce.mockResolvedValue({ id: 'notif-1' });
 
     await useCase.executeFromEvent('CriticalLabResult', { labOrderId: 'order-1', patientId: 'patient-1', resultId: 'res-1' });
 
     expect(deliver.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('keys every row on the source outbox event and shows exactly one of them in the inbox', async () => {
+    const { tx, notifications, useCase } = setup();
+    notifications.createOnce.mockResolvedValueOnce({ id: 'notif-push', status: 'PENDING' }).mockResolvedValueOnce({ id: 'notif-sms', status: 'PENDING' });
+
+    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' }, 'event-1');
+
+    expect(notifications.createOnce).toHaveBeenNthCalledWith(1, tx, expect.objectContaining({ channel: 'PUSH', sourceEventId: 'event-1', visibleInInbox: true }));
+    expect(notifications.createOnce).toHaveBeenNthCalledWith(2, tx, expect.objectContaining({ channel: 'SMS', sourceEventId: 'event-1', visibleInInbox: false }));
+  });
+
+  it('a re-processed event does not re-deliver a row that was already SENT', async () => {
+    const { notifications, deliver, useCase } = setup();
+    notifications.createOnce.mockResolvedValueOnce({ id: 'notif-push', status: 'SENT' }).mockResolvedValueOnce({ id: 'notif-sms', status: 'FAILED' });
+
+    await useCase.executeFromEvent('AppointmentConfirmed', { appointmentId: 'appt-1', patientId: 'patient-1' }, 'event-1');
+
+    expect(deliver.execute).toHaveBeenCalledTimes(1);
+    expect(deliver.execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'notif-sms', channel: 'SMS' }));
   });
 });

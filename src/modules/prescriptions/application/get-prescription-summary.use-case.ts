@@ -7,10 +7,14 @@ import { PrescriptionRepository } from '../infrastructure/prescription.repositor
 
 export interface PrescriptionSummary {
   id: string;
+  patientId: string;
   source: string;
+  documentType: string;
   status: string;
   expiresAt: string | null;
   doctorId: string | null;
+  createdByUserId: string | null;
+  createdByRole: string | null;
   notes: string | null;
   images: { id: string; fileUrl: string; qualityCheckStatus: string }[];
 }
@@ -42,10 +46,14 @@ export class GetPrescriptionSummaryUseCase {
     const images = await this.images.findByPrescriptionId(tx, prescriptionId);
     return {
       id: prescription.id,
+      patientId: prescription.patient_id,
       source: prescription.source,
+      documentType: prescription.document_type,
       status: prescription.status,
       expiresAt: prescription.expires_at?.toISOString() ?? null,
       doctorId: prescription.doctor_id,
+      createdByUserId: prescription.created_by_user_id,
+      createdByRole: prescription.created_by_role,
       notes: prescription.notes,
       // Signed fresh on every read — see the identical note in `GetPrescriptionUseCase`.
       images: images.map((image) => ({

@@ -92,7 +92,7 @@ export class AppointmentsController {
 
   @Post(':appointmentId/reschedule')
   @UseInterceptors(IdempotencyInterceptor)
-  @ApiOperation({ summary: 'Release the old slot, hold a new one (Part 35.10) — still requires a separate /confirm call' })
+  @ApiOperation({ summary: 'Move a confirmed appointment to another slot of the same affiliation — completes in one transaction, the payment carries over (no /confirm, no new payment)' })
   reschedule(
     @Param('appointmentId', ParseUUIDPipe) appointmentId: string,
     @Body() dto: RescheduleAppointmentDto,

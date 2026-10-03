@@ -12,10 +12,17 @@ export interface NewAppointment {
   rescheduledFromAppointmentId?: string;
   /** File 12 Part 36: set once pay-at-clinic capture succeeds in the same transaction. */
   paymentIntentId?: string;
+  /** Consult fee minus what was paid online; omitted for pay-at-clinic. Tracking only. */
+  remainingBalance?: string;
 }
 
 const WITH_SLOT_TIMES = {
   slot: { select: { start_at: true, end_at: true } },
+  // The patient's own payment breakdown (what's due, what they already paid,
+  // what's left for the clinic to collect) — safe to expose on the patient
+  // surface unlike `WITH_DOCTOR_VIEW`'s `patient` include, since it is the
+  // caller's own money, not another person's identity.
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
@@ -49,10 +56,13 @@ export type AppointmentWithSlotTimes = Prisma.AppointmentGetPayload<{ include: t
  * number must not become reachable from a response shape a patient can ask
  * for. `iana_timezone` is added here because the Doctor Dashboard renders a
  * clinic-local day view and would otherwise have to guess the offset.
+ * `payment_intent` is read so the doctor can see what the patient already
+ * paid and what is left to collect at the clinic.
  */
 const WITH_DOCTOR_VIEW = {
   slot: { select: { start_at: true, end_at: true } },
   patient: { select: { id: true, first_name: true, last_name: true, phone: true } },
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
@@ -126,6 +136,7 @@ export class AppointmentRepository {
         status: 'CONFIRMED',
         rescheduled_from_appointment_id: input.rescheduledFromAppointmentId,
         payment_intent_id: input.paymentIntentId,
+        remaining_balance: input.remainingBalance,
       },
     });
   }
@@ -198,7 +209,7 @@ export class AppointmentRepository {
   async cancel(db: Prisma.TransactionClient, id: string, currentVersion: number, cancelledBy: string, cancelledReason: string): Promise<boolean> {
     const result = await db.appointment.updateMany({
       where: { id, version: currentVersion, status: 'CONFIRMED', visit_status: 'WAITING' },
-      data: { status: 'CANCELLED', cancelled_by: cancelledBy, cancelled_reason: cancelledReason, version: { increment: 1 } },
+      data: { status: 'CANCELLED', visit_status: 'CANCELLED', cancelled_by: cancelledBy, cancelled_reason: cancelledReason, version: { increment: 1 } },
     });
     return result.count === 1;
   }
@@ -212,6 +223,26 @@ export class AppointmentRepository {
     return result.count === 1;
   }
 
+  /**
+   * File 12 Part 51 — the only doctor↔patient relationship this codebase can
+   * currently prove: has this patient ever had an `Appointment` under one of
+   * the caller's own `affiliationIds`? Backs the provider clinical-requests
+   * authorization check (a doctor/assistant may only write a prescription or
+   * lab order for a patient they've actually seen). `affiliationIds` is
+   * always server-resolved from the caller's JWT via
+   * `ResolveDoctorScopeUseCase`, never client-supplied.
+   */
+  async existsForPatientAndAffiliations(db: Prisma.TransactionClient, patientId: string, affiliationIds: string[]): Promise<boolean> {
+    if (affiliationIds.length === 0) {
+      return false;
+    }
+    const match = await db.appointment.findFirst({
+      where: { patient_id: patientId, doctor_clinic_affiliation_id: { in: affiliationIds } },
+      select: { id: true },
+    });
+    return match !== null;
+  }
+
   /** Version-guarded live clinic-flow update; transition policy stays in the application/domain layers. */
   async updateVisitStatus(
     db: Prisma.TransactionClient,
@@ -220,5 +251,27 @@ export class AppointmentRepository {
     visitStatus: VisitStatus,
   ): Promise<void> {
     await updateWithOptimisticLock(db.appointment, id, currentVersion, { visit_status: visitStatus });
+  }
+
+  /** Marks only genuinely overdue waiting visits; active consultations of
+   * live (CONFIRMED) appointments are deliberately never auto-closed. A
+   * COMPLETED/RESCHEDULED appointment is already finished, so its visit state
+   * is reconciled to match instead of staying stale. */
+  async expireWaitingVisits(db: Prisma.TransactionClient, graceMinutes: number): Promise<number> {
+    const cutoff = new Date(Date.now() - graceMinutes * 60_000);
+    const expired = await db.appointment.updateMany({
+      where: {
+        status: { in: ['CONFIRMED', 'COMPLETED', 'RESCHEDULED'] },
+        visit_status: 'WAITING',
+        slot: { end_at: { lte: cutoff } },
+      },
+      data: { visit_status: 'TIME_EXPIRED', version: { increment: 1 } },
+    });
+    // A COMPLETED appointment can't still have the patient in the doctor room.
+    const left = await db.appointment.updateMany({
+      where: { status: 'COMPLETED', visit_status: 'IN_DOCTOR_ROOM' },
+      data: { visit_status: 'LEFT', version: { increment: 1 } },
+    });
+    return expired.count + left.count;
   }
 }

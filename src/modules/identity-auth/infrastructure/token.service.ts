@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -28,24 +29,30 @@ export class TokenService {
     @Inject(PermissionRepository) private readonly permissions: PermissionRepository,
   ) {}
 
-  /** First issuance for a session (OTP verify) — no predecessor to link. */
-  issue(db: Prisma.TransactionClient, membership: RoleMembership, deviceId?: string): Promise<IssuedTokens> {
-    return this.issueInternal(db, membership, deviceId);
+  /**
+   * First issuance for a session (OTP/password login) — no predecessor to
+   * link. `sessionId` is passed only by context switch, which keeps the
+   * caller's login session so logout still ends every token it holds.
+   */
+  issue(db: Prisma.TransactionClient, membership: RoleMembership, deviceId?: string, sessionId?: string): Promise<IssuedTokens> {
+    return this.issueInternal(db, membership, sessionId ?? randomUUID(), deviceId);
   }
 
-  /** Rotation (`/token/refresh`) — chains the new refresh token to the one it replaces (Part 09: `rotated_from_token_id`). */
+  /** Rotation (`/token/refresh`) — chains the new refresh token to the one it replaces (Part 09: `rotated_from_token_id`) inside the same session. */
   rotate(
     db: Prisma.TransactionClient,
     membership: RoleMembership,
     previousTokenId: string,
+    sessionId: string,
     deviceId?: string,
   ): Promise<IssuedTokens> {
-    return this.issueInternal(db, membership, deviceId, previousTokenId);
+    return this.issueInternal(db, membership, sessionId, deviceId, previousTokenId);
   }
 
   private async issueInternal(
     db: Prisma.TransactionClient,
     membership: RoleMembership,
+    sessionId: string,
     deviceId?: string,
     rotatedFromTokenId?: string,
   ): Promise<IssuedTokens> {
@@ -57,6 +64,7 @@ export class TokenService {
       roleCode: membership.role_code,
       contextType: membership.context_type,
       permissions: permissionCodes,
+      sid: sessionId,
     };
 
     const accessTtlSeconds = this.config.get<number>('jwt.accessTtlSeconds') as number;
@@ -68,6 +76,7 @@ export class TokenService {
     await this.refreshTokens.create(db, {
       userId: membership.user_id,
       tokenHash: hashRefreshToken(rawRefreshToken),
+      sessionId,
       expiresAt: new Date(Date.now() + refreshTtlSeconds * 1000),
       deviceId,
       rotatedFromTokenId,

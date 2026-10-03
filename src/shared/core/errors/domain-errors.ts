@@ -26,7 +26,12 @@ export class UnauthenticatedError extends AppError {
   readonly code: string;
 
   constructor(
-    code: 'UNAUTHENTICATED' | 'TOKEN_EXPIRED' | 'INVALID_REFRESH_TOKEN' | 'TOKEN_FAMILY_REVOKED' = 'UNAUTHENTICATED',
+    code:
+      | 'UNAUTHENTICATED'
+      | 'TOKEN_EXPIRED'
+      | 'INVALID_REFRESH_TOKEN'
+      | 'TOKEN_FAMILY_REVOKED'
+      | 'SESSION_REFRESH_REQUIRED' = 'UNAUTHENTICATED',
     message = 'يلزم تسجيل الدخول لإتمام هذا الإجراء.',
   ) {
     super(message);

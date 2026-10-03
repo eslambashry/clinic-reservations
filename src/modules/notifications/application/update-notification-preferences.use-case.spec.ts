@@ -26,7 +26,7 @@ describe('UpdateNotificationPreferencesUseCase', () => {
     expect(preferences.upsert).toHaveBeenCalledWith(tx, { userId: 'patient-1', tier: 'SAFETY_CRITICAL', channel: 'PUSH', enabled: true });
   });
 
-  it('upserts every input row for a disableable tier', async () => {
+  it('upserts PUSH preferences and silently ignores legacy SMS rows', async () => {
     const { tx, preferences, useCase } = setup();
 
     await useCase.execute('patient-1', [
@@ -34,17 +34,17 @@ describe('UpdateNotificationPreferencesUseCase', () => {
       { tier: 'INFORMATIONAL', channel: 'PUSH', enabled: false },
     ]);
 
-    expect(preferences.upsert).toHaveBeenCalledTimes(2);
-    expect(preferences.upsert).toHaveBeenCalledWith(tx, { userId: 'patient-1', tier: 'TRANSACTIONAL', channel: 'SMS', enabled: false });
+    expect(preferences.upsert).toHaveBeenCalledTimes(1);
+    expect(preferences.upsert).toHaveBeenCalledWith(tx, { userId: 'patient-1', tier: 'INFORMATIONAL', channel: 'PUSH', enabled: false });
   });
 
-  it('rejects the whole batch (no partial writes) when any one entry violates the SAFETY_CRITICAL rule', async () => {
+  it('rejects the whole batch (no partial writes) when a PUSH entry disables SAFETY_CRITICAL', async () => {
     const { preferences, useCase } = setup();
 
     await expect(
       useCase.execute('patient-1', [
-        { tier: 'TRANSACTIONAL', channel: 'SMS', enabled: false },
-        { tier: 'SAFETY_CRITICAL', channel: 'SMS', enabled: false },
+        { tier: 'TRANSACTIONAL', channel: 'PUSH', enabled: false },
+        { tier: 'SAFETY_CRITICAL', channel: 'PUSH', enabled: false },
       ]),
     ).rejects.toMatchObject({ code: 'SAFETY_CRITICAL_NOTIFICATION_NOT_DISABLEABLE' });
     expect(preferences.upsert).not.toHaveBeenCalled();

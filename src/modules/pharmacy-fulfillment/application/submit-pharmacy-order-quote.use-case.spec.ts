@@ -79,7 +79,10 @@ describe('SubmitPharmacyOrderQuoteUseCase', () => {
 
     expect(pharmacyOrders.claimForBranch).toHaveBeenCalledWith(tx, 'order-1', 1, 'branch-1');
     expect(broadcasts.markResponded).toHaveBeenCalledWith(tx, 'bc-1', 'ACCEPTED');
-    expect(outbox.emit).toHaveBeenCalledWith(tx, 'PharmacyOrderAccepted', { pharmacyOrderId: 'order-1', pharmacyBranchId: 'branch-1' });
+    // Claim + quote is one step for the patient: only the quoted notice goes
+    // out, never an intermediate "accepted" push seconds before it.
+    expect(outbox.emit).not.toHaveBeenCalledWith(tx, 'PharmacyOrderAccepted', expect.anything());
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'PharmacyOrderQuoted', expect.objectContaining({ pharmacyOrderId: 'order-1' }));
     // version incremented by the claim (1 -> 2) before the quote's own optimistic-lock write.
     expect(pharmacyOrders.submitQuote).toHaveBeenCalledWith(tx, 'order-1', 2, expect.anything());
     expect(result.status).toBe('ACCEPTED');

@@ -10,6 +10,7 @@ export interface AppConfig {
   redis: {
     url: string;
     enabled: boolean;
+    caCert: string | null;
   };
   jwt: {
     accessSecret: string;
@@ -35,16 +36,32 @@ export interface AppConfig {
   paymob: {
     apiKey: string | null;
     integrationIdCard: string | null;
-    integrationIdFawry: string | null;
     integrationIdWallet: string | null;
     iframeId: string | null;
     hmacSecret: string | null;
+  };
+  /**
+   * FawryPay direct integration ("PayAtFawry" reference-number API) —
+   * `merchantCode`/`secureKey` are optional the same way `paymob.*` is:
+   * `FawryPaymentGatewayAdapter` throws `PAYMENT_GATEWAY_NOT_CONFIGURED` at
+   * call time, never a fake success, until real credentials exist.
+   * `baseUrl` defaults to FawryPay's documented staging host
+   * (`atfawry.fawrystaging.com`) when unset — only production needs it set
+   * explicitly.
+   */
+  fawry: {
+    merchantCode: string | null;
+    secureKey: string | null;
+    baseUrl: string | null;
   };
   /** File 12 Part 53: `devices.fcm_token` already commits this codebase to Firebase — optional because a fresh environment won't have a service account yet; `FcmPushNotificationAdapter` fails clearly at call time, not at boot. */
   firebase: {
     projectId: string | null;
     clientEmail: string | null;
     privateKey: string | null;
+  };
+  scheduling: {
+    appointmentEndGraceMinutes: number;
   };
 }
 
@@ -58,6 +75,7 @@ export default (): AppConfig => ({
   redis: {
     url: process.env.REDIS_URL as string,
     enabled: process.env.REDIS_ENABLED === 'true',
+    caCert: process.env.REDIS_CA_CERT || null,
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET as string,
@@ -77,15 +95,25 @@ export default (): AppConfig => ({
   paymob: {
     apiKey: process.env.PAYMOB_API_KEY ?? null,
     integrationIdCard: process.env.PAYMOB_INTEGRATION_ID_CARD ?? null,
-    integrationIdFawry: process.env.PAYMOB_INTEGRATION_ID_FAWRY ?? null,
     integrationIdWallet: process.env.PAYMOB_INTEGRATION_ID_WALLET ?? null,
     iframeId: process.env.PAYMOB_IFRAME_ID ?? null,
     hmacSecret: process.env.PAYMOB_HMAC_SECRET ?? null,
   },
+  fawry: {
+    merchantCode: process.env.FAWRY_MERCHANT_CODE ?? null,
+    secureKey: process.env.FAWRY_SECURE_KEY ?? null,
+    baseUrl: process.env.FAWRY_BASE_URL ?? null,
+  },
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID ?? null,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
-    // `.env` files can't hold a literal multi-line PEM, so the private key is stored with escaped `\n` sequences and unescaped here — the one place this needs to happen.
+    // Non-Google hosts may use an escaped PEM; Cloud Run uses its attached service identity through ADC.
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
+  },
+  scheduling: {
+    appointmentEndGraceMinutes: (() => {
+      const parsed = Number(process.env.APPOINTMENT_END_GRACE_MINUTES ?? '30');
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 30;
+    })(),
   },
 });

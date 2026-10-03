@@ -6,7 +6,6 @@ function setup() {
   const labOrders = { findById: jest.fn(), setStatus: jest.fn() };
   const labOrderItems = { findById: jest.fn(), markRecorded: jest.fn(), findByOrderId: jest.fn() };
   const labResults = { create: jest.fn().mockResolvedValue({ id: 'res-1' }) };
-  const testCatalog = { findByCodes: jest.fn().mockResolvedValue([{ code: 'CBC', display_name: 'صورة دم كاملة' }]) };
   const getActiveRoleMembership = { execute: jest.fn() };
   const audit = { record: jest.fn() };
   const outbox = { emit: jest.fn() };
@@ -16,7 +15,6 @@ function setup() {
     labOrders as any,
     labOrderItems as any,
     labResults as any,
-    testCatalog as any,
     getActiveRoleMembership as any,
     audit as any,
     outbox as any,
@@ -29,7 +27,7 @@ describe('RecordResultUseCase', () => {
   const actor = { sub: 'staff-1', roleMembershipId: 'm-2', roleCode: 'LAB_STAFF', contextType: 'LAB_STAFF', permissions: [] } as any;
   const membership = { roleMembershipId: 'm-2', contextId: 'branch-1' };
   const order = { id: 'order-1', version: 1, status: 'IN_ANALYSIS', lab_branch_id: 'branch-1', patient_id: 'patient-1' };
-  const item = { id: 'item-1', lab_order_id: 'order-1', version: 1, catalog_code: 'CBC', result_state: 'PENDING' };
+  const item = { id: 'item-1', lab_order_id: 'order-1', version: 1, test_name: 'صورة دم كاملة', result_state: 'PENDING' };
 
   it('records a result for one item and keeps the order IN_ANALYSIS while other items remain pending', async () => {
     const { tx, getActiveRoleMembership, labOrders, labOrderItems, labResults, audit, useCase } = setup();

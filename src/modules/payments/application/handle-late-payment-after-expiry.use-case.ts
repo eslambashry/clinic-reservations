@@ -1,7 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
+import { FAWRY_GATEWAY, FawryGatewayPort, extractFawryReferenceCode } from './ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY, PaymentGatewayPort } from './ports/payment-gateway.port';
+import { PaymentAttemptRepository } from '../infrastructure/payment-attempt.repository';
 import { PaymentIntentRepository } from '../infrastructure/payment-intent.repository';
 import { RefundRepository } from '../infrastructure/refund.repository';
 
@@ -25,6 +27,15 @@ export interface HandleLatePaymentAfterExpiryInput {
  * Ops can follow up manually if the gateway call itself fails. This never
  * touches the appointment/hold/slot — those are already final by the time
  * this runs.
+ *
+ * Direct-Fawry addition: a FAWRY intent routes to `FawryGatewayPort.refund`
+ * instead of Paymob's, keyed off FawryPay's OWN reference number (resolved
+ * from `PaymentAttempt.metadata`, never our `gatewayReference`/merchant
+ * ref — FawryPay's refund endpoint doesn't accept that). Deliberately
+ * `refund`, never `cancelUnpaidOrder` — this path only runs once a SUCCESS
+ * webhook proved the money was actually captured (see
+ * `FawryGatewayPort`'s doc comment for why the two calls aren't
+ * interchangeable).
  */
 @Injectable()
 export class HandleLatePaymentAfterExpiryUseCase {
@@ -32,9 +43,11 @@ export class HandleLatePaymentAfterExpiryUseCase {
 
   constructor(
     @Inject(PaymentIntentRepository) private readonly paymentIntents: PaymentIntentRepository,
+    @Inject(PaymentAttemptRepository) private readonly paymentAttempts: PaymentAttemptRepository,
     @Inject(RefundRepository) private readonly refunds: RefundRepository,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
+    @Inject(FAWRY_GATEWAY) private readonly fawryGateway: FawryGatewayPort,
   ) {}
 
   async execute(tx: Prisma.TransactionClient, input: HandleLatePaymentAfterExpiryInput): Promise<void> {
@@ -52,7 +65,10 @@ export class HandleLatePaymentAfterExpiryUseCase {
 
     let gatewayRefundReference: string | undefined;
     try {
-      const result = await this.gateway.refund(input.gatewayReference, intent.amount.toString());
+      const result =
+        intent.method === 'FAWRY'
+          ? await this.refundFawry(tx, intent.id, intent.amount.toString())
+          : await this.gateway.refund(input.gatewayReference, intent.amount.toString());
       gatewayRefundReference = result.gatewayRefundReference;
     } catch (error) {
       this.logger.error(
@@ -77,5 +93,19 @@ export class HandleLatePaymentAfterExpiryUseCase {
       reason: 'HOLD_EXPIRED_BEFORE_PAYMENT_CONFIRMED',
       requiresManualFollowUp: !gatewayRefundReference,
     });
+  }
+
+  /** Resolves FawryPay's own reference number (never our `gatewayReference`) out of the latest `PaymentAttempt.metadata`, then refunds against it. */
+  private async refundFawry(
+    tx: Prisma.TransactionClient,
+    paymentIntentId: string,
+    amount: string,
+  ): Promise<{ gatewayRefundReference?: string }> {
+    const attempt = await this.paymentAttempts.findLatestByPaymentIntentId(tx, paymentIntentId);
+    const referenceCode = attempt ? extractFawryReferenceCode(attempt.metadata) : null;
+    if (!referenceCode) {
+      throw new Error(`No Fawry referenceCode found for payment intent ${paymentIntentId}`);
+    }
+    return this.fawryGateway.refund(referenceCode, amount, 'Hold expired before payment confirmed');
   }
 }

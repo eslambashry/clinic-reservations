@@ -91,11 +91,9 @@ export class SubmitPharmacyOrderQuoteUseCase {
           throw new ConflictError('ORDER_ALREADY_CLAIMED', 'استلم فرع صيدلية آخر هذا الطلب قبلك.');
         }
         await this.broadcasts.markResponded(tx, broadcast.id, 'ACCEPTED');
-        await this.outbox.emit(tx, 'PharmacyOrderAccepted', {
-          pharmacyOrderId,
-          pharmacyBranchId: branchId,
-          patientId: order.patient_id,
-        });
+        // Claim and quote happen in this one transaction. The final quoted
+        // notice is the patient-facing event; emitting the intermediate
+        // accepted notice here caused two near-simultaneous pushes.
         currentVersion += 1;
         status = 'UNDER_REVIEW';
       } else if (order.pharmacy_branch_id !== branchId) {
@@ -146,6 +144,13 @@ export class SubmitPharmacyOrderQuoteUseCase {
         currency,
         patientId: order.patient_id,
       });
+      if (order.created_by_user_id) {
+        await this.outbox.emit(tx, 'ProviderPharmacyOrderStatusChanged', {
+          pharmacyOrderId,
+          status: 'ACCEPTED',
+          recipientUserId: order.created_by_user_id,
+        });
+      }
 
       return { pharmacyOrderId, status: 'ACCEPTED' as const, totalPrice: input.totalPrice, currency };
     });

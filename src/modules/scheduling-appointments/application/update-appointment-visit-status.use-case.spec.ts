@@ -39,6 +39,14 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
     },
   };
 
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-17T09:15:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   function setup(row: Record<string, unknown> = appointment) {
     const tx = {} as any;
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
@@ -124,5 +132,68 @@ describe('UpdateAppointmentVisitStatusUseCase', () => {
       OptimisticLockError,
     );
     expect(appointments.updateVisitStatus).not.toHaveBeenCalled();
+  });
+
+  it('allows a transition before the appointment starts', async () => {
+    jest.setSystemTime(new Date('2026-09-17T06:00:00.000Z'));
+    const { appointments, useCase } = setup();
+
+    const result = await useCase.execute(
+      'appointment-1',
+      { status: 'IN_DOCTOR_ROOM', version: 3 },
+      actor,
+    );
+
+    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'appointment-1',
+      3,
+      'IN_DOCTOR_ROOM',
+    );
+    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
+  });
+
+  it('allows a transition after the appointment ends', async () => {
+    jest.setSystemTime(new Date('2026-09-17T18:00:00.000Z'));
+    const { appointments, useCase } = setup();
+
+    const result = await useCase.execute(
+      'appointment-1',
+      { status: 'IN_DOCTOR_ROOM', version: 3 },
+      actor,
+    );
+
+    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'appointment-1',
+      3,
+      'IN_DOCTOR_ROOM',
+    );
+    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
+  });
+
+  it('allows a transition independently of the current slot after reschedule', async () => {
+    const rescheduled = {
+      ...appointment,
+      slot: {
+        start_at: new Date('2026-09-22T15:00:00.000Z'),
+        end_at: new Date('2026-09-22T15:30:00.000Z'),
+      },
+    };
+    const { appointments, useCase } = setup(rescheduled);
+
+    const result = await useCase.execute(
+      'appointment-1',
+      { status: 'IN_DOCTOR_ROOM', version: 3 },
+      actor,
+    );
+
+    expect(appointments.updateVisitStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      'appointment-1',
+      3,
+      'IN_DOCTOR_ROOM',
+    );
+    expect(result.visitStatus).toBe('IN_DOCTOR_ROOM');
   });
 });

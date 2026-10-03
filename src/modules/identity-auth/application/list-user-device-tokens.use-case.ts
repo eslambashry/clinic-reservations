@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { DeviceRepository } from '../infrastructure/device.repository';
+import { DeviceRepository, DeviceTokenRegistration } from '../infrastructure/device.repository';
 
 /**
  * File 12 Part 53: the one read `notifications` needs from `identity-auth`
@@ -19,7 +19,7 @@ export class ListUserDeviceTokensUseCase {
     @Inject(DeviceRepository) private readonly devices: DeviceRepository,
   ) {}
 
-  execute(userId: string, tx?: Prisma.TransactionClient): Promise<string[]> {
+  execute(userId: string, tx?: Prisma.TransactionClient): Promise<DeviceTokenRegistration[]> {
     return this.devices.listTokensForUser(tx ?? this.prisma, userId);
   }
 }

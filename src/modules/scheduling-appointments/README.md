@@ -42,6 +42,13 @@ wallet, DEC-001 = Paymob): `POST /v1/appointments/{holdId}/payments`
 `MOBILE_WALLET` payment against a hold — extends the hold to that method's
 window (15 min Fawry / 10 min mobile wallet / unchanged 5 min card) and
 returns the client-facing iframe URL / Fawry reference / wallet redirect.
+The patient-facing Fawry payload is `{ customer: { phone } }`; it does not
+accept first name, last name, or email. `billingData` remains required only
+for the Paymob `CARD` and `MOBILE_WALLET` methods. The Fawry adapter does not
+forward patient billing names/email; its provider-required email field uses
+a non-personal system address. The endpoint response echoes the authoritative
+charge `amount` and `currency`, including the stored amount on an idempotent
+retry, so the client displays the amount actually payable.
 The appointment is NOT created here — only once `POST
 /v1/webhooks/payments/{provider}` (`PaymentsWebhookController` +
 `ProcessPaymentWebhookUseCase`) receives a signature-verified success
@@ -54,3 +61,15 @@ synchronous branch — `paymentMethod: 'INTERNAL_WALLET'` — alongside the
 unchanged `PAY_AT_CLINIC` one. This webhook controller is hosted here
 (not in `payments`) specifically to avoid a circular module import — see
 its own doc comment. See `payments/README.md` for the wallet/gateway side.
+
+### Provider visit-status timing — revised 2026-09-25
+
+Visit-state changes are not restricted by the appointment slot start or end.
+This lets a doctor or assigned clinic assistant record an early start after a
+short prior consultation, or complete a visit that ran late. The backend still
+requires a confirmed appointment, the next sequential state
+(`WAITING → IN_DOCTOR_ROOM → LEFT`), caller scope, and the current version;
+successful changes are transactional and audited. The former
+`VISIT_STATUS_TOO_EARLY` and `VISIT_STATUS_OUTSIDE_APPOINTMENT_WINDOW` rules
+were removed. No appointment slot or booking lifecycle state is changed by a
+visit-status update.

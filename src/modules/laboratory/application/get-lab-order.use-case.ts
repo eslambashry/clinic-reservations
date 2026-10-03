@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { GetPrescriptionSummaryUseCase } from '../../prescriptions/application/get-prescription-summary.use-case';
 import { GetActiveRoleMembershipUseCase } from '../../identity-auth/application/get-active-role-membership.use-case';
+import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
@@ -13,7 +14,6 @@ import { LabOrderItemRepository } from '../infrastructure/lab-order-item.reposit
 import { LabOrderNoteRepository } from '../infrastructure/lab-order-note.repository';
 import { LabOrderRepository } from '../infrastructure/lab-order.repository';
 import { LabResultRepository } from '../infrastructure/lab-result.repository';
-import { TestCatalogRepository } from '../infrastructure/test-catalog.repository';
 
 export type { LabOrderDetail };
 
@@ -30,8 +30,8 @@ export class GetLabOrderUseCase {
     @Inject(LabOrderItemRepository) private readonly labOrderItems: LabOrderItemRepository,
     @Inject(LabResultRepository) private readonly labResults: LabResultRepository,
     @Inject(LabOrderNoteRepository) private readonly labOrderNotes: LabOrderNoteRepository,
-    @Inject(TestCatalogRepository) private readonly testCatalog: TestCatalogRepository,
     @Inject(GetActiveRoleMembershipUseCase) private readonly getActiveRoleMembership: GetActiveRoleMembershipUseCase,
+    @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
     @Inject(GetUserSummaryUseCase) private readonly getUserSummary: GetUserSummaryUseCase,
     @Inject(GetPrescriptionSummaryUseCase) private readonly getPrescriptionSummary: GetPrescriptionSummaryUseCase,
     @Inject(GetCustodyEventsUseCase) private readonly getCustodyEvents: GetCustodyEventsUseCase,
@@ -46,11 +46,17 @@ export class GetLabOrderUseCase {
 
     const isOwner = order.patient_id === actor.sub;
     let isAssignedStaff = false;
+    let isOriginatingProvider = false;
     if (!isOwner && actor.contextType === 'LAB_STAFF') {
       const membership = await this.getActiveRoleMembership.execute(actor.sub, 'LAB_STAFF');
       isAssignedStaff = membership?.contextId !== null && membership?.contextId === order.lab_branch_id;
     }
-    if (!isOwner && !isAssignedStaff) {
+    if (!isOwner && !isAssignedStaff && (actor.contextType === 'DOCTOR' || actor.contextType === 'CLINIC_STAFF')) {
+      const scope = await this.resolveDoctorScope.execute(actor);
+      isOriginatingProvider = order.doctor_id === scope.doctorUserId &&
+        (actor.contextType === 'DOCTOR' || order.created_by_user_id === actor.sub);
+    }
+    if (!isOwner && !isAssignedStaff && !isOriginatingProvider) {
       throw new NotFoundError('LabOrder', labOrderId);
     }
 
@@ -66,9 +72,6 @@ export class GetLabOrderUseCase {
       // FK-guaranteed to exist — a miss here means data corruption, not a legitimate 404.
       throw new NotFoundError('LabOrder', labOrderId);
     }
-
-    const catalog = await this.testCatalog.findByCodes(this.prisma, items.map((i) => i.catalog_code));
-    const catalogNameByCode = new Map(catalog.map((c) => [c.code, c.display_name]));
 
     const noteAuthorIds = [...new Set(notes.map((n) => n.author_id))];
     const authorSummaries = await Promise.all(noteAuthorIds.map((id) => this.getUserSummary.execute(this.prisma, id)));
@@ -89,6 +92,6 @@ export class GetLabOrderUseCase {
       r.file_url ? { ...r, file_url: this.mediaStorage.getSignedUrl(r.file_url, MEDIA_CONSTANTS.SIGNED_URL_TTL_SECONDS) } : r,
     );
 
-    return buildLabOrderDetail(order, patient, prescription, items, catalogNameByCode, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
+    return buildLabOrderDetail(order, patient, prescription, items, signedResults, custodyByOrder.get(order.id) ?? [], noteDetails);
   }
 }

@@ -16,7 +16,7 @@ import { NotificationTier } from '@prisma/client';
  * `SubstitutionProposed`, `DeliveryStatusChanged`, `PharmacyOrder*`.
  */
 
-export type NotificationChannel = 'PUSH' | 'SMS';
+export type NotificationChannel = 'PUSH';
 
 export interface RenderedNotification {
   title: string;
@@ -39,7 +39,7 @@ function money(amount: unknown, currency: unknown = 'EGP'): string {
 export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplate>> = {
   AppointmentConfirmed: {
     tier: 'TRANSACTIONAL',
-    channels: ['PUSH', 'SMS'],
+    channels: ['PUSH'],
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'تم تأكيد الموعد',
@@ -49,7 +49,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
   },
   AppointmentCancelled: {
     tier: 'TRANSACTIONAL',
-    channels: ['PUSH', 'SMS'],
+    channels: ['PUSH'],
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'تم إلغاء الموعد',
@@ -65,6 +65,16 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       title: 'تم استلام الروشتة',
       body: 'تم استلام روشتتك وهي الآن قيد المراجعة.',
       data: { prescriptionId: p.prescriptionId },
+    }),
+  },
+  LabOrderRequested: {
+    tier: 'INFORMATIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.patientId,
+    render: (p) => ({
+      title: 'تم استلام طلب التحليل',
+      body: 'تم استلام طلبك وهو الآن قيد المراجعة.',
+      data: { labOrderId: p.labOrderId },
     }),
   },
   PrescriptionAccepted: {
@@ -103,7 +113,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'تم قبول طلبك',
-      body: `تم تسعير طلبك بمبلغ ${money(p.totalPrice, p.currency)}. أكمل الدفع لمتابعة التجهيز.`,
+      body: `حددت الصيدلية سعر طلبك بمبلغ ${money(p.totalPrice, p.currency)}، وستتابع تجهيزه.`,
       data: { pharmacyOrderId: p.pharmacyOrderId },
     }),
   },
@@ -115,6 +125,53 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       title: 'تم رفض طلبك',
       body: 'رفضت الصيدلية طلبك. راجع التفاصيل داخل التطبيق.',
       data: { pharmacyOrderId: p.pharmacyOrderId },
+    }),
+  },
+  ProviderPrescriptionCreated: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'أصدر طبيبك روشتة', body: 'أصدر طبيبك روشتة جديدة. يمكنك مراجعة تفاصيلها داخل التطبيق.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionPendingApproval: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({ title: 'روشتة بانتظار اعتمادك', body: 'أعدّ مساعد العيادة روشتة وتحتاج إلى مراجعتك واعتمادها قبل تفعيلها.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionApproved: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'تم اعتماد الروشتة', body: 'اعتمد طبيبك الروشتة وأصبحت متاحة لمتابعة طلب الدواء.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionRejected: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.createdByUserId,
+    render: (p) => ({ title: 'لم يتم اعتماد الروشتة', body: 'راجع الطبيب الروشتة وأعادها للمراجعة. افتح التطبيق لمراجعة التفاصيل.', data: { prescriptionId: p.prescriptionId } }),
+  },
+  ProviderPrescriptionStatusChanged: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'تحديث على الروشتة', body: 'تغيّرت حالة الروشتة التي أعددتها. افتح التطبيق لمراجعة الحالة الحالية.', data: { prescriptionId: p.prescriptionId, status: p.status } }),
+  },
+  ProviderPharmacyOrderCreated: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'تم إرسال طلب الدواء', body: 'أرسل طبيبك طلب الدواء إلى الصيدلية، ويمكنك متابعة حالته داخل التطبيق.', data: { pharmacyOrderId: p.pharmacyOrderId } }),
+  },
+  ProviderPharmacyOrderStatusChanged: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => {
+      const statusText = p.status === 'READY_FOR_PICKUP'
+        ? { title: 'طلب الدواء جاهز', body: 'طلب الدواء جاهز للاستلام من الصيدلية.' }
+        : p.status === 'OUT_FOR_DELIVERY' && p.fulfillmentType === 'CLINIC_HANDOVER'
+          ? { title: 'طلب الدواء في الطريق إلى العيادة', body: 'خرج طلب الدواء من الصيدلية للتوصيل إلى العيادة المرتبطة بالموعد.' }
+          : p.status === 'OUT_FOR_DELIVERY' && p.fulfillmentType === 'DELIVERY'
+            ? { title: 'طلب الدواء في الطريق إليك', body: 'خرج طلب الدواء من الصيدلية للتوصيل إلى المريض.' }
+            : p.status === 'FULFILLED'
+              ? { title: 'اكتمل طلب الدواء', body: 'أُغلِق طلب الدواء في سجل الصيدلية. راجع التفاصيل داخل التطبيق.' }
+              : { title: 'تحديث على طلب الدواء', body: 'تغيّرت حالة طلب الدواء. افتح التطبيق لمراجعة الحالة الحالية.' };
+      return { ...statusText, data: { pharmacyOrderId: p.pharmacyOrderId, status: p.status, fulfillmentType: p.fulfillmentType } };
+    },
+  },
+  PharmacyOrderOnWayToClinicForStaff: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.clinicStaffUserId,
+    render: (p) => ({
+      title: 'طلب دواء في الطريق إلى العيادة',
+      body: 'خرج طلب دواء مرتبط بموعد في فرعك من الصيدلية. راجع الموعد داخل التطبيق.',
+      data: { appointmentId: p.appointmentId },
     }),
   },
   PaymentCaptured: {
@@ -177,9 +234,21 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { labOrderId: p.labOrderId },
     }),
   },
+  LabResultReadyForProvider: {
+    tier: 'INFORMATIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'نتيجة تحليل المريض جاهزة', body: 'أصدر المعمل نتيجة التحليل. افتح التطبيق لمراجعة حالة الطلب.', data: { labOrderId: p.labOrderId } }),
+  },
+  ProviderLabOrderCreated: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.patientId,
+    render: (p) => ({ title: 'طلب طبيبك تحاليل', body: 'أرسل طبيبك طلب تحاليل إلى المعمل. يمكنك متابعة حالته داخل التطبيق.', data: { labOrderId: p.labOrderId } }),
+  },
+  LabOrderStatusChanged: {
+    tier: 'TRANSACTIONAL', channels: ['PUSH'], extractUserId: (p) => p.recipientUserId,
+    render: (p) => ({ title: 'تحديث على طلب التحاليل', body: 'تغيّرت حالة طلب التحاليل. افتح التطبيق لمراجعة الحالة الحالية.', data: { labOrderId: p.labOrderId, status: p.status } }),
+  },
   CriticalLabResult: {
     tier: 'SAFETY_CRITICAL',
-    channels: ['PUSH', 'SMS'],
+    channels: ['PUSH'],
     extractUserId: (p) => p.patientId,
     render: (p) => ({
       title: 'نتيجة تحتاج انتباه فوري',
@@ -285,10 +354,27 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],
     extractUserId: (p) => p.adminUserId,
-    render: (p) => ({
-      title: 'طلب تسجيل مقدّم خدمة جديد',
-      body: 'قدّم طبيب جديد طلب تسجيل وهو الآن في انتظار المراجعة.',
-      data: { doctorId: p.doctorId, clinicId: p.clinicId },
-    }),
+    // The inbox row names the applicant; the lock screen must not.
+    render: (p) => {
+      // Falls back to the generic wording only when the applicant gave no
+      // name — `full_name` is optional on the registration DTO.
+      const name = typeof p.doctorName === 'string' && p.doctorName.trim() !== '' ? p.doctorName.trim() : null;
+      const specialty = typeof p.specialtyLabel === 'string' ? p.specialtyLabel : null;
+      return {
+        title: 'طلب توثيق طبيب جديد',
+        body: name
+          ? `تقدّم ${name} بطلب انضمام${specialty ? ` في تخصص ${specialty}` : ''}، وبانتظار مراجعتك.`
+          : 'قدّم طبيب جديد طلب تسجيل وهو الآن في انتظار المراجعة.',
+        data: {
+          doctorId: p.doctorId,
+          clinicId: p.clinicId,
+          // Lets the bell render the same detail line the old
+          // `/doctors?status=PENDING` lookup used to supply.
+          doctorName: name,
+          specialtyLabel: specialty,
+          doctorPhone: p.doctorPhone ?? null,
+        },
+      };
+    },
   },
 };

@@ -71,6 +71,47 @@ export function computeProportionalCommissionReversal(input: ProportionalReversa
   return fromCents(-reversalCents);
 }
 
+export interface PartialPaymentInput {
+  requestedAmount: string;
+  fullAmount: string;
+  minAmount: string;
+}
+
+export type PartialPaymentViolation = 'INVALID' | 'BELOW_MINIMUM' | 'EXCEEDS_FULL_AMOUNT';
+
+/**
+ * Online appointment payments may be any amount from the minimum up to the
+ * full consult fee. The effective minimum is `min(minAmount, fullAmount)` so
+ * a doctor whose fee is below the configured minimum (e.g. 40 vs 50) can
+ * still be paid in full — otherwise no amount would ever be valid. Returns
+ * the violation, or `null` when valid. Cents math, same as the rest of this
+ * file; the caller (never the client) supplies `fullAmount`.
+ */
+export function findPartialPaymentViolation(input: PartialPaymentInput): PartialPaymentViolation | null {
+  if (!/^\d+(\.\d{1,2})?$/.test(input.requestedAmount.trim())) {
+    return 'INVALID';
+  }
+  const requested = toCents(input.requestedAmount);
+  const full = toCents(input.fullAmount);
+  const effectiveMin = Math.min(toCents(input.minAmount), full);
+
+  if (requested <= 0) {
+    return 'INVALID';
+  }
+  if (requested < effectiveMin) {
+    return 'BELOW_MINIMUM';
+  }
+  if (requested > full) {
+    return 'EXCEEDS_FULL_AMOUNT';
+  }
+  return null;
+}
+
+/** `fullAmount - paidAmount`, never negative. */
+export function computeRemainingBalance(fullAmount: string, paidAmount: string): string {
+  return fromCents(Math.max(0, toCents(fullAmount) - toCents(paidAmount)));
+}
+
 export interface LedgerEntryForBalance {
   entryType: 'EARNING' | 'COMMISSION_DEDUCTION' | 'PAYOUT' | 'ADJUSTMENT';
   amount: string;

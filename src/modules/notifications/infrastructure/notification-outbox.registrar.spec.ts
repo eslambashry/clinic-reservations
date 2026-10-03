@@ -23,7 +23,7 @@ describe('NotificationOutboxRegistrar', () => {
     }
   });
 
-  it('the registered handler delegates to DispatchNotificationUseCase.executeFromEvent with the same event name', async () => {
+  it('the registered handler delegates to DispatchNotificationUseCase.executeFromEvent with the event name and the outbox event id (idempotency key)', async () => {
     const outboxWorker = { registerHandler: jest.fn() };
     const dispatch = { executeFromEvent: jest.fn() };
     const registrar = new NotificationOutboxRegistrar(outboxWorker as any, dispatch as any);
@@ -31,8 +31,8 @@ describe('NotificationOutboxRegistrar', () => {
     registrar.onModuleInit();
 
     const call = outboxWorker.registerHandler.mock.calls.find((c: any[]) => c[0].eventName === 'AppointmentConfirmed');
-    await call[0].handle({ patientId: 'p1' });
+    await call[0].handle({ patientId: 'p1' }, 'event-1');
 
-    expect(dispatch.executeFromEvent).toHaveBeenCalledWith('AppointmentConfirmed', { patientId: 'p1' });
+    expect(dispatch.executeFromEvent).toHaveBeenCalledWith('AppointmentConfirmed', { patientId: 'p1' }, 'event-1');
   });
 });

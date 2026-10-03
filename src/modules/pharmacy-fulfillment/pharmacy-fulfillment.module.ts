@@ -21,6 +21,7 @@ import { AuditModule } from '../audit/audit.module';
 import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
 import { PrescriptionsModule } from '../prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from '../provider-directory/provider-directory.module';
+import { SchedulingAppointmentsModule } from '../scheduling-appointments/scheduling-appointments.module';
 
 /**
  * File 11 Part 03/14: owns `pharmacy_orders`, `pharmacy_order_broadcasts`,
@@ -60,7 +61,7 @@ import { ProviderDirectoryModule } from '../provider-directory/provider-director
  * untouched by this addition, still closed by staff via `complete`.
  */
 @Module({
-  imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule],
+  imports: [AuditModule, PrescriptionsModule, ProviderDirectoryModule, IdentityAuthModule, SchedulingAppointmentsModule],
   controllers: [PharmacyOrdersController, PharmacyAuditController],
   providers: [
     // infrastructure
