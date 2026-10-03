@@ -32,6 +32,28 @@ are not the same thing and are not used interchangeably here.
 
 ## 1. Evidence log
 
+### Git branch reconciliation (2026-10-04)
+
+- The user authorized publishing the reviewed updates to backend
+  `eslambashry/clinic-reservations` and the team's Flutter repository
+  `Hosni10/med-super`, aligning both `main` and `staging` without force pushes.
+- Fresh remote comparison: backend `main` @ `315a02a` had six exclusive
+  commits versus one staging merge commit @ `c71f0f6`; Flutter `main`
+  @ `7fbe5d7` had seven versus one staging merge commit @ `b5bbee7`.
+- Backend fix commit `a3f264d` retains the reviewed changes and existing
+  team commits. Merge `6027e3a` retains staging history and has exactly the
+  same tree as that tested fix commit: the 1194 unit, 102 integration and
+  114 HTTP tests, build and lint evidence above remain applicable.
+- Flutter fix commit `3715fc7` is being reconciled with the seven main
+  commits, retaining proximity discovery, wallet navigation and the newer
+  session/token protections. Integrated verification is recorded separately
+  below when finished; previous APK evidence applies to the earlier tree.
+- Git publication does not execute the controlled database migration or
+  deploy the API/worker. The staging APK workflow produces a debug artifact
+  with the configured staging API URL; this is not physical-device or store
+  verification. Exact remote heads and CI status are recorded in the
+  workspace publication log after the push.
+
 The baseline and earlier batches below are historical cloud-container evidence
 (Node 22.22, Flutter 3.47.4, Dio 5.11.0). They do not describe the current
 Windows continuation environment or prove the current assembled checkout.
