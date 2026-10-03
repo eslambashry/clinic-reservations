@@ -108,7 +108,13 @@ describe('Notification delivery reliability (integration, real Postgres)', () =>
     const worker = new OutboxWorker(prisma);
     const handled = jest.fn().mockResolvedValue(undefined);
     worker.registerHandler({ eventName, handle: handled });
-    await worker.drain();
+    // `drain()` claims the oldest BATCH_SIZE rows of the whole table, so rows
+    // other suites left PENDING can fill the first batches (each is SKIPPED
+    // for want of a handler and leaves the claim set). Keep draining until
+    // this event has been claimed instead of depending on suite order.
+    for (let i = 0; i < 50 && handled.mock.calls.length === 0; i += 1) {
+      await worker.drain();
+    }
 
     expect(handled).toHaveBeenCalledTimes(1);
     expect(await prisma.outboxEvent.findUnique({ where: { id } })).toMatchObject({ status: 'PROCESSED', attempts: 1 });

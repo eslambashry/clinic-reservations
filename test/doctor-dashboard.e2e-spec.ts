@@ -280,14 +280,24 @@ describe('Doctor Dashboard (e2e)', () => {
       expect(doctor.specialty_code).toBe(specialtyCode);
     });
 
-    it('updates the account name/email through the shared /v1/auth/me endpoint', async () => {
+    it('updates the account name through the shared /v1/auth/me endpoint, but never an existing email', async () => {
       const response = await request(server())
         .patch('/v1/auth/me')
         .set('Authorization', `Bearer ${doctorAToken}`)
-        .send({ email: `doctor.a.updated.${suffix}@example.com` })
+        .send({ display_name: 'Amr Adel-Updated' })
         .expect(200);
-
       expect(response.body.success).toBe(true);
+
+      // Once set, an email is an account identifier (00878e1), not profile data.
+      const rejected = await request(server())
+        .patch('/v1/auth/me')
+        .set('Authorization', `Bearer ${doctorAToken}`)
+        .send({ email: `doctor.a.updated.${suffix}@example.com` })
+        .expect(422);
+      expect(rejected.body.error.code).toBe('EMAIL_NOT_EDITABLE');
+
+      const user = await prisma.user.findFirstOrThrow({ where: { email: `doctor.a.${suffix}@example.com` } });
+      expect(user).toMatchObject({ first_name: 'Amr', last_name: 'Adel-Updated' });
     });
   });
 
@@ -765,7 +775,7 @@ describe('Doctor Dashboard (e2e)', () => {
       await request(server()).get('/v1/appointments').set('Authorization', `Bearer ${doctorAToken}`).expect(403);
     });
 
-    it('still returns an unconfirmed HOLD for a patient-initiated reschedule (unchanged contract)', async () => {
+    it('completes a patient-initiated reschedule in one step on the same payment (894cba6)', async () => {
       const booked = await bookConfirmedAppointment(affiliationAId, new Date('2027-02-06T09:00:00Z'));
       const newSlot = await freshOpenSlot(affiliationAId, new Date('2027-02-06T10:00:00Z'));
 
@@ -776,9 +786,16 @@ describe('Doctor Dashboard (e2e)', () => {
         .send({ newSlotId: newSlot.id })
         .expect(201);
 
-      expect(response.body.data).toMatchObject({ status: 'HELD', previousAppointmentId: booked.appointmentId });
-      expect(response.body.data).toHaveProperty('holdId');
-      expect(response.body.data).toHaveProperty('expiresAt');
+      expect(response.body.data).toMatchObject({ status: 'CONFIRMED', slotId: newSlot.id, previousAppointmentId: booked.appointmentId });
+      expect(response.body.data).not.toHaveProperty('holdId');
+
+      const [previous, replacement] = await Promise.all([
+        prisma.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } }),
+        prisma.appointment.findUniqueOrThrow({ where: { id: response.body.data.appointmentId } }),
+      ]);
+      expect(previous.status).toBe('RESCHEDULED');
+      expect(replacement.status).toBe('CONFIRMED');
+      expect(replacement.payment_intent_id).toBe(previous.payment_intent_id);
     }, 60000);
 
     it('still gates schedule-template admin CRUD to ADMIN only', async () => {
