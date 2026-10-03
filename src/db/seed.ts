@@ -404,6 +404,8 @@ async function main() {
       brandName: 'Nile Pharmacy',
       branchId: '00000000-0000-4000-8000-000000000111',
       addressId: '00000000-0000-4000-8000-000000000121',
+      geoLat: 30.0626,
+      geoLng: 31.2197,
       addressLine1: '5 Zamalek Ave',
       phone: '+20221230001',
       deliveryCapable: true,
@@ -414,6 +416,8 @@ async function main() {
       brandName: 'Al Ezaby Pharmacy',
       branchId: '00000000-0000-4000-8000-000000000112',
       addressId: '00000000-0000-4000-8000-000000000122',
+      geoLat: 30.0478,
+      geoLng: 31.2336,
       addressLine1: '18 King Fahd Rd',
       phone: '+20221230002',
       deliveryCapable: true,
@@ -424,6 +428,8 @@ async function main() {
       brandName: 'Community Pharmacy',
       branchId: '00000000-0000-4000-8000-000000000113',
       addressId: '00000000-0000-4000-8000-000000000123',
+      geoLat: 30.033,
+      geoLng: 31.229,
       addressLine1: '40 Al Olaya St',
       phone: '+20221230003',
       deliveryCapable: false,
@@ -444,15 +450,20 @@ async function main() {
       },
     });
 
+    // Coordinates are required for the branch to appear in proximity search
+    // (PostGIS `ST_DWithin` skips addresses without them); also applied on
+    // update so databases seeded before they existed pick them up.
     await prisma.address.upsert({
       where: { id: p.addressId },
-      update: {},
+      update: { geo_lat: p.geoLat, geo_lng: p.geoLng },
       create: {
         id: p.addressId,
         line1: p.addressLine1,
         city: 'Cairo',
         region_code: DEFAULT_REGION,
         country_code: 'EG',
+        geo_lat: p.geoLat,
+        geo_lng: p.geoLng,
       },
     });
 
@@ -770,6 +781,8 @@ async function main() {
         {
           id: '00000000-0000-4000-8000-000000000131',
           addressId: '00000000-0000-4000-8000-000000000141',
+          geoLat: 29.9602,
+          geoLng: 31.2569,
           addressLine1: 'Road 9, Maadi',
           city: 'Cairo',
           phone: '+20221230011',
@@ -781,6 +794,8 @@ async function main() {
         {
           id: '00000000-0000-4000-8000-000000000132',
           addressId: '00000000-0000-4000-8000-000000000142',
+          geoLat: 30.0561,
+          geoLng: 31.335,
           addressLine1: 'Abbas El Akkad St, Nasr City',
           city: 'Cairo',
           phone: '+20221230012',
@@ -799,6 +814,8 @@ async function main() {
         {
           id: '00000000-0000-4000-8000-000000000151',
           addressId: '00000000-0000-4000-8000-000000000161',
+          geoLat: 30.089,
+          geoLng: 31.322,
           addressLine1: 'Baghdad St, Heliopolis',
           city: 'Cairo',
           phone: '+20221230013',
@@ -810,6 +827,8 @@ async function main() {
         {
           id: '00000000-0000-4000-8000-000000000152',
           addressId: '00000000-0000-4000-8000-000000000162',
+          geoLat: 30.056,
+          geoLng: 31.2,
           addressLine1: 'Gamet El Dowal St, Mohandessin',
           city: 'Giza',
           phone: '+20221230014',
@@ -828,6 +847,8 @@ async function main() {
         {
           id: '00000000-0000-4000-8000-000000000171',
           addressId: '00000000-0000-4000-8000-000000000181',
+          geoLat: 30.061,
+          geoLng: 31.221,
           addressLine1: '26th of July St, Zamalek',
           city: 'Cairo',
           phone: '+20221230015',
@@ -839,6 +860,8 @@ async function main() {
         {
           id: '00000000-0000-4000-8000-000000000172',
           addressId: '00000000-0000-4000-8000-000000000182',
+          geoLat: 30.038,
+          geoLng: 31.211,
           addressLine1: 'Tahrir St, Dokki',
           city: 'Giza',
           phone: '+20221230016',
@@ -868,13 +891,15 @@ async function main() {
     for (const branch of chain.branches) {
       await prisma.address.upsert({
         where: { id: branch.addressId },
-        update: {},
+        update: { geo_lat: branch.geoLat, geo_lng: branch.geoLng },
         create: {
           id: branch.addressId,
           line1: branch.addressLine1,
           city: branch.city,
           region_code: DEFAULT_REGION,
           country_code: 'EG',
+          geo_lat: branch.geoLat,
+          geo_lng: branch.geoLng,
         },
       });
 
