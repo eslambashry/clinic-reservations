@@ -37,6 +37,7 @@ describe('Provider Assistants (e2e)', () => {
   let branchA1Id: string;
   let branchA2Id: string;
   let branchBId: string;
+  let affiliationA1Id: string;
   let affiliationA2Id: string;
   let visitAppointmentId: string | undefined;
   let visitSlotId: string | undefined;
@@ -75,9 +76,10 @@ describe('Provider Assistants (e2e)', () => {
       data: { clinic_id: clinicA.id, address_id: addressA1.id, phone: '+20200000011', iana_timezone: 'Africa/Cairo', status: 'VERIFIED' },
     });
     branchA1Id = branchA1.id;
-    await prisma.doctorClinicAffiliation.create({
+    const affiliationA1 = await prisma.doctorClinicAffiliation.create({
       data: { doctor_id: doctorAId, clinic_branch_id: branchA1Id, consult_fee: '250.00', currency: 'EGP' },
     });
+    affiliationA1Id = affiliationA1.id;
     const addressA2 = await prisma.address.create({ data: { line1: '2 Nile St', city: 'Giza', region_code: 'GIZ', country_code: 'EG' } });
     const branchA2 = await prisma.clinicBranch.create({
       data: { clinic_id: clinicA.id, address_id: addressA2.id, phone: '+20200000012', iana_timezone: 'Africa/Cairo', status: 'VERIFIED' },
@@ -129,6 +131,12 @@ describe('Provider Assistants (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { actor_user_id: { in: createdUserIds } } });
+    // Rows created by the PM-APPT lifecycle tests (appointments, the holds a
+    // reschedule writes, and their slots) on doctor A's two affiliations.
+    const doctorAAffiliations = [affiliationA1Id, affiliationA2Id].filter(Boolean);
+    await prisma.appointment.deleteMany({ where: { doctor_clinic_affiliation_id: { in: doctorAAffiliations } } });
+    await prisma.appointmentHold.deleteMany({ where: { slot: { doctor_clinic_affiliation_id: { in: doctorAAffiliations } } } });
+    await prisma.appointmentSlot.deleteMany({ where: { doctor_clinic_affiliation_id: { in: doctorAAffiliations } } });
     if (visitAppointmentId) {
       await prisma.appointment.deleteMany({ where: { id: visitAppointmentId } });
     }
@@ -373,8 +381,9 @@ describe('Provider Assistants (e2e)', () => {
         data: { user_id: patient.id, role_code: 'PATIENT', context_type: 'PATIENT' },
       });
 
-      // A visit transition can be recorded before its scheduled slot starts.
-      const startAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      // Booked for "now": PM-APPT-03 only lets a visit start on the
+      // appointment's own calendar day in the branch zone (Africa/Cairo).
+      const startAt = new Date();
       const slot = await prisma.appointmentSlot.create({
         data: {
           doctor_clinic_affiliation_id: affiliationA2Id,
@@ -427,6 +436,27 @@ describe('Provider Assistants (e2e)', () => {
         .expect(200);
       expect(unchanged.body.data).toMatchObject({ visitStatus: 'IN_DOCTOR_ROOM', version: 2 });
 
+      // PM-APPT-02: once the patient is in the doctor's room the booking is
+      // frozen — neither the doctor nor the assistant can cancel or move it.
+      const cancelInRoom = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${appointment.id}/cancel`)
+        .set('Authorization', `Bearer ${doctorAToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({})
+        .expect(422);
+      expect(cancelInRoom.body.error.code).toBe('APPOINTMENT_VISIT_IN_PROGRESS');
+
+      const rescheduleInRoom = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${appointment.id}/reschedule`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({ newSlotId: randomUUID() })
+        .expect(422);
+      expect(rescheduleInRoom.body.error.code).toBe('APPOINTMENT_VISIT_IN_PROGRESS');
+
+      const stillConfirmed = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(stillConfirmed).toMatchObject({ status: 'CONFIRMED', visit_status: 'IN_DOCTOR_ROOM', version: 2 });
+
       const backward = await request(app.getHttpServer())
         .patch(`/v1/doctors/me/appointments/${appointment.id}/visit-status`)
         .set('Authorization', `Bearer ${assistantToken}`)
@@ -446,10 +476,13 @@ describe('Provider Assistants (e2e)', () => {
         .set('Authorization', `Bearer ${assistantToken}`)
         .send({ status: 'LEFT', version: 3 })
         .expect(422);
-      expect(skippedAfterCompletion.body.error.code).toBe('INVALID_VISIT_STATUS_TRANSITION');
+      // LEFT completed the appointment (PM-APPT-04), so it is no longer updatable at all.
+      expect(skippedAfterCompletion.body.error.code).toBe('APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE');
 
       const persisted = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
-      expect(persisted.visit_status).toBe('LEFT');
+      // PM-APPT-04: LEFT completes the appointment in the same write.
+      expect(persisted).toMatchObject({ visit_status: 'LEFT', status: 'COMPLETED' });
+      expect(left.body.data).toMatchObject({ status: 'COMPLETED' });
       expect(
         await prisma.auditLog.count({
           where: {
@@ -459,6 +492,78 @@ describe('Provider Assistants (e2e)', () => {
           },
         }),
       ).toBe(2);
+    });
+
+    it('enforces the approved assistant authority and visit-day rules (PM-APPT-03/05)', async () => {
+      const patient = await prisma.user.create({ data: { phone: `+2012${numericSuffix}5`, first_name: 'Rules', last_name: 'Patient' } });
+      createdUserIds.push(patient.id);
+      const book = async (affiliationId: string, startAt: Date) => {
+        const slot = await prisma.appointmentSlot.create({
+          data: { doctor_clinic_affiliation_id: affiliationId, start_at: startAt, end_at: new Date(startAt.getTime() + 30 * 60 * 1000), status: 'BOOKED' },
+        });
+        return prisma.appointment.create({
+          data: { slot_id: slot.id, patient_id: patient.id, doctor_clinic_affiliation_id: affiliationId, status: 'CONFIRMED' },
+        });
+      };
+      const openSlot = (affiliationId: string, startAt: Date) =>
+        prisma.appointmentSlot.create({
+          data: { doctor_clinic_affiliation_id: affiliationId, start_at: startAt, end_at: new Date(startAt.getTime() + 30 * 60 * 1000), status: 'OPEN' },
+        });
+      const inDays = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+      // Assistant cannot cancel at all — not even an appointment in their own branch (A2).
+      const ownBranch = await book(affiliationA2Id, inDays(2));
+      const assistantCancel = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${ownBranch.id}/cancel`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({})
+        .expect(403);
+      expect(assistantCancel.body.error.code).toBe('ROLE_NOT_PERMITTED');
+      expect((await prisma.appointment.findUniqueOrThrow({ where: { id: ownBranch.id } })).status).toBe('CONFIRMED');
+
+      // Starting a visit for a future-day appointment is refused.
+      const futureVisit = await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${ownBranch.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'IN_DOCTOR_ROOM', version: 1 })
+        .expect(422);
+      expect(futureVisit.body.error.code).toBe('VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY');
+
+      // The assistant may reschedule within their assigned branch.
+      const target = await openSlot(affiliationA2Id, inDays(3));
+      const moved = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${ownBranch.id}/reschedule`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({ newSlotId: target.id })
+        .expect(200);
+      expect(moved.body.data).toMatchObject({ status: 'CONFIRMED', previousAppointmentId: ownBranch.id });
+
+      // ...but an appointment in doctor A's other branch (A1) does not exist for them.
+      const otherBranch = await book(affiliationA1Id, inDays(2));
+      const otherTarget = await openSlot(affiliationA1Id, inDays(3));
+      const outOfScope = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${otherBranch.id}/reschedule`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({ newSlotId: otherTarget.id })
+        .expect(404);
+      expect(outOfScope.body.error.code).toBe('RESOURCE_NOT_FOUND');
+      await request(app.getHttpServer())
+        .patch(`/v1/doctors/me/appointments/${otherBranch.id}/visit-status`)
+        .set('Authorization', `Bearer ${assistantToken}`)
+        .send({ status: 'IN_DOCTOR_ROOM', version: 1 })
+        .expect(404);
+
+      // The doctor keeps provider-side cancellation (full refund path) for V1.
+      const doctorCancel = await request(app.getHttpServer())
+        .post(`/v1/doctors/me/appointments/${otherBranch.id}/cancel`)
+        .set('Authorization', `Bearer ${doctorAToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({})
+        .expect(201);
+      expect(doctorCancel.body.data).toMatchObject({ status: 'CANCELLED' });
     });
 
     it('the assistant can edit operational fields of their own assigned branch (A2)', async () => {

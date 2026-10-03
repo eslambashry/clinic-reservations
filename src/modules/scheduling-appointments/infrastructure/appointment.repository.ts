@@ -79,6 +79,17 @@ const WITH_DOCTOR_VIEW = {
   },
 } satisfies Prisma.AppointmentInclude;
 
+/** Shared WHERE for patient/provider booking changes (cancel, reschedule): see `cancel`. */
+function bookingChangeGuard(id: string, version: number, startsAfter?: Date): Prisma.AppointmentWhereInput {
+  return {
+    id,
+    version,
+    status: 'CONFIRMED',
+    visit_status: 'WAITING',
+    ...(startsAfter && { slot: { start_at: { gt: startsAfter } } }),
+  };
+}
+
 export type AppointmentWithDoctorView = Prisma.AppointmentGetPayload<{ include: typeof WITH_DOCTOR_VIEW }>;
 
 export interface ListAppointmentsForPatientParams {
@@ -205,19 +216,33 @@ export class AppointmentRepository {
     });
   }
 
-  /** File 12 Part 35.8: version-guarded `CONFIRMED→CANCELLED`. `false` means the appointment was modified concurrently since the caller read its version. */
-  async cancel(db: Prisma.TransactionClient, id: string, currentVersion: number, cancelledBy: string, cancelledReason: string): Promise<boolean> {
+  /**
+   * File 12 Part 35.8: version-guarded `CONFIRMED→CANCELLED`, only while the
+   * patient is still `WAITING` (PM-APPT-02) and, when `startsAfter` is given,
+   * only while the slot has not started yet (PM-APPT-01, patient callers).
+   * The guards repeat the use-case checks inside the write so a concurrent
+   * transition cannot slip between check and update. `false` means 0 rows
+   * matched.
+   */
+  async cancel(
+    db: Prisma.TransactionClient,
+    id: string,
+    currentVersion: number,
+    cancelledBy: string,
+    cancelledReason: string,
+    startsAfter?: Date,
+  ): Promise<boolean> {
     const result = await db.appointment.updateMany({
-      where: { id, version: currentVersion, status: 'CONFIRMED' },
+      where: bookingChangeGuard(id, currentVersion, startsAfter),
       data: { status: 'CANCELLED', visit_status: 'CANCELLED', cancelled_by: cancelledBy, cancelled_reason: cancelledReason, version: { increment: 1 } },
     });
     return result.count === 1;
   }
 
-  /** File 12 Part 35.10: version-guarded `CONFIRMED→RESCHEDULED`, the old-appointment side of a reschedule. */
-  async markRescheduled(db: Prisma.TransactionClient, id: string, currentVersion: number): Promise<boolean> {
+  /** File 12 Part 35.10: version-guarded `CONFIRMED→RESCHEDULED`, the old-appointment side of a reschedule; same guards as `cancel`. */
+  async markRescheduled(db: Prisma.TransactionClient, id: string, currentVersion: number, startsAfter?: Date): Promise<boolean> {
     const result = await db.appointment.updateMany({
-      where: { id, version: currentVersion, status: 'CONFIRMED' },
+      where: bookingChangeGuard(id, currentVersion, startsAfter),
       data: { status: 'RESCHEDULED', version: { increment: 1 } },
     });
     return result.count === 1;
@@ -243,25 +268,44 @@ export class AppointmentRepository {
     return match !== null;
   }
 
-  /** Version-guarded live clinic-flow update; transition policy stays in the application/domain layers. */
+  /**
+   * Version-guarded live clinic-flow update; transition policy stays in the
+   * application/domain layers. PM-APPT-04: reaching `LEFT` completes the
+   * appointment in the same single-row write, so the two can never disagree.
+   */
   async updateVisitStatus(
     db: Prisma.TransactionClient,
     id: string,
     currentVersion: number,
     visitStatus: VisitStatus,
   ): Promise<void> {
-    await updateWithOptimisticLock(db.appointment, id, currentVersion, { visit_status: visitStatus });
+    await updateWithOptimisticLock(db.appointment, id, currentVersion, {
+      visit_status: visitStatus,
+      ...(visitStatus === 'LEFT' && { status: 'COMPLETED' as const }),
+    });
   }
 
-  /** Marks only genuinely overdue waiting visits; active consultations of
-   * live (CONFIRMED) appointments are deliberately never auto-closed. A
-   * COMPLETED/RESCHEDULED appointment is already finished, so its visit state
-   * is reconciled to match instead of staying stale. */
+  /**
+   * Marks only genuinely overdue waiting visits; active consultations of live
+   * (CONFIRMED) appointments are deliberately never auto-closed.
+   *
+   * PM-APPT-04: `TIME_EXPIRED` alone is not proof of a no-show, because this
+   * sweep also stamps it on already-finished COMPLETED/RESCHEDULED rows to
+   * reconcile their stale `WAITING`. Only a still-`CONFIRMED` booking whose
+   * slot ended (plus grace) without the patient being admitted is an
+   * unattended visit, so only that branch becomes `NO_SHOW`. No money moves:
+   * the payment/ledger state is left exactly as it was (V1 no-show rule).
+   * Call inside a transaction so the three updates commit together.
+   */
   async expireWaitingVisits(db: Prisma.TransactionClient, graceMinutes: number): Promise<number> {
     const cutoff = new Date(Date.now() - graceMinutes * 60_000);
-    const expired = await db.appointment.updateMany({
+    const noShows = await db.appointment.updateMany({
+      where: { status: 'CONFIRMED', visit_status: 'WAITING', slot: { end_at: { lte: cutoff } } },
+      data: { status: 'NO_SHOW', visit_status: 'TIME_EXPIRED', version: { increment: 1 } },
+    });
+    const reconciled = await db.appointment.updateMany({
       where: {
-        status: { in: ['CONFIRMED', 'COMPLETED', 'RESCHEDULED'] },
+        status: { in: ['COMPLETED', 'RESCHEDULED'] },
         visit_status: 'WAITING',
         slot: { end_at: { lte: cutoff } },
       },
@@ -272,6 +316,6 @@ export class AppointmentRepository {
       where: { status: 'COMPLETED', visit_status: 'IN_DOCTOR_ROOM' },
       data: { visit_status: 'LEFT', version: { increment: 1 } },
     });
-    return expired.count + left.count;
+    return noShows.count + reconciled.count + left.count;
   }
 }

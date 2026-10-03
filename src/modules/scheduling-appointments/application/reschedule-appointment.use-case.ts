@@ -10,6 +10,7 @@ import { translateCreateHoldError } from './create-hold.use-case';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
+import { assertBookingChangeAllowed } from './booking-change.guard';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
@@ -84,6 +85,8 @@ export class RescheduleAppointmentUseCase {
             status: appointment.status,
           });
         }
+        // PM-APPT-01/02 (PM-APPT-05: assistants may reschedule within these rules).
+        const startsAfter = await assertBookingChangeAllowed(tx, this.slots, appointment, scope);
 
         const newSlot = await this.slots.findById(tx, input.newSlotId);
         if (!newSlot || newSlot.doctor_clinic_affiliation_id !== appointment.doctor_clinic_affiliation_id) {
@@ -91,7 +94,7 @@ export class RescheduleAppointmentUseCase {
           throw new NotFoundError('AppointmentSlot', input.newSlotId);
         }
 
-        const rescheduled = await this.appointments.markRescheduled(tx, appointment.id, appointment.version);
+        const rescheduled = await this.appointments.markRescheduled(tx, appointment.id, appointment.version, startsAfter);
         if (!rescheduled) {
           throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'تم تعديل هذا الموعد من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', { appointmentId });
         }

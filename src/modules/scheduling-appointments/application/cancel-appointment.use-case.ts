@@ -5,12 +5,13 @@ import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/appli
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { ProcessCancellationRefundUseCase } from '../../payments/application/process-cancellation-refund.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { DomainError, BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { DomainError, BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { REGION_CONSTANTS } from '../../../shared/config/constants';
 import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
+import { assertBookingChangeAllowed } from './booking-change.guard';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
 
@@ -34,9 +35,11 @@ export interface CancelAppointmentResult {
  * `patient_id === actor.sub`; every other rule below — cancellable-status
  * check, version-guarded transition, slot release, refund policy, audit,
  * outbox — is shared verbatim by both callers rather than reimplemented for
- * the provider path. CLINIC_STAFF stays deferred (see that use-case).
+ * the provider path. CLINIC_STAFF may not cancel at all (PM-APPT-05).
  *
- * Only a `CONFIRMED` appointment is cancellable.
+ * Only a `CONFIRMED` appointment whose patient is still `WAITING` is
+ * cancellable (PM-APPT-02), and a patient may only cancel before the slot
+ * starts (PM-APPT-01); see `assertBookingChangeAllowed`.
  * `feeApplied`/`refundAmount` are now computed for real (Part 36) from the
  * flat `CANCELLATION_TIER` policy against the appointment's captured
  * payment — provider-initiated cancellations always waive the fee entirely
@@ -63,6 +66,13 @@ export class CancelAppointmentUseCase {
     // Resolved before the transaction opens: it is an authorization lookup
     // against tables this transaction never writes (File 12 Part 49.7).
     const scope = await this.appointmentScope.execute(actor);
+
+    // PM-APPT-05: provider-side cancellation moves money (full refund), so in
+    // V1 it is reserved to the doctor. An assistant may reschedule and run
+    // the visit flow, but never cancel on their own.
+    if (scope.kind === 'CLINIC_STAFF') {
+      throw new ForbiddenError('ROLE_NOT_PERMITTED', 'إلغاء الموعد من جانب العيادة متاح للطبيب فقط.');
+    }
 
     // File 12 Part 49.8: a provider-initiated cancellation must say so.
     // `reason` drives the refund policy (Part 36.8 — PROVIDER_REQUEST waives
@@ -92,8 +102,10 @@ export class CancelAppointmentUseCase {
         });
       }
 
+      const startsAfter = await assertBookingChangeAllowed(tx, this.slots, appointment, scope);
+
       const cancelledReason = input.note ? `${input.reason}: ${input.note}` : input.reason;
-      const cancelled = await this.appointments.cancel(tx, appointment.id, appointment.version, actor.sub, cancelledReason);
+      const cancelled = await this.appointments.cancel(tx, appointment.id, appointment.version, actor.sub, cancelledReason, startsAfter);
       if (!cancelled) {
         throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'تم تعديل هذا الموعد من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', { appointmentId });
       }
@@ -136,9 +148,9 @@ export class CancelAppointmentUseCase {
 
       // Only notify the doctor when they weren't the one who cancelled —
       // no one needs to be told about their own action. Assistants are
-      // notified either way: cancelling this use-case's caller can never be
-      // an assistant themselves (CLINIC_STAFF stays deferred, see class
-      // doc), so there is no "own action" case to suppress for them.
+      // notified either way: this use-case's caller can never be an
+      // assistant (rejected above, PM-APPT-05), so there is no "own action"
+      // case to suppress for them.
       if (cancelledBy !== 'DOCTOR') {
         const billing = await this.affiliationBilling.execute(tx, appointment.doctor_clinic_affiliation_id);
         await this.outbox.emit(tx, 'AppointmentCancelledForDoctor', {

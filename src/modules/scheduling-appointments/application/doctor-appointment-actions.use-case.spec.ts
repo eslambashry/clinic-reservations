@@ -16,6 +16,7 @@ describe('Doctor-initiated appointment actions', () => {
     patient_id: 'patient-1',
     doctor_clinic_affiliation_id: 'aff-1',
     status: 'CONFIRMED',
+    visit_status: 'WAITING',
     version: 1,
     payment_intent_id: 'intent-1',
   };
@@ -80,7 +81,8 @@ describe('Doctor-initiated appointment actions', () => {
 
       const result = await useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST', note: 'Doctor unavailable' }, doctorActor);
 
-      expect(appointments.cancel).toHaveBeenCalledWith(tx, 'appointment-1', 1, 'doctor-user-1', 'PROVIDER_REQUEST: Doctor unavailable');
+      // No start-time cutoff for the doctor (PM-APPT-01 is patient-only).
+      expect(appointments.cancel).toHaveBeenCalledWith(tx, 'appointment-1', 1, 'doctor-user-1', 'PROVIDER_REQUEST: Doctor unavailable', undefined);
       expect(slots.releaseBooked).toHaveBeenCalledWith(tx, 'old-slot');
       // Provider-initiated cancellation waives the fee entirely, so the
       // CANCELLATION_TIER policy is never even read (File 11 line 475).
@@ -221,6 +223,66 @@ describe('Doctor-initiated appointment actions', () => {
         httpStatus: 409,
       });
       expect(appointments.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('approved V1 rules for providers (PM-APPT-01/02/05)', () => {
+    afterEach(() => jest.useRealTimers());
+    const assistantScope = { kind: 'CLINIC_STAFF', doctorId: 'doctor-1', affiliationIds: ['aff-1'] };
+    const assistantActor = { ...doctorActor, sub: 'assistant-user-1', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF' };
+    const newSlot = { id: 'new-slot', doctor_clinic_affiliation_id: 'aff-1', status: 'OPEN' };
+
+    function rescheduleUseCase(scope: unknown, row: unknown = appointment) {
+      const appointments = {
+        findById: jest.fn().mockResolvedValue(row),
+        markRescheduled: jest.fn().mockResolvedValue(true),
+        create: jest.fn().mockResolvedValue({ id: 'appointment-2' }),
+      };
+      const slots = {
+        findById: jest.fn().mockResolvedValue(newSlot),
+        releaseBooked: jest.fn(),
+        markHeld: jest.fn().mockResolvedValue(true),
+        markBooked: jest.fn().mockResolvedValue(true),
+      };
+      const useCase = new RescheduleAppointmentUseCase(
+        { $transaction: jest.fn((fn: any) => fn({})) } as any,
+        appointments as any,
+        slots as any,
+        { create: jest.fn().mockResolvedValue({ id: 'hold-1', version: 1 }), markConverted: jest.fn() } as any,
+        { record: jest.fn() } as any,
+        { emit: jest.fn() } as any,
+        { execute: jest.fn().mockResolvedValue(scope) } as any,
+        { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1', clinicBranchId: 'branch-1' }) } as any,
+        { execute: jest.fn().mockResolvedValue([]) } as any,
+      );
+      return { appointments, slots, useCase };
+    }
+
+    it('lets an assistant reschedule within their branch scope, with no patient start-time cutoff', async () => {
+      const { appointments, slots, useCase } = rescheduleUseCase(assistantScope);
+
+      await expect(useCase.execute('appointment-1', { newSlotId: 'new-slot' }, assistantActor)).resolves.toMatchObject({ status: 'CONFIRMED' });
+      expect(appointments.markRescheduled).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, undefined);
+      // The current slot is never read for a provider: no cutoff applies.
+      expect(slots.findById).toHaveBeenCalledTimes(1);
+      expect(slots.findById).toHaveBeenCalledWith(expect.anything(), 'new-slot');
+    });
+
+    it("404s an assistant's reschedule of an appointment outside their assigned branches", async () => {
+      const { appointments, useCase } = rescheduleUseCase({ ...assistantScope, affiliationIds: ['aff-other'] });
+
+      await expect(useCase.execute('appointment-1', { newSlotId: 'new-slot' }, assistantActor)).rejects.toBeInstanceOf(NotFoundError);
+      expect(appointments.markRescheduled).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['assistant', assistantScope, assistantActor],
+      ['doctor', doctorScope, doctorActor],
+    ])('422s a %s reschedule once the patient left the room (APPOINTMENT_VISIT_IN_PROGRESS)', async (_who, scope, who) => {
+      const { appointments, useCase } = rescheduleUseCase(scope, { ...appointment, visit_status: 'LEFT' });
+
+      await expect(useCase.execute('appointment-1', { newSlotId: 'new-slot' }, who)).rejects.toMatchObject({ code: 'APPOINTMENT_VISIT_IN_PROGRESS' });
+      expect(appointments.markRescheduled).not.toHaveBeenCalled();
     });
   });
 });
