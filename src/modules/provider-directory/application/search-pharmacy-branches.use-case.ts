@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
+import { decodeSortBoundCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import {
   PharmacyBranchSearchRepository,
   PharmacyBranchSearchRow,
@@ -50,6 +50,7 @@ const SORT_WHITELIST: Record<string, { field: PharmacyBranchSearchSort; dir: 'as
 };
 
 interface PharmacyBranchSearchCursor {
+  s: string;
   v: string;
   b: string;
 }
@@ -73,7 +74,7 @@ export class SearchPharmacyBranchesUseCase {
     const { field: sort, dir: sortDir } = SORT_WHITELIST[sortKey];
 
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
-    const cursor = decodeCursor<PharmacyBranchSearchCursor>(input.cursor);
+    const cursor = decodeSortBoundCursor<PharmacyBranchSearchCursor>(input.cursor, sortKey, { numericValue: sort === 'distance' });
 
     const rows = await this.repository.search({
       q: input.q,
@@ -93,7 +94,7 @@ export class SearchPharmacyBranchesUseCase {
 
     return {
       items: page.map(toSearchItem),
-      nextCursor: hasMore && last ? encodeCursor<PharmacyBranchSearchCursor>({ v: last.sort_value, b: last.branch_id }) : null,
+      nextCursor: hasMore && last ? encodeCursor<PharmacyBranchSearchCursor>({ s: sortKey, v: last.sort_value, b: last.branch_id }) : null,
     };
   }
 }

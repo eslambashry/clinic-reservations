@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
+import { decodeSortBoundCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { DoctorSearchFilterParams, DoctorSearchRepository, DoctorSearchRow, DoctorSearchSort } from '../infrastructure/doctor-search.repository';
 
 export interface SearchDoctorsInput {
@@ -47,6 +47,7 @@ const SORT_WHITELIST: Record<string, { field: DoctorSearchSort; dir: 'asc' | 'de
 };
 
 interface DoctorSearchCursor {
+  s: string;
   v: string;
   a: string;
 }
@@ -62,7 +63,7 @@ export class SearchDoctorsUseCase {
     const { field: sort, dir: sortDir } = SORT_WHITELIST[sortKey];
 
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
-    const cursor = decodeCursor<DoctorSearchCursor>(input.cursor);
+    const cursor = decodeSortBoundCursor<DoctorSearchCursor>(input.cursor, sortKey, { numericValue: true });
 
     const searchParams: DoctorSearchFilterParams = {
       specialtyCode: input.specialty,
@@ -89,7 +90,7 @@ export class SearchDoctorsUseCase {
 
     return {
       items: page.map(toSearchItem),
-      nextCursor: hasMore && last ? encodeCursor<DoctorSearchCursor>({ v: last.sort_value, a: last.affiliation_id }) : null,
+      nextCursor: hasMore && last ? encodeCursor<DoctorSearchCursor>({ s: sortKey, v: last.sort_value, a: last.affiliation_id }) : null,
       totalCount,
     };
   }

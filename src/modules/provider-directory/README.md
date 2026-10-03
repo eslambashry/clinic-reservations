@@ -6,6 +6,8 @@ Phase 2 (complete): directory CRUD + manual verification workflow (Admin-only, F
 
 Added 2026-08-28 (Part 37): `GET /v1/pharmacy-branches/search` — a pharmacy-search contract no source doc defines, filling the same category of gap Part 32 closed for doctors. The branch, not the pharmacy chain, is the searchable/browsable unit (only a branch has an address/phone).
 
+2026-10-03: doctor and pharmacy-branch search cursors are sort-bound (`decodeSortBoundCursor`, `shared/core/pagination/cursor.util.ts`). A cursor carries `s` (its sort key), and replaying it under a different sort is rejected as `400 VALIDATION_ERROR`. Before this change, a name cursor sent with `lat`/`lng`, which switches the default sort to distance, failed in Postgres as `brand_name::numeric`. Cursors issued before this change carry no `s` and are rejected the same way.
+
 Emits `ProviderVerified` (`{ providerType: 'DOCTOR'|'CLINIC'|'PHARMACY', providerId }`) on `POST /{doctors|clinics|pharmacies}/{id}/verify` — no consumer registered yet (Notifications is Phase 8), expected quiet backlog per File 11 Part 20.
 
 Added 2026-09-04 (Part 49): the **doctor-scoped ownership primitive**,

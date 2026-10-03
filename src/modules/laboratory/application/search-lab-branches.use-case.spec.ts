@@ -1,4 +1,4 @@
-import { decodeCursor } from '../../../shared/core/pagination/cursor.util';
+import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { LabBranchSearchRow } from '../infrastructure/lab-branch-search.repository';
 import { SearchLabBranchesUseCase } from './search-lab-branches.use-case';
 
@@ -102,7 +102,7 @@ describe('SearchLabBranchesUseCase', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.nextCursor).not.toBeNull();
-    expect(decodeCursor(result.nextCursor!)).toEqual({ v: 'Nile Labs', b: 'a' });
+    expect(decodeCursor(result.nextCursor!)).toEqual({ s: 'name:asc', v: 'Nile Labs', b: 'a' });
   });
 
   it('maps a row to the camelCase item shape, including nested address', async () => {
@@ -129,5 +129,36 @@ describe('SearchLabBranchesUseCase', () => {
       },
       distanceKm: 1.2345,
     });
+  });
+  it('passes a cursor issued under the same sort through to the repository', async () => {
+    const { repository, useCase } = setup();
+    repository.search.mockResolvedValue([row()]);
+
+    await useCase.execute({ lat: 28.65, lng: 30.84, radiusKm: 30, cursor: encodeCursor({ s: 'distance:asc', v: '12.5', b: 'branch-9' }) });
+
+    expect(repository.search).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: 'distance', radiusKm: 30, cursor: { value: '12.5', branchId: 'branch-9' } }),
+    );
+  });
+
+  it('rejects a name-sorted cursor replayed against a distance sort as a 400 before querying', async () => {
+    const { repository, useCase } = setup();
+
+    // Page 1 without lat/lng (name sort), page 2 with lat/lng (distance sort):
+    // previously reached Postgres as ('<brand name>')::numeric and 500'd.
+    await expect(
+      useCase.execute({ lat: 28.65, lng: 30.84, cursor: encodeCursor({ s: 'name:asc', v: 'Nile', b: 'branch-1' }) }),
+    ).rejects.toMatchObject({ httpStatus: 400, code: 'VALIDATION_ERROR' });
+    expect(repository.search).not.toHaveBeenCalled();
+  });
+
+  it('rejects a legacy cursor without a sort key', async () => {
+    const { repository, useCase } = setup();
+
+    await expect(useCase.execute({ cursor: encodeCursor({ v: 'Nile', b: 'branch-1' }) })).rejects.toMatchObject({
+      httpStatus: 400,
+      code: 'VALIDATION_ERROR',
+    });
+    expect(repository.search).not.toHaveBeenCalled();
   });
 });

@@ -47,7 +47,7 @@ un-blocked it at the user's explicit direction. One real gap had to be closed fi
 all (unlike pharmacy, which already had `SearchPharmacyBranchesUseCase`/`pharmacy-branches.controller.ts`). This
 pass adds the missing counterpart, mirroring that pattern exactly: `LabBranchSearchRepository` (PostGIS
 `ST_Distance`/`ST_DWithin` over `lab_branches → laboratories → addresses`, `VERIFIED`-only, no rating/price
-columns exist so none are selected), `SearchLabBranchesUseCase`, `LabBranchSearchQueryDto`, and a new
+columns exist so none are selected; cursors are sort-bound like pharmacy search's, see `provider-directory/README.md` 2026-10-03), `SearchLabBranchesUseCase`, `LabBranchSearchQueryDto`, and a new
 `@OptionalAuth() GET /lab-branches/search` route on the existing `LabBranchesController` (declared *before*
 `:branchId` — Nest route order matters). The existing `:branchId` route is untouched. `POST /lab-orders`,
 `GET /lab-orders`, `GET /lab-orders/{id}`, and `POST /prescriptions/upload` needed no backend changes — the
