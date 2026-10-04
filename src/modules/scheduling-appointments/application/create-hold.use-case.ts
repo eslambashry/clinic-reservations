@@ -69,6 +69,14 @@ export class CreateHoldUseCase {
         throw slotAlreadyStarted(slot.id);
       }
 
+      // A paused affiliation takes no new bookings. Search/slot listing already
+      // hide it, but a patient holding a stale slot list must be refused here too.
+      // Confirm/cancel deliberately don't re-check: existing holds stay honoured.
+      const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
+      if (billing.affiliationStatus === 'PAUSED') {
+        throw new BusinessRuleError('AFFILIATION_PAUSED', 'الحجز غير متاح حاليًا لدى هذا الطبيب في هذا الفرع.');
+      }
+
       const claimed = await this.slots.markHeld(tx, slot.id);
       if (!claimed) {
         throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: slot.id });
@@ -96,7 +104,6 @@ export class CreateHoldUseCase {
 
       // Informational only — confirm/payments re-read the fee and the
       // minimum and re-validate; the client can never supply either.
-      const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
       const fullAmount = Number(billing.consultFee).toFixed(2);
       const minPaymentAmount = await this.resolvePaymentAmount.findMinimum(tx, fullAmount);
 

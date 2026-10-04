@@ -89,6 +89,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Scheduling & appointments ───────────────────────────────────────────
   SLOT_ALREADY_BOOKED: 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.',
   SLOT_ALREADY_HELD: 'هذا الموعد محجوز مؤقتًا لمريض آخر. اختر موعدًا آخر.',
+  AFFILIATION_PAUSED: 'الحجز غير متاح حاليًا لدى هذا الطبيب في هذا الفرع.',
   SLOT_ALREADY_STARTED: 'هذا الموعد بدأ بالفعل. اختر موعدًا لاحقًا.',
   HOLD_EXPIRED: 'انتهت مهلة الحجز المؤقت أو تم استخدامه. ابدأ حجزًا جديدًا.',
   HOLD_STATE_CHANGED: 'تم تعديل الحجز المؤقت من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
