@@ -28,8 +28,9 @@ export interface HandleLatePaymentAfterExpiryInput {
  * touches the appointment/hold/slot — those are already final by the time
  * this runs.
  *
- * Direct-Fawry addition: a FAWRY intent routes to `FawryGatewayPort.refund`
- * instead of Paymob's, keyed off FawryPay's OWN reference number (resolved
+ * Direct-Fawry addition: a FAWRY or (since File 12 Part 55) MOBILE_WALLET
+ * intent routes to `FawryGatewayPort.refund`; only CARD uses Paymob's. The
+ * Fawry refund is keyed off FawryPay's OWN reference number (resolved
  * from `PaymentAttempt.metadata`, never our `gatewayReference`/merchant
  * ref — FawryPay's refund endpoint doesn't accept that). Deliberately
  * `refund`, never `cancelUnpaidOrder` — this path only runs once a SUCCESS
@@ -65,10 +66,12 @@ export class HandleLatePaymentAfterExpiryUseCase {
 
     let gatewayRefundReference: string | undefined;
     try {
+      // File 12 Part 55: only CARD is on Paymob; FAWRY and MOBILE_WALLET are
+      // both refunded through FawryPay, keyed off Fawry's own reference.
       const result =
-        intent.method === 'FAWRY'
-          ? await this.refundFawry(tx, intent.id, intent.amount.toString())
-          : await this.gateway.refund(input.gatewayReference, intent.amount.toString());
+        intent.method === 'CARD'
+          ? await this.gateway.refund(input.gatewayReference, intent.amount.toString())
+          : await this.refundFawry(tx, intent.id, intent.amount.toString());
       gatewayRefundReference = result.gatewayRefundReference;
     } catch (error) {
       this.logger.error(

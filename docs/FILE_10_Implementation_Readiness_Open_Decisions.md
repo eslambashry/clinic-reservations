@@ -623,7 +623,7 @@ stateDiagram-v2
 
 | ID | Decision | Blocks MVP? | Recommended | Owner | Status |
 |---|---|:---:|---|---|---|
-| DEC-001 | Payment gateway (Egypt) | No (pay-at-clinic ships without it) | Paymob | Product + Finance | Open |
+| DEC-001 | Payment gateway (Egypt) | No (pay-at-clinic ships without it) | Paymob for card; FawryPay for Fawry code and mobile wallet (File 12 Parts 50/55) | Product + Finance | Open (contracts pending) |
 | DEC-002 | Maps/geocoding provider | Yes (search needs distance) | Google Maps Platform | Engineering | Open |
 | DEC-003 | SMS/OTP provider | Yes (auth needs it) | SMS Misr OTP API, OTP only (File 12 Part 54) | Engineering | **Resolved 2026-09-30** |
 | DEC-004 | Object storage region / data residency | Yes | AWS S3, region pending `DEC-009` | Engineering + Legal | Open, blocked by DEC-009 |

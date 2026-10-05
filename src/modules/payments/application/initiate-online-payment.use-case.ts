@@ -19,7 +19,7 @@ export interface InitiateOnlinePaymentInput {
   /** Unique per intent (e.g. `hold:<holdId>`, `topup:<walletTransactionId>`) — ignored on retry. */
   idempotencyKey: string;
   customer: PaymentCustomerInfo;
-  walletProvider?: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
+  /** `MOBILE_WALLET` only: Fawry's `debitMobileWalletNo` (the wallet-linked number). Fawry picks the wallet from it — no provider is sent. */
   walletMobileNumber?: string;
   /**
    * File 12 Part 51: the same deadline the caller already computed for its
@@ -50,7 +50,6 @@ export interface PreparedOnlinePayment {
     currency: string;
     customer: PaymentCustomerInfo;
     expiresAt: Date;
-    walletProvider?: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
     walletMobileNumber?: string;
   };
 }
@@ -76,16 +75,19 @@ export interface CompletedOnlinePayment {
  * live network call — deliberately NOT given a `tx`, and never call it from
  * inside one) / `completeSuccess`/`completeFailure` (the follow-up DB write,
  * its own short transaction) — a real gateway round trip (Paymob's
- * card/wallet flow is auth-token → order → payment-key → pay, four
+ * card flow is auth-token → order → payment-key, three
  * sequential HTTP calls) can exceed Prisma's ~5s interactive-transaction
  * timeout, and a DB transaction must never sit open across live third-party
  * network I/O regardless of timeout tuning. See callers
  * (`InitiateOnlineAppointmentPaymentUseCase`, `InitiateWalletTopUpUseCase`)
  * for the two-transaction pattern this implies.
  *
- * `FAWRY` routes to `FawryGatewayPort` (direct FawryPay integration, a
- * single charge call), never `PaymentGatewayPort` (Paymob) — see
- * `PaymentGatewayPort`'s own doc comment for why Fawry moved off Paymob.
+ * Routing (File 12 Part 55): `CARD` → `PaymentGatewayPort` (Paymob);
+ * `FAWRY` (PayAtFawry) and `MOBILE_WALLET` (MWALLET Request-to-Pay) →
+ * `FawryGatewayPort`, a single charge call each. Paymob gets the attempt's
+ * UUID as its merchant reference; Fawry gets the attempt's numeric
+ * `fawry_merchant_ref_num`, because Fawry documents `merchantRefNum` as an
+ * Integer.
  */
 @Injectable()
 export class InitiateOnlinePaymentUseCase {
@@ -111,26 +113,26 @@ export class InitiateOnlinePaymentUseCase {
         });
 
     const attemptId = randomUUID();
-    // `gateway_reference` is our OWN generated id, sent to the gateway as
-    // its "merchant reference" (Part 50 gateway-port doc) — set at creation
-    // time, before the gateway even knows this attempt exists, so a webhook
-    // can always be correlated back regardless of how/when the gateway
-    // assigns its own transaction id.
-    await this.paymentAttempts.create(tx, { id: attemptId, paymentIntentId: intent.id, gatewayReference: attemptId });
+    // `gateway_reference` is our OWN generated id, set at creation time,
+    // before the gateway even knows this attempt exists, so a webhook can
+    // always be correlated back regardless of how/when the gateway assigns
+    // its own transaction id. Paymob is sent this UUID; Fawry is sent the
+    // DB-assigned numeric `fawry_merchant_ref_num` instead (File 12 Part 55).
+    const attempt = await this.paymentAttempts.create(tx, { id: attemptId, paymentIntentId: intent.id, gatewayReference: attemptId });
+    const merchantReference = input.method === 'CARD' ? attemptId : attempt.fawry_merchant_ref_num.toString();
 
     return {
       paymentIntentId: intent.id,
       paymentAttemptId: attemptId,
       method: input.method,
       gatewayInput: {
-        merchantReference: attemptId,
+        merchantReference,
         // On a retry the intent's already-stored amount is authoritative — a
         // different amount sent the second time must never reach the gateway.
         amount: input.existingPaymentIntentId ? (intent.amount?.toFixed(2) ?? input.amount) : input.amount,
         currency: input.currency,
         customer: input.customer,
         expiresAt: input.expiresAt,
-        walletProvider: input.walletProvider,
         walletMobileNumber: input.walletMobileNumber,
       },
     };
@@ -155,15 +157,18 @@ export class InitiateOnlinePaymentUseCase {
       return { metadata: result as unknown as Prisma.InputJsonValue, referenceCode: result.referenceCode };
     }
 
-    if (!gatewayInput.walletProvider || !gatewayInput.walletMobileNumber) {
-      throw new DomainError(400, 'WALLET_INFO_REQUIRED', 'اختر مزوّد المحفظة وأدخل رقم الهاتف المرتبط بها.');
+    // MOBILE_WALLET: Fawry MWALLET Request-to-Pay. The DTO already requires a
+    // valid number; this guard covers any other caller. The response carries
+    // no redirect — the patient approves in their wallet app, and the payment
+    // only counts once a verified Fawry notification says PAID.
+    if (!gatewayInput.walletMobileNumber) {
+      throw new DomainError(400, 'WALLET_INFO_REQUIRED', 'أدخل رقم الهاتف المرتبط بالمحفظة الإلكترونية.');
     }
-    const result = await this.gateway.initiateMobileWalletPayment({
+    const result = await this.fawryGateway.initiateMobileWalletPayment({
       ...gatewayInput,
-      walletProvider: gatewayInput.walletProvider,
-      walletMobileNumber: gatewayInput.walletMobileNumber,
+      debitMobileWalletNo: gatewayInput.walletMobileNumber,
     });
-    return { metadata: result as unknown as Prisma.InputJsonValue, redirectUrl: result.redirectUrl };
+    return { metadata: result as unknown as Prisma.InputJsonValue, referenceCode: result.referenceCode };
   }
 
   async completeSuccess(tx: Prisma.TransactionClient, paymentAttemptId: string, metadata: Prisma.InputJsonValue): Promise<void> {

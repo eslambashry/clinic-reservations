@@ -2004,3 +2004,89 @@ credentials, not the login), `SMSMISR_SENDER` (the Sender Token), and
 
 **Not changed.** Delivery reports (DLR) aren't consumed. A send counts as
 done once SMS Misr returns `4901`.
+
+---
+
+## PART 55 — Mobile Wallet Moves to Fawry MWALLET (Request-to-Pay); Numeric Fawry Merchant Reference (2026-10-05)
+
+**Decision (user, 2026-10-05).** `MOBILE_WALLET` moves from Paymob to
+FawryPay's MWALLET Request-to-Pay. `CARD` stays on Paymob (including wallet
+top-up, which is card-only). `FAWRY` (PayAtFawry) is unchanged. Paymob is now
+card only, so `PAYMOB_INTEGRATION_ID_WALLET` and the unused
+`PAYMOB_INTEGRATION_ID_FAWRY` were removed from config and `.env.example`.
+
+**Supported online methods after this Part:**
+
+| Method | Gateway | Patient completes it by |
+|---|---|---|
+| `CARD` | Paymob | Hosted card iframe (`redirectUrl`) |
+| `FAWRY` | FawryPay, PayAtFawry | Paying the `referenceCode` at an outlet or in myFawry |
+| `MOBILE_WALLET` | FawryPay, MWALLET R2P | Approving the push in their wallet app; no redirect |
+
+**MWALLET contract (developer.fawrystaging.com, "Mobile Wallet Payment").**
+- `POST /ECommerceWeb/api/payments/charge`. This is a different path from
+  PayAtFawry's `/ECommerceWeb/Fawry/payments/charge`.
+- Body: `paymentMethod: "MWALLET"`, `debitMobileWalletNo` (local format
+  `01XXXXXXXXX`), plus the same fields as PayAtFawry: merchantCode,
+  merchantRefNum, customerMobile, customerEmail, amount, currencyCode,
+  language, chargeItems, paymentExpiry, description.
+- Signature: SHA-256(merchantCode + merchantRefNum + customerProfileId("") +
+  "MWALLET" + amount(2dp) + debitMobileWalletNo + secureKey).
+- Sending `debitMobileWalletNo` selects Request-to-Pay. QR (no number,
+  `walletQr` in the response) is deliberately not implemented.
+- No wallet-provider field is sent: Fawry routes by number. The API's old
+  `walletProvider` field is accepted and ignored, because the global
+  `ValidationPipe` rejects unknown fields and older app versions still send it.
+- A charge response is a failure unless it has a `referenceNumber` and, when
+  present, `statusCode === 200`. Fawry reports business errors (e.g. 9946)
+  inside an HTTP 2xx.
+
+**Numeric `merchantRefNum`.** Fawry documents `merchantRefNum` as an Integer,
+so our UUID `PaymentAttempt.id` is no longer sent to Fawry by either Fawry
+method.
+- New column `payment_attempts.fawry_merchant_ref_num BIGSERIAL NOT NULL
+  UNIQUE` (migration `20261005120000_add_fawry_merchant_ref_num`). It's
+  assigned by a Postgres sequence on insert: race-free, no app-side generator,
+  and backfilled for existing rows.
+- It is a dedicated indexed column rather than `metadata`, because the
+  webhook must resolve it by unique lookup (`gateway_reference` has no index).
+- Mapping: `PaymentAttempt.id` (UUID, internal) ↔ `fawry_merchant_ref_num` ↔
+  Fawry `merchantRefNum` / webhook `merchantRefNumber`.
+- `FindPaymentByGatewayReferenceUseCase.execute(tx, ref, provider)`: for
+  `fawry` with an all-digit ref it looks up `fawry_merchant_ref_num`;
+  otherwise it uses `gateway_reference`. That covers Paymob, and Fawry
+  attempts created before this Part, which were sent the UUID.
+- The adapter refuses a non-numeric `merchantReference` outright, so a UUID
+  can never reach Fawry.
+
+**Webhook signature fix.** The notification signature used to format *every*
+numeric field to two decimals. With numeric merchant refs that would turn a
+JSON `1002` into `"1002.00"` and reject every genuine notification. Only
+`paymentAmount` and `orderAmount` are formatted to 2dp now, per Fawry's
+formula; all identifiers are used as sent.
+
+**Lifecycle for `MOBILE_WALLET`.** The rules are the same as `FAWRY`, all
+through `FawryGatewayPort`:
+- The hold window stays 10 minutes, and `paymentExpiry` carries it to Fawry.
+- An unpaid request is cancelled on hold expiry via `cancelUnpaidOrder`, best
+  effort. Fawry's docs don't say whether this applies to MWALLET orders; a
+  refusal is logged, and `paymentExpiry` plus the auto-refund are the backstop.
+- A success that arrives after the hold expired is auto-refunded via Fawry's
+  `refund`, keyed off Fawry's `referenceNumber` stored in
+  `PaymentAttempt.metadata`.
+- Paid status only ever comes from a signature-verified notification with
+  `orderStatus = PAID`. The charge call's 200 never marks anything paid, and
+  `webhook_events` deduplication is unchanged.
+
+**Validation.** `walletMobileNumber` is required for `MOBILE_WALLET`, matching
+`^(?:\+20|0)1[0125]\d{8}$`, and is normalized to `01…` for Fawry.
+`billingData` is required only for `CARD`; it's accepted and ignored for the
+Fawry methods and never forwarded. Fawry customer mobiles are sent in local
+format too (both Fawry methods).
+
+**To confirm with the Fawry merchant account.**
+- MWALLET is enabled on the merchant code.
+- Integer `merchantRefNum` is accepted for PayAtFawry too.
+- Whether `cancel-unpaid-order` applies to MWALLET orders.
+- The server-notification URL is set to `/v1/webhooks/payments/fawry`.
+- Staging test wallet numbers.

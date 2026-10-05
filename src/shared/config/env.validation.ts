@@ -89,14 +89,10 @@ class EnvironmentVariables {
   @IsOptional()
   PAYMOB_API_KEY?: string;
 
-  /** Per-payment-method integration IDs, configured in the Paymob dashboard against one merchant account. */
+  /** Card integration ID from the Paymob dashboard. Paymob handles card only (File 12 Part 55) — mobile wallets go through Fawry. */
   @IsString()
   @IsOptional()
   PAYMOB_INTEGRATION_ID_CARD?: string;
-
-  @IsString()
-  @IsOptional()
-  PAYMOB_INTEGRATION_ID_WALLET?: string;
 
   /** Hosted card iframe id (Paymob dashboard) — builds the `redirectUrl` returned for `CARD` payments. */
   @IsString()

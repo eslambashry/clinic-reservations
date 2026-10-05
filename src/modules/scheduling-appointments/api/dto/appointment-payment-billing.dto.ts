@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsString, MaxLength } from 'class-validator';
 
-/** Billing data retained only for the Paymob CARD/MOBILE_WALLET methods. */
+/** Billing data required only for CARD (Paymob). FAWRY and MOBILE_WALLET go through Fawry, which gets the phone only (File 12 Part 55). */
 export class AppointmentPaymentBillingDto {
   @ApiProperty()
   @IsString()

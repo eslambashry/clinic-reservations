@@ -35,7 +35,6 @@ export interface AppConfig {
   paymob: {
     apiKey: string | null;
     integrationIdCard: string | null;
-    integrationIdWallet: string | null;
     iframeId: string | null;
     hmacSecret: string | null;
   };
@@ -107,7 +106,6 @@ export default (): AppConfig => ({
   paymob: {
     apiKey: process.env.PAYMOB_API_KEY ?? null,
     integrationIdCard: process.env.PAYMOB_INTEGRATION_ID_CARD ?? null,
-    integrationIdWallet: process.env.PAYMOB_INTEGRATION_ID_WALLET ?? null,
     iframeId: process.env.PAYMOB_IFRAME_ID ?? null,
     hmacSecret: process.env.PAYMOB_HMAC_SECRET ?? null,
   },

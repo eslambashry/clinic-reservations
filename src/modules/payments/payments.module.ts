@@ -60,6 +60,8 @@ import { AuditModule } from '../audit/audit.module';
  * `FAWRY_GATEWAY`/`FawryPaymentGatewayAdapter`: `FAWRY` moved off Paymob to
  * a direct FawryPay integration — Paymob's current docs no longer show
  * Fawry as a supported method (see `PaymentGatewayPort`'s doc comment).
+ * File 12 Part 55 (2026-10-05) moved `MOBILE_WALLET` there too (Fawry
+ * MWALLET Request-to-Pay); `PAYMENT_GATEWAY` (Paymob) is card only now.
  * Exported the same way `PAYMENT_GATEWAY` already was, for the same callers.
  */
 @Module({
