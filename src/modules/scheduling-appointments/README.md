@@ -48,10 +48,15 @@ wallet, DEC-001 = Paymob): `POST /v1/appointments/{holdId}/payments`
 (`InitiateOnlineAppointmentPaymentUseCase`) initiates a `CARD`/`FAWRY`/
 `MOBILE_WALLET` payment against a hold — extends the hold to that method's
 window (15 min Fawry / 10 min mobile wallet / unchanged 5 min card) and
-returns the client-facing iframe URL / Fawry reference / wallet redirect.
-The patient-facing Fawry payload is `{ customer: { phone } }`; it does not
-accept first name, last name, or email. `billingData` remains required only
-for the Paymob `CARD` and `MOBILE_WALLET` methods. The Fawry adapter does not
+returns the client-facing card iframe URL (`CARD`) or Fawry reference
+(`FAWRY` code to pay; for `MOBILE_WALLET`, the MWALLET order reference — the
+patient approves in their wallet app, there is no redirect). The
+patient-facing Fawry payload is `{ customer: { phone } }`; it does not
+accept first name, last name, or email. `MOBILE_WALLET` additionally
+requires `walletMobileNumber` (`01XXXXXXXXX`/`+201XXXXXXXXX`); the old
+`walletProvider` field is accepted and ignored (File 12 Part 55).
+`billingData` is required only for the Paymob `CARD` method (still accepted
+and ignored for the Fawry methods). The Fawry adapter does not
 forward patient billing names/email; its provider-required email field uses
 a non-personal system address. The endpoint response echoes the authoritative
 charge `amount` and `currency`, including the stored amount on an idempotent

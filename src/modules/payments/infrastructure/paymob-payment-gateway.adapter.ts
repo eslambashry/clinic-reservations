@@ -4,9 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DomainError, ExternalProviderError } from '../../../shared/core/errors/domain-errors';
 import { AppConfig } from '../../../shared/config/configuration';
 import {
-  InitiateMobileWalletPaymentInput,
   InitiatedCardPayment,
-  InitiatedMobileWalletPayment,
   InitiatePaymentInput,
   ParsedWebhookEvent,
   PaymentGatewayPort,
@@ -52,16 +50,12 @@ const PAYMOB_BASE_URL = 'https://accept.paymob.com';
  * it's documented to do.
  *
  * Card details never reach this backend: `initiateCardPayment` returns a
- * hosted iframe URL — the client embeds/redirects to Paymob's own page. The
- * mobile-wallet path passes only the wallet-linked mobile number (never a
- * PIN/OTP) and lets Paymob's aggregator integration talk to the telecom
- * (Vodafone Cash/Etisalat Cash/Orange Cash) — no separate per-telecom
- * integration exists here, by design (File 12 Part 50).
+ * hosted iframe URL — the client embeds/redirects to Paymob's own page.
  *
- * No longer handles Fawry: Paymob's current docs/Postman collection don't
- * show Fawry as a supported method anymore (verified directly against
- * developers.paymob.com) — it moved to a direct FawryPay integration
- * (`FawryPaymentGatewayAdapter`) instead of this class.
+ * **Card only** (File 12 Part 55). Fawry moved to a direct FawryPay
+ * integration because Paymob's current docs no longer show it, and mobile
+ * wallets moved to Fawry MWALLET (Request-to-Pay) on 2026-10-05 — both live
+ * in `FawryPaymentGatewayAdapter` now, not here.
  *
  * Every call throws `PAYMENT_GATEWAY_NOT_CONFIGURED` (not a silent no-op)
  * when the required `PAYMOB_*` env vars are unset — DEC-001 is still `Open`
@@ -86,22 +80,6 @@ export class PaymobPaymentGatewayAdapter implements PaymentGatewayPort {
       gatewayReference: input.merchantReference,
       redirectUrl: `${PAYMOB_BASE_URL}/api/acceptance/iframes/${iframeId}?payment_token=${paymentKey}`,
     };
-  }
-
-  async initiateMobileWalletPayment(input: InitiateMobileWalletPaymentInput): Promise<InitiatedMobileWalletPayment> {
-    const integrationId = this.requireConfig('integrationIdWallet', 'PAYMOB_INTEGRATION_ID_WALLET');
-    const paymentKey = await this.requestPaymentKey(input, integrationId);
-
-    const pay = await this.request<{ redirect_url?: string }>('/api/acceptance/payments/pay', {
-      source: { identifier: input.walletMobileNumber, subtype: 'WALLET' },
-      payment_token: paymentKey,
-    });
-
-    if (!pay.redirect_url) {
-      throw new ExternalProviderError('Paymob', 502, new Error('Wallet pay response missing redirect_url'));
-    }
-
-    return { gatewayReference: input.merchantReference, redirectUrl: pay.redirect_url };
   }
 
   /**

@@ -1923,6 +1923,173 @@ legacy item into a `test_name` snapshot before dropping the catalog table.
 This decision supersedes the earlier test-catalog assumptions in Parts 47,
 50, and 51; `LabOrderItem` remains solely for historical item/result rows.
 
+---
+
+## PART 54 — OTP SMS Provider: SMS Misr (resolves `DEC-003`, 2026-09-30)
+
+**Decision.** SMS Misr's OTP API sends **OTP SMS only**: login/signup OTPs
+(`POST /v1/auth/otp/request`) and password-reset OTPs
+(`POST /v1/auth/password/forgot`). No other notification sends SMS. File 10's
+earlier recommendation (Firebase Phone Auth + Unifonic/Vonage) is superseded.
+Twilio was integrated first and then replaced the same day: Twilio offers no
+trial in Egypt, and its published Egypt rate ($0.3959 per SMS) is roughly
+20× SMS Misr's (≈1 EGP per SMS in its smallest package, cheaper with volume).
+
+**One template (user decision).** SMS Misr's OTP API only sends
+pre-approved templates, so the wording is fixed on SMS Misr's side, not in
+our code. One template covers both login/signup and password reset
+(`SMSMISR_OTP_TEMPLATE`). `OtpSenderPort.send` still receives the `purpose`
+(the dev logging sender prints it), but the template path ignores it.
+
+**Free-text fallback until the template is approved (2026-10-01).** Sender
+and template approval need company documents (delegation letter,
+commercial register, tax card), and a client demo was needed before then.
+While `SMSMISR_OTP_TEMPLATE` is unset, `SmsMisrOtpSender` sends the code
+through SMS Misr's SMS API (`POST /api/SMS/`, `language=2`, success
+`1901`) instead. The text comes from `domain/otp-message.util.ts`, which
+words login and reset differently and keeps both within one 70-char UCS-2
+segment. Setting the template token switches to the OTP API with no code
+change. The account's built-in "Test Sender" token works **only in the test
+environment**. On 2026-10-01 it returned `1901` there (and `1905` for an
+invalid mobile), but a live send returned `1904` (invalid sender). Real
+delivery therefore needs the approved `MedSuper` sender token.
+
+**We still own the codes.** The backend keeps generating, argon2-hashing,
+expiring, and attempt-limiting codes (`otp_requests`, File 10 §2.3).
+SMS Misr's `otp` field only receives our code to put into the template. The
+`requestId` contract, the "5 attempts then lock" rule, and the
+`PASSWORD_RESET` verify-then-reset flow are unchanged.
+
+**Shape.**
+- `src/shared/kernel/sms/sms-misr.client.ts` (global `SmsModule`) is the only
+  class that calls SMS Misr. It sends `POST https://smsmisr.com/api/OTP/`,
+  form-urlencoded, with `environment` (`2` = test, `1` = live), `username`,
+  `password`, `sender`, `mobile`, `template`, and `otp`. It uses plain
+  `fetch` with a 10 s timeout, no SDK.
+- Success is response code `4901`. Any other code surfaces as
+  `502 GATEWAY_UNAVAILABLE`, with the code and its meaning in the log line.
+  Neither the OTP nor the credentials are ever logged.
+- Confirmed against the real API on 2026-09-30: `/api/Balance/` accepts
+  `POST` only (not `GET`); `4903` means bad credentials; `4909` means an
+  invalid template, and the template is checked before sender and mobile.
+- `mobile` is our E.164 number without the `+` (`201XXXXXXXXX`). This still
+  has to be confirmed on the first real send with an approved template.
+- `identity-auth` binds `OTP_SENDER` through a factory keyed on
+  `SMS_PROVIDER`: `smsmisr` binds `SmsMisrOtpSender`, and unset, empty, or
+  `logging` binds the dev-only `LoggingOtpSender`.
+- `notifications` stays on the dev-only `LoggingSmsSender` in every
+  environment (user decision, 2026-09-30: SMS is for OTP only, to keep SMS
+  spend to OTP). The `SMS` channel on `AppointmentConfirmed`,
+  `AppointmentCancelled`, and `CriticalLabResult` is therefore logged, not
+  delivered; `PUSH` still delivers. Changing this is a spending decision, not
+  a bug fix.
+
+**Config.** `SMS_PROVIDER`, `SMSMISR_ENVIRONMENT` (`test` by default or
+`live`), `SMSMISR_USERNAME` and `SMSMISR_PASSWORD` (the console's API
+credentials, not the login), `SMSMISR_SENDER` (the Sender Token), and
+`SMSMISR_OTP_TEMPLATE` (optional; unset means the free-text fallback).
+- Selecting `smsmisr` without the username, password, and sender fails at
+  boot in every environment.
+- Production refuses to boot unless `SMS_PROVIDER=smsmisr` and
+  `SMSMISR_ENVIRONMENT=live`, because the test environment delivers nothing.
+
+**Operational prerequisites (outside code).**
+- Get the sender name and the OTP template approved in the SMS Misr console.
+  Live sends fail until both are approved.
+- Keep the balance topped up. When it runs out, OTP requests fail with
+  `502` until someone recharges.
+- The per-phone Redis limit (3 per 10 min) is the only defence against SMS
+  pumping, and every request costs balance. Watch spend in the SMS Misr
+  console.
+
+**Not changed.** Delivery reports (DLR) aren't consumed. A send counts as
+done once SMS Misr returns `4901`.
+
+---
+
+## PART 55 — Mobile Wallet Moves to Fawry MWALLET (Request-to-Pay); Numeric Fawry Merchant Reference (2026-10-05)
+
+**Decision (user, 2026-10-05).** `MOBILE_WALLET` moves from Paymob to
+FawryPay's MWALLET Request-to-Pay. `CARD` stays on Paymob (including wallet
+top-up, which is card-only). `FAWRY` (PayAtFawry) is unchanged. Paymob is now
+card only, so `PAYMOB_INTEGRATION_ID_WALLET` and the unused
+`PAYMOB_INTEGRATION_ID_FAWRY` were removed from config and `.env.example`.
+
+**Supported online methods after this Part:**
+
+| Method | Gateway | Patient completes it by |
+|---|---|---|
+| `CARD` | Paymob | Hosted card iframe (`redirectUrl`) |
+| `FAWRY` | FawryPay, PayAtFawry | Paying the `referenceCode` at an outlet or in myFawry |
+| `MOBILE_WALLET` | FawryPay, MWALLET R2P | Approving the push in their wallet app; no redirect |
+
+**MWALLET contract (developer.fawrystaging.com, "Mobile Wallet Payment").**
+- `POST /ECommerceWeb/api/payments/charge`. This is a different path from
+  PayAtFawry's `/ECommerceWeb/Fawry/payments/charge`.
+- Body: `paymentMethod: "MWALLET"`, `debitMobileWalletNo` (local format
+  `01XXXXXXXXX`), plus the same fields as PayAtFawry: merchantCode,
+  merchantRefNum, customerMobile, customerEmail, amount, currencyCode,
+  language, chargeItems, paymentExpiry, description.
+- Signature: SHA-256(merchantCode + merchantRefNum + customerProfileId("") +
+  "MWALLET" + amount(2dp) + debitMobileWalletNo + secureKey).
+- Sending `debitMobileWalletNo` selects Request-to-Pay. QR (no number,
+  `walletQr` in the response) is deliberately not implemented.
+- No wallet-provider field is sent: Fawry routes by number. The API's old
+  `walletProvider` field is accepted and ignored, because the global
+  `ValidationPipe` rejects unknown fields and older app versions still send it.
+- A charge response is a failure unless it has a `referenceNumber` and, when
+  present, `statusCode === 200`. Fawry reports business errors (e.g. 9946)
+  inside an HTTP 2xx.
+
+**Numeric `merchantRefNum`.** Fawry documents `merchantRefNum` as an Integer,
+so our UUID `PaymentAttempt.id` is no longer sent to Fawry by either Fawry
+method.
+- New column `payment_attempts.fawry_merchant_ref_num BIGSERIAL NOT NULL
+  UNIQUE` (migration `20261005120000_add_fawry_merchant_ref_num`). It's
+  assigned by a Postgres sequence on insert: race-free, no app-side generator,
+  and backfilled for existing rows.
+- It is a dedicated indexed column rather than `metadata`, because the
+  webhook must resolve it by unique lookup (`gateway_reference` has no index).
+- Mapping: `PaymentAttempt.id` (UUID, internal) ↔ `fawry_merchant_ref_num` ↔
+  Fawry `merchantRefNum` / webhook `merchantRefNumber`.
+- `FindPaymentByGatewayReferenceUseCase.execute(tx, ref, provider)`: for
+  `fawry` with an all-digit ref it looks up `fawry_merchant_ref_num`;
+  otherwise it uses `gateway_reference`. That covers Paymob, and Fawry
+  attempts created before this Part, which were sent the UUID.
+- The adapter refuses a non-numeric `merchantReference` outright, so a UUID
+  can never reach Fawry.
+
+**Webhook signature fix.** The notification signature used to format *every*
+numeric field to two decimals. With numeric merchant refs that would turn a
+JSON `1002` into `"1002.00"` and reject every genuine notification. Only
+`paymentAmount` and `orderAmount` are formatted to 2dp now, per Fawry's
+formula; all identifiers are used as sent.
+
+**Lifecycle for `MOBILE_WALLET`.** The rules are the same as `FAWRY`, all
+through `FawryGatewayPort`:
+- The hold window stays 10 minutes, and `paymentExpiry` carries it to Fawry.
+- An unpaid request is cancelled on hold expiry via `cancelUnpaidOrder`, best
+  effort. Fawry's docs don't say whether this applies to MWALLET orders; a
+  refusal is logged, and `paymentExpiry` plus the auto-refund are the backstop.
+- A success that arrives after the hold expired is auto-refunded via Fawry's
+  `refund`, keyed off Fawry's `referenceNumber` stored in
+  `PaymentAttempt.metadata`.
+- Paid status only ever comes from a signature-verified notification with
+  `orderStatus = PAID`. The charge call's 200 never marks anything paid, and
+  `webhook_events` deduplication is unchanged.
+
+**Validation.** `walletMobileNumber` is required for `MOBILE_WALLET`, matching
+`^(?:\+20|0)1[0125]\d{8}$`, and is normalized to `01…` for Fawry.
+`billingData` is required only for `CARD`; it's accepted and ignored for the
+Fawry methods and never forwarded. Fawry customer mobiles are sent in local
+format too (both Fawry methods).
+
+**To confirm with the Fawry merchant account.**
+- MWALLET is enabled on the merchant code.
+- Integer `merchantRefNum` is accepted for PayAtFawry too.
+- Whether `cancel-unpaid-order` applies to MWALLET orders.
+- The server-notification URL is set to `/v1/webhooks/payments/fawry`.
+- Staging test wallet numbers.
 ## 2026-10-03 current-source addendum — approved privacy and employee boundaries
 
 This dated addendum supersedes historical open decisions or global-queue assumptions on these two boundaries. Canonical current evidence is `clinic-reservations/docs/V1_LAUNCH_READINESS.md`; earlier phase readiness scores and cloud counts remain dated history.

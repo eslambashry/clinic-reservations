@@ -4,6 +4,9 @@ import { FAWRY_GATEWAY, FawryGatewayPort, extractFawryReferenceCode } from './po
 import { PaymentAttemptRepository } from '../infrastructure/payment-attempt.repository';
 import { PaymentIntentRepository } from '../infrastructure/payment-intent.repository';
 
+/** Methods whose unpaid order lives on Fawry and is cancelled there when the hold expires (File 12 Part 55). */
+const FAWRY_METHODS: readonly PaymentMethod[] = ['FAWRY', 'MOBILE_WALLET'];
+
 export interface CancelledOnlinePaymentIntent {
   method: PaymentMethod;
   fawryReferenceNumber: string | null;
@@ -19,17 +22,20 @@ export interface CancelledOnlinePaymentIntent {
  * Split into `execute` (DB-only, takes the caller's `tx`) and
  * `notifyGatewayIfNeeded` (the live network call, deliberately NOT given a
  * `tx` — same "never hold a transaction open across live third-party I/O"
- * rule `InitiateOnlinePaymentUseCase` already follows). Only `FAWRY`
- * actually needs the second step: a Fawry reference number stays payable at
- * any physical outlet until FawryPay's own system expires it, so we
+ * rule `InitiateOnlinePaymentUseCase` already follows). Only the Fawry
+ * methods (`FAWRY`, and `MOBILE_WALLET` since File 12 Part 55) need the
+ * second step: a Fawry reference stays payable at any outlet, and an MWALLET
+ * request stays approvable in the wallet app, until FawryPay expires it, so we
  * proactively tell FawryPay to cancel the still-unpaid order the moment our
  * hold expires — `cancelUnpaidOrder`, never `refund` (nothing was captured
  * yet; see `FawryGatewayPort`'s doc comment for why the two aren't
  * interchangeable). Best-effort: a failed cancel call is logged, not
  * thrown — our own DB state is already correctly `CANCELLED` regardless,
  * and `paymentExpiry` (sent at charge time) is the backstop if this call
- * fails. Card/Mobile Wallet never had an equivalent "cancel the unpaid
- * order upstream" step and still don't — this is Fawry-specific.
+ * fails. FawryPay's docs don't say whether cancel-unpaid-order applies to
+ * MWALLET orders; if it refuses one, that is logged, and `paymentExpiry`
+ * plus the late-payment auto-refund still cover it. Card (Paymob) never had
+ * an equivalent step.
  */
 @Injectable()
 export class CancelOnlinePaymentIntentUseCase {
@@ -48,7 +54,7 @@ export class CancelOnlinePaymentIntentUseCase {
     }
     await this.paymentIntents.markCancelled(tx, intent.id, intent.version);
 
-    if (intent.method !== 'FAWRY') {
+    if (!FAWRY_METHODS.includes(intent.method)) {
       return { method: intent.method, fawryReferenceNumber: null };
     }
 
@@ -56,9 +62,9 @@ export class CancelOnlinePaymentIntentUseCase {
     return { method: intent.method, fawryReferenceNumber: attempt ? extractFawryReferenceCode(attempt.metadata) : null };
   }
 
-  /** Call AFTER the `execute()` transaction has committed — never from inside it. No-op for anything but a FAWRY intent that actually reached the gateway. */
+  /** Call AFTER the `execute()` transaction has committed — never from inside it. No-op for anything but a Fawry-method intent that actually reached the gateway. */
   async notifyGatewayIfNeeded(cancelled: CancelledOnlinePaymentIntent | null): Promise<void> {
-    if (!cancelled || cancelled.method !== 'FAWRY' || !cancelled.fawryReferenceNumber) {
+    if (!cancelled || !FAWRY_METHODS.includes(cancelled.method) || !cancelled.fawryReferenceNumber) {
       return;
     }
 

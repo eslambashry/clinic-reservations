@@ -26,6 +26,11 @@ export class PaymentAttemptRepository {
     return db.paymentAttempt.findFirst({ where: { gateway_reference: gatewayReference }, orderBy: { created_at: 'desc' } });
   }
 
+  /** File 12 Part 55: resolves a Fawry webhook's numeric `merchantRefNumber` through the unique-indexed column. */
+  findByFawryMerchantRefNum(db: Prisma.TransactionClient, fawryMerchantRefNum: bigint): Promise<PaymentAttempt | null> {
+    return db.paymentAttempt.findUnique({ where: { fawry_merchant_ref_num: fawryMerchantRefNum } });
+  }
+
   /**
    * Used to resolve a Fawry-specific `referenceNumber` back out of
    * `PaymentAttempt.metadata` (stored there at charge time by

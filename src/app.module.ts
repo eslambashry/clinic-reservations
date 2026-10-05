@@ -12,6 +12,7 @@ import { CoreModule } from './shared/core/core.module';
 import { PolicyConfigModule } from './shared/kernel/policy-config/policy-config.module';
 import { PrismaModule } from './shared/kernel/prisma/prisma.module';
 import { RedisModule } from './shared/kernel/redis/redis.module';
+import { SmsModule } from './shared/kernel/sms/sms.module';
 import { MediaStorageModule } from './shared/kernel/storage/media-storage.module';
 import { WebhookEventModule } from './shared/core/webhooks/webhook-event.module';
 
@@ -28,6 +29,7 @@ import { WebhookEventModule } from './shared/core/webhooks/webhook-event.module'
     PrismaModule,
     RedisModule,
     MediaStorageModule,
+    SmsModule,
     PolicyConfigModule,
     WebhookEventModule,
     CoreModule,

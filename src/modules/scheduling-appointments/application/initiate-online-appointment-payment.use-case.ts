@@ -26,7 +26,7 @@ export interface InitiateOnlineAppointmentPaymentInput {
   billingData?: PaymentBillingInfo;
   /** Optional partial amount (>= configured minimum, <= consult fee). Omitted = pay in full. Validated server-side against the real fee. */
   paymentAmount?: string;
-  walletProvider?: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
+  /** `MOBILE_WALLET` only: the wallet-linked number Fawry sends the Request-to-Pay to. (`walletProvider` is deprecated and ignored — File 12 Part 55.) */
   walletMobileNumber?: string;
 }
 
@@ -129,11 +129,11 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         consultFee: billing.consultFee,
       });
 
-      // Appointment Fawry checkout collects only the patient's phone. Names
-      // and email are neither accepted from that client payload nor forwarded
-      // to Fawry; Paymob methods still require explicit billing data.
-      const billingData = input.method === 'FAWRY' ? undefined : input.billingData;
-      if (input.method !== 'FAWRY' && !billingData) {
+      // Fawry checkout (FAWRY and MOBILE_WALLET) collects only the patient's
+      // phone. Names and email are never forwarded to Fawry, even if an older
+      // client still sends `billingData`; only CARD (Paymob) requires it.
+      const billingData = input.method === 'CARD' ? input.billingData : undefined;
+      if (input.method === 'CARD' && !billingData) {
         throw new DomainError(
           400,
           'PAYMENT_BILLING_DATA_REQUIRED',
@@ -157,8 +157,7 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         method: input.method,
         idempotencyKey: `hold:${hold.id}`,
         customer,
-        walletProvider: input.walletProvider,
-        walletMobileNumber: input.walletMobileNumber,
+        walletMobileNumber: input.method === 'MOBILE_WALLET' ? input.walletMobileNumber : undefined,
         existingPaymentIntentId: hold.payment_intent_id ?? undefined,
         expiresAt,
       });

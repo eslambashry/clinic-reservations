@@ -6,7 +6,7 @@ function buildTx() {
 
 describe('HandleLatePaymentAfterExpiryUseCase', () => {
   const input = { paymentIntentId: 'intent-1', gatewayReference: 'attempt-1' };
-  const intent = { id: 'intent-1', version: 1, status: 'CREATED', amount: { toString: () => '200.00' } };
+  const intent = { id: 'intent-1', version: 1, status: 'CREATED', method: 'CARD', amount: { toString: () => '200.00' } };
 
   function setup() {
     const tx = buildTx();
@@ -27,7 +27,21 @@ describe('HandleLatePaymentAfterExpiryUseCase', () => {
     return { tx, paymentIntents, paymentAttempts, refunds, outbox, gateway, fawryGateway, useCase };
   }
 
-  it('captures then immediately auto-refunds via the gateway when a success webhook arrives after the hold already expired', async () => {
+  it('refunds a MOBILE_WALLET intent through Fawry (MWALLET lives on Fawry since File 12 Part 55), never Paymob', async () => {
+    const { tx, paymentIntents, paymentAttempts, gateway, fawryGateway, useCase } = setup();
+    const walletIntent = { ...intent, method: 'MOBILE_WALLET' };
+    paymentIntents.findById.mockResolvedValueOnce(walletIntent).mockResolvedValueOnce({ ...walletIntent, version: 2, status: 'CAPTURED' });
+    paymentIntents.markCaptured.mockResolvedValue(true);
+    paymentAttempts.findLatestByPaymentIntentId.mockResolvedValue({ metadata: { gatewayReference: '4242', referenceCode: '7700123' } });
+    fawryGateway.refund.mockResolvedValue({});
+
+    await useCase.execute(tx, input);
+
+    expect(fawryGateway.refund).toHaveBeenCalledWith('7700123', '200.00', 'Hold expired before payment confirmed');
+    expect(gateway.refund).not.toHaveBeenCalled();
+  });
+
+  it('captures then immediately auto-refunds a CARD payment via Paymob when a success webhook arrives after the hold already expired', async () => {
     const { tx, paymentIntents, refunds, outbox, gateway, useCase } = setup();
     paymentIntents.findById.mockResolvedValueOnce(intent).mockResolvedValueOnce({ ...intent, version: 2, status: 'CAPTURED' });
     paymentIntents.markCaptured.mockResolvedValue(true);

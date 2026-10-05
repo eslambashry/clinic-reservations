@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { AppConfig } from '../../shared/config/configuration';
 import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
+import { SmsMisrClient } from '../../shared/kernel/sms/sms-misr.client';
 import { IdentityAuthController } from './api/identity-auth.controller';
 import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
 import { GetActiveRoleMembershipUseCase } from './application/get-active-role-membership.use-case';
@@ -35,6 +38,7 @@ import { PermissionRepository } from './infrastructure/permission.repository';
 import { PhoneRateLimiterService } from './infrastructure/phone-rate-limiter.service';
 import { RefreshTokenRepository } from './infrastructure/refresh-token.repository';
 import { RoleMembershipRepository } from './infrastructure/role-membership.repository';
+import { SmsMisrOtpSender } from './infrastructure/sms-misr-otp-sender';
 import { TokenService } from './infrastructure/token.service';
 import { UserRepository } from './infrastructure/user.repository';
 
@@ -108,7 +112,14 @@ import { UserRepository } from './infrastructure/user.repository';
     DeviceRepository,
     TokenService,
     PhoneRateLimiterService,
-    { provide: OTP_SENDER, useClass: LoggingOtpSender },
+    // File 12 Part 54: `SMS_PROVIDER` picks the sender; production boot
+    // already refuses anything but `smsmisr` (`env.validation.ts`).
+    {
+      provide: OTP_SENDER,
+      inject: [ConfigService, SmsMisrClient],
+      useFactory: (config: ConfigService, smsMisr: SmsMisrClient) =>
+        config.get<AppConfig['sms']>('sms')?.provider === 'smsmisr' ? new SmsMisrOtpSender(smsMisr) : new LoggingOtpSender(),
+    },
   ],
   exports: [
     UpdateUserProfileUseCase,

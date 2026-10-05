@@ -39,7 +39,7 @@ describe('RequestOtpUseCase', () => {
       prisma,
       expect.objectContaining({ phone: '+201001234567', codeHash: 'hashed:123456' }),
     );
-    expect(otpSender.send).toHaveBeenCalledWith('+201001234567', '123456');
+    expect(otpSender.send).toHaveBeenCalledWith('+201001234567', '123456', 'LOGIN_OR_SIGNUP');
     expect(result).not.toHaveProperty('code');
   });
 });

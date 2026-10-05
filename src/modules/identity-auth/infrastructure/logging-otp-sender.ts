@@ -1,20 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OtpSenderPort } from '../application/ports/otp-sender.port';
+import { OtpPurpose, OtpSenderPort } from '../application/ports/otp-sender.port';
 
 /**
- * Placeholder `OtpSenderPort` implementation: logs the code instead of
- * sending an SMS, since no SMS provider is chosen yet (File 10 Part 4 `OPEN
- * DECISION`). This makes the OTP flow genuinely testable end-to-end without
- * pretending an SMS integration exists — never enable this in production
- * (it would mean nobody actually receives their code).
+ * Dev-only `OtpSenderPort`, bound when `SMS_PROVIDER` is unset/`logging`:
+ * logs the code instead of sending an SMS, so the OTP flow stays testable
+ * locally without SMS Misr credentials. Production boot refuses to start
+ * without `SMS_PROVIDER=smsmisr` (`env.validation.ts`), so this can never
+ * silently swallow real users' codes.
  */
 @Injectable()
 export class LoggingOtpSender implements OtpSenderPort {
   private readonly logger = new Logger(LoggingOtpSender.name);
 
-  async send(phone: string, code: string): Promise<void> {
-    this.logger.warn(
-      `[DEV-ONLY OTP DELIVERY] No SMS provider configured (File 10 Part 4 OPEN DECISION) — code for ${phone} is ${code}`,
-    );
+  async send(phone: string, code: string, purpose: OtpPurpose): Promise<void> {
+    this.logger.warn(`[DEV-ONLY OTP DELIVERY] SMS_PROVIDER is not smsmisr — ${purpose} code for ${phone} is ${code}`);
   }
 }

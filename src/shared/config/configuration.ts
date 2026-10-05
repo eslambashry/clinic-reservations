@@ -36,7 +36,6 @@ export interface AppConfig {
   paymob: {
     apiKey: string | null;
     integrationIdCard: string | null;
-    integrationIdWallet: string | null;
     iframeId: string | null;
     hmacSecret: string | null;
   };
@@ -60,6 +59,23 @@ export interface AppConfig {
     clientEmail: string | null;
     privateKey: string | null;
   };
+  /**
+   * File 12 Part 54 / `DEC-003`: `provider` picks the OTP sender `identity-auth`
+   * binds (SMS Misr is OTP-only; notification SMS stays on the logging
+   * sender). `logging` (the default outside production) prints the code
+   * instead of sending it; production boot requires `smsmisr` with
+   * `environment: 'live'` plus credentials (`env.validation.ts`).
+   */
+  sms: {
+    provider: 'logging' | 'smsmisr';
+    smsMisr: {
+      username: string | null;
+      password: string | null;
+      sender: string | null;
+      otpTemplate: string | null;
+      environment: 'test' | 'live';
+    };
+  }
   scheduling: {
     appointmentEndGraceMinutes: number;
   };
@@ -95,7 +111,6 @@ export default (): AppConfig => ({
   paymob: {
     apiKey: process.env.PAYMOB_API_KEY ?? null,
     integrationIdCard: process.env.PAYMOB_INTEGRATION_ID_CARD ?? null,
-    integrationIdWallet: process.env.PAYMOB_INTEGRATION_ID_WALLET ?? null,
     iframeId: process.env.PAYMOB_IFRAME_ID ?? null,
     hmacSecret: process.env.PAYMOB_HMAC_SECRET ?? null,
   },
@@ -109,6 +124,16 @@ export default (): AppConfig => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
     // Non-Google hosts may use an escaped PEM; Cloud Run uses its attached service identity through ADC.
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
+  },
+  sms: {
+    provider: process.env.SMS_PROVIDER === 'smsmisr' ? 'smsmisr' : 'logging',
+    smsMisr: {
+      username: process.env.SMSMISR_USERNAME || null,
+      password: process.env.SMSMISR_PASSWORD || null,
+      sender: process.env.SMSMISR_SENDER || null,
+      otpTemplate: process.env.SMSMISR_OTP_TEMPLATE || null,
+      environment: process.env.SMSMISR_ENVIRONMENT === 'live' ? 'live' : 'test',
+    },
   },
   scheduling: {
     appointmentEndGraceMinutes: (() => {
