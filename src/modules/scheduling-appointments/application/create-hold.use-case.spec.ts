@@ -106,6 +106,17 @@ describe('CreateHoldUseCase', () => {
     expect(result).toMatchObject({ fullAmount: '500.00', currency: 'EGP', minPaymentAmount: '50.00' });
   });
 
+  it('refuses a new hold on a paused affiliation without claiming the slot', async () => {
+    const { slots, holds, affiliationBilling, useCase } = setup();
+    slots.findById.mockResolvedValue(slot);
+    affiliationBilling.execute.mockResolvedValue({ consultFee: '500', currency: 'EGP', affiliationStatus: 'PAUSED' });
+
+    await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'AFFILIATION_PAUSED' });
+
+    expect(slots.markHeld).not.toHaveBeenCalled();
+    expect(holds.create).not.toHaveBeenCalled();
+  });
+
   it('returns a null minimum when the policy is not configured, without failing the hold', async () => {
     const { slots, holds, resolvePaymentAmount, useCase } = setup();
     slots.findById.mockResolvedValue(slot);

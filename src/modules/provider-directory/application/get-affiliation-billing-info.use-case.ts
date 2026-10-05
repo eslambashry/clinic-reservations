@@ -16,6 +16,8 @@ export interface AffiliationBillingInfo {
    * only the assistants assigned to that specific branch, not every
    * assistant the doctor has across all their branches. */
   clinicBranchId: string;
+  /** `PAUSED` affiliations accept no new bookings (existing holds/appointments are unaffected). */
+  affiliationStatus: 'ACTIVE' | 'PAUSED';
 }
 
 /**
@@ -52,6 +54,7 @@ export class GetAffiliationBillingInfoUseCase {
       doctorId: affiliation.doctor_id,
       doctorUserId: doctor.user_id,
       clinicBranchId: affiliation.clinic_branch_id,
+      affiliationStatus: affiliation.status,
     };
   }
 }

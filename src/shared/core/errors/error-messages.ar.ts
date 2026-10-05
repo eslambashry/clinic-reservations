@@ -89,6 +89,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Scheduling & appointments ───────────────────────────────────────────
   SLOT_ALREADY_BOOKED: 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.',
   SLOT_ALREADY_HELD: 'هذا الموعد محجوز مؤقتًا لمريض آخر. اختر موعدًا آخر.',
+  AFFILIATION_PAUSED: 'الحجز غير متاح حاليًا لدى هذا الطبيب في هذا الفرع.',
   SLOT_ALREADY_STARTED: 'هذا الموعد بدأ بالفعل. اختر موعدًا لاحقًا.',
   HOLD_EXPIRED: 'انتهت مهلة الحجز المؤقت أو تم استخدامه. ابدأ حجزًا جديدًا.',
   HOLD_STATE_CHANGED: 'تم تعديل الحجز المؤقت من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
@@ -147,6 +148,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Notifications ───────────────────────────────────────────────────────
   SAFETY_CRITICAL_NOTIFICATION_NOT_DISABLEABLE: 'لا يمكن تعطيل الإشعارات الحرِجة المتعلقة بسلامتك.',
   PUSH_PROVIDER_NOT_CONFIGURED: 'خدمة الإشعارات غير مُهيّأة حاليًا.',
+  SMS_PROVIDER_NOT_CONFIGURED: 'خدمة الرسائل النصية غير مُهيّأة حاليًا. تواصل مع الدعم.',
 
   // ── Prescriptions ───────────────────────────────────────────────────────
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',

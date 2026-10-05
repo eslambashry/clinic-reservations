@@ -143,6 +143,17 @@ describe('ProcessPaymentWebhookUseCase', () => {
     expect(gateway.parseWebhookEvent).not.toHaveBeenCalled();
   });
 
+  it('tells the payment lookup which gateway sent the reference (Fawry keys attempts by the numeric merchant ref)', async () => {
+    const { findPayment, useCase } = setup();
+    findPayment.execute.mockResolvedValue(walletTopUpPayment);
+
+    await useCase.execute({ provider: 'fawry', rawBody, hmac: undefined });
+    await useCase.execute({ provider: 'paymob', rawBody, hmac });
+
+    expect(findPayment.execute.mock.calls[0][2]).toBe('fawry');
+    expect(findPayment.execute.mock.calls[1][2]).toBe('paymob');
+  });
+
   it('rejects an unverified Fawry webhook the same way as an unverified Paymob one', async () => {
     const { fawryGateway, webhookEvents, useCase } = setup();
     fawryGateway.verifyWebhookSignature.mockReturnValue(false);

@@ -44,11 +44,17 @@ model PaymentAttempt {
   id                String               @id @default(uuid()) @db.Uuid
   payment_intent_id String               @db.Uuid
   gateway_reference String?
+  /// File 12 Part 55: the numeric `merchantRefNum` sent to Fawry (its API
+  /// documents an Integer, so our UUID `id` is never sent). Assigned by a DB
+  /// sequence at insert time — unique and race-free without app-side
+  /// generation — and unique-indexed because the Fawry webhook's
+  /// `merchantRefNumber` is resolved back to this row through it.
+  fawry_merchant_ref_num BigInt            @unique @default(autoincrement())
   status            PaymentAttemptStatus @default(INITIATED)
   failure_code      String?
   /// File 12 Part 50: gateway-specific, non-sensitive data the client needs
-  /// to complete an async payment (Paymob iframe/redirect URL, Fawry
-  /// reference code) or that Support needs for troubleshooting (raw gateway
+  /// to complete an async payment (the Fawry reference number) or that
+  /// Support needs for troubleshooting (raw gateway
   /// response minus secrets). A `Json?` column rather than one column per
   /// gateway/method — File 12 Part 05 precedent (`PolicyConfig.value`) for
   /// "shape varies by a discriminator column, don't pre-guess every shape."

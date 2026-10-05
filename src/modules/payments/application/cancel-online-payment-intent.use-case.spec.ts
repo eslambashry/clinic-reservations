@@ -46,6 +46,16 @@ describe('CancelOnlinePaymentIntentUseCase', () => {
       expect(result).toEqual({ method: 'FAWRY', fawryReferenceNumber: '963455678' });
     });
 
+    it('treats a MOBILE_WALLET intent like FAWRY: resolves Fawry\'s reference for the upstream cancel (File 12 Part 55)', async () => {
+      const { paymentIntents, paymentAttempts, useCase } = setup();
+      paymentIntents.findById.mockResolvedValue({ id: 'intent-1', version: 1, method: 'MOBILE_WALLET' });
+      paymentAttempts.findLatestByPaymentIntentId.mockResolvedValue({ metadata: { gatewayReference: '4242', referenceCode: '7700123' } });
+
+      const result = await useCase.execute(buildTx(), 'intent-1');
+
+      expect(result).toEqual({ method: 'MOBILE_WALLET', fawryReferenceNumber: '7700123' });
+    });
+
     it('resolves a null referenceCode for a FAWRY intent with no attempt/metadata on record', async () => {
       const { paymentIntents, paymentAttempts, useCase } = setup();
       paymentIntents.findById.mockResolvedValue({ id: 'intent-1', version: 1, method: 'FAWRY' });
@@ -64,6 +74,14 @@ describe('CancelOnlinePaymentIntentUseCase', () => {
       await useCase.notifyGatewayIfNeeded({ method: 'FAWRY', fawryReferenceNumber: '963455678' });
 
       expect(fawryGateway.cancelUnpaidOrder).toHaveBeenCalledWith('963455678');
+    });
+
+    it('calls cancelUnpaidOrder for a MOBILE_WALLET intent with a resolved reference number', async () => {
+      const { fawryGateway, useCase } = setup();
+
+      await useCase.notifyGatewayIfNeeded({ method: 'MOBILE_WALLET', fawryReferenceNumber: '7700123' });
+
+      expect(fawryGateway.cancelUnpaidOrder).toHaveBeenCalledWith('7700123');
     });
 
     it('is a no-op for null (no intent was found/cancelled)', async () => {

@@ -39,7 +39,9 @@ Nothing else was renamed or removed. Old clients that never send `paymentAmount`
 |---|---|---|
 | `method` | yes | `CARD`, `FAWRY` or `MOBILE_WALLET` |
 | `customer` | yes | Unchanged |
-| `walletProvider`, `walletMobileNumber` | only for `MOBILE_WALLET` | Unchanged |
+| `walletMobileNumber` | only for `MOBILE_WALLET` | **Changed (2026-10-05):** required, `01XXXXXXXXX` or `+201XXXXXXXXX`. Fawry sends the payment request to that wallet. |
+| `walletProvider` | no | **Deprecated:** accepted and ignored. Fawry picks the wallet from the number. |
+| `billingData` | only for `CARD` | Not needed for `FAWRY` or `MOBILE_WALLET` (accepted and ignored). |
 | **`paymentAmount`** | **no (new)** | Omit to pay the full fee. See the amount rules below. |
 
 **Response** `200`
@@ -58,8 +60,8 @@ Nothing else was renamed or removed. Old clients that never send `paymentAmount`
 ```
 | Method | What comes back | What the app does |
 |---|---|---|
-| `CARD` | `redirectUrl` | Open the hosted card page |
-| `MOBILE_WALLET` | `redirectUrl` | Send the patient to approve in the wallet app |
+| `CARD` | `redirectUrl` | Open the hosted card page (Paymob) |
+| `MOBILE_WALLET` | `referenceCode` (no `redirectUrl`) | **Changed:** tell the patient to approve the request in their wallet app before `expiresAt` (Fawry Request-to-Pay). Show the reference small, for support only. |
 | `FAWRY` | `referenceCode` (no `redirectUrl`) | Show the code |
 
 - **Fawry:** show "Fawry code: {referenceCode}". The patient pays at any Fawry outlet or in the myFawry app.
@@ -112,6 +114,7 @@ The client only proposes an amount. The fee and the minimum always come from the
 | 422 | `PAYMENT_AMOUNT_NOT_SUPPORTED` | `paymentAmount` sent with `PAY_AT_CLINIC` | Programming error, hide the field |
 | 500 | `MIN_APPOINTMENT_PAYMENT_NOT_CONFIGURED` | Minimum not set up for the region. Only happens for a partial amount, never for a full payment. | Generic "try again / contact support" |
 | 500 | `PAYMENT_GATEWAY_NOT_CONFIGURED` | Fawry (or Paymob) credentials not set on the server | Generic error |
+| 502 | `GATEWAY_UNAVAILABLE` | Fawry refused the mobile-wallet request (e.g. the number has no wallet) or didn't answer | "Couldn't send the request to your wallet. Check the number or choose another method." Retry on the same hold is allowed. |
 | 410 | `HOLD_EXPIRED` | Hold gone or already used | Start a new booking |
 | 422 | `INSUFFICIENT_WALLET_BALANCE` | Wallet too low for the chosen amount | Offer top-up |
 
@@ -153,12 +156,13 @@ Login for the admin dashboard (unchanged): `POST /v1/auth/password/login` with `
 ## 8. Backend-to-gateway webhooks (the app never calls these)
 
 For whoever configures the gateway dashboards:
-- Paymob: `POST /v1/webhooks/payments/paymob?hmac=...`
-- Fawry: `POST /v1/webhooks/payments/fawry`. The signature is inside the JSON body (`messageSignature`), not in a query parameter.
+- Paymob (card only): `POST /v1/webhooks/payments/paymob?hmac=...`
+- Fawry (Fawry code and mobile wallet): `POST /v1/webhooks/payments/fawry`. The signature is inside the JSON body (`messageSignature`), not in a query parameter.
 
 These are public endpoints authenticated by signature only.
 
 ## 9. Availability notes
 
 - Partial amounts start working once the backend database migration and the `MIN_APPOINTMENT_PAYMENT` policy row are deployed. Before that, a partial amount returns `500 MIN_APPOINTMENT_PAYMENT_NOT_CONFIGURED`. Full payments work in all cases.
-- Fawry works once FawryPay merchant credentials are configured on the server. Until then, `FAWRY` returns `500 PAYMENT_GATEWAY_NOT_CONFIGURED`. Card and mobile wallet are unaffected.
+- Fawry works once FawryPay merchant credentials are configured on the server. Until then, `FAWRY` and `MOBILE_WALLET` return `500 PAYMENT_GATEWAY_NOT_CONFIGURED`. Card is unaffected.
+- **Mobile wallet via Fawry (2026-10-05)** also needs MWALLET enabled on the Fawry merchant account. Older app versions that wait for a `redirectUrl` on `MOBILE_WALLET` won't get one; ship the approval screen first.

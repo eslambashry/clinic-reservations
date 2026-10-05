@@ -51,12 +51,15 @@ export interface ProcessPaymentWebhookResult {
  * back too, so a genuinely-failed delivery is correctly retryable by the
  * gateway rather than permanently swallowed.
  *
- * `provider` (the route's own `:provider` segment — `paymob` or `fawry`)
- * selects which gateway's `verifyWebhookSignature`/`parseWebhookEvent` runs
- * (`resolveGateway`, below). Everything downstream of `event` is already
- * gateway-agnostic — keyed by OUR OWN `gatewayReference`, never the
- * gateway's own id — so nothing else in this use-case branches on
- * `provider` at all.
+ * `provider` (the route's own `:provider` segment — `paymob` for CARD,
+ * `fawry` for FAWRY and MOBILE_WALLET) selects which gateway's
+ * `verifyWebhookSignature`/`parseWebhookEvent` runs (`resolveGateway`,
+ * below), and tells `FindPaymentByGatewayReferenceUseCase` how to read the
+ * reference: Paymob echoes the attempt's UUID, Fawry the numeric
+ * `fawry_merchant_ref_num` (File 12 Part 55). Everything after the lookup is
+ * gateway-agnostic. The payment only counts once the signature is verified
+ * AND Fawry's `orderStatus` is `PAID` — the 200 from the charge call never
+ * marks anything paid.
  */
 @Injectable()
 export class ProcessPaymentWebhookUseCase {
@@ -113,7 +116,7 @@ export class ProcessPaymentWebhookUseCase {
         return { handled: true };
       }
 
-      const payment = await this.findPayment.execute(tx, event.gatewayReference);
+      const payment = await this.findPayment.execute(tx, event.gatewayReference, input.provider === 'fawry' ? 'fawry' : 'paymob');
       if (!payment) {
         this.logger.warn({ gatewayReference: event.gatewayReference }, 'Payment webhook referenced an unknown attempt');
         return { handled: false };

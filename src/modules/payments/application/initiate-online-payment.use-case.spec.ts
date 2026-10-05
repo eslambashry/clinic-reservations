@@ -22,9 +22,10 @@ describe('InitiateOnlinePaymentUseCase', () => {
   function setup() {
     const tx = buildTx();
     const paymentIntents = { create: jest.fn(), findById: jest.fn() };
-    const paymentAttempts = { create: jest.fn(), updateStatus: jest.fn() };
-    const gateway = { initiateCardPayment: jest.fn(), initiateMobileWalletPayment: jest.fn() };
-    const fawryGateway = { initiatePayment: jest.fn() };
+    // The DB assigns `fawry_merchant_ref_num` from a sequence on insert.
+    const paymentAttempts = { create: jest.fn().mockResolvedValue({ fawry_merchant_ref_num: BigInt(4242) }), updateStatus: jest.fn() };
+    const gateway = { initiateCardPayment: jest.fn() };
+    const fawryGateway = { initiatePayment: jest.fn(), initiateMobileWalletPayment: jest.fn() };
     const useCase = new InitiateOnlinePaymentUseCase(paymentIntents as any, paymentAttempts as any, gateway as any, fawryGateway as any);
     return { tx, paymentIntents, paymentAttempts, gateway, fawryGateway, useCase };
   }
@@ -41,6 +42,19 @@ describe('InitiateOnlinePaymentUseCase', () => {
     expect(paymentAttempts.create).toHaveBeenCalledWith(tx, expect.objectContaining({ paymentIntentId: 'intent-1' }));
     expect(prepared).toMatchObject({ paymentIntentId: 'intent-1', method: 'CARD' });
     expect(result).toMatchObject({ redirectUrl: 'https://accept.paymob.com/iframe/x' });
+  });
+
+  it('sends Paymob the attempt UUID, but Fawry the numeric fawry_merchant_ref_num — never the UUID (File 12 Part 55)', async () => {
+    const { tx, paymentIntents, useCase } = setup();
+    paymentIntents.create.mockResolvedValue(intent);
+
+    const card = await useCase.prepare(tx, { ...baseInput, method: 'CARD' });
+    const fawry = await useCase.prepare(tx, { ...baseInput, method: 'FAWRY' });
+    const wallet = await useCase.prepare(tx, { ...baseInput, method: 'MOBILE_WALLET', walletMobileNumber: '01012345678' });
+
+    expect(card.gatewayInput.merchantReference).toBe(card.paymentAttemptId);
+    expect(fawry.gatewayInput.merchantReference).toBe('4242');
+    expect(wallet.gatewayInput.merchantReference).toBe('4242');
   });
 
   it('returns a Fawry reference code (no redirectUrl) for method=FAWRY, via the Fawry gateway (never Paymob)', async () => {
@@ -67,32 +81,30 @@ describe('InitiateOnlinePaymentUseCase', () => {
     expect(fawryGateway.initiatePayment).toHaveBeenCalledWith(expect.objectContaining({ expiresAt }));
   });
 
-  it('rejects mobile wallet without walletProvider/walletMobileNumber', async () => {
-    const { tx, paymentIntents, useCase } = setup();
+  it('rejects mobile wallet without walletMobileNumber, before calling any gateway', async () => {
+    const { tx, paymentIntents, fawryGateway, useCase } = setup();
     paymentIntents.create.mockResolvedValue(intent);
 
     const prepared = await useCase.prepare(tx, { ...baseInput, method: 'MOBILE_WALLET' });
 
     await expect(useCase.callGateway(prepared)).rejects.toMatchObject({ code: 'WALLET_INFO_REQUIRED' });
+    expect(fawryGateway.initiateMobileWalletPayment).not.toHaveBeenCalled();
   });
 
-  it('initiates a mobile wallet payment and returns the telecom-approval redirect', async () => {
-    const { tx, gateway, paymentIntents, useCase } = setup();
+  it('routes MOBILE_WALLET to Fawry MWALLET (never Paymob) and returns Fawry\'s reference, with no redirectUrl', async () => {
+    const { tx, gateway, fawryGateway, paymentIntents, useCase } = setup();
     paymentIntents.create.mockResolvedValue(intent);
-    gateway.initiateMobileWalletPayment.mockResolvedValue({ gatewayReference: 'attempt-x', redirectUrl: 'https://accept.paymob.com/wallet/x' });
+    fawryGateway.initiateMobileWalletPayment.mockResolvedValue({ gatewayReference: '4242', referenceCode: '7700123' });
 
-    const prepared = await useCase.prepare(tx, {
-      ...baseInput,
-      method: 'MOBILE_WALLET',
-      walletProvider: 'VODAFONE_CASH',
-      walletMobileNumber: '+201012345678',
-    });
+    const prepared = await useCase.prepare(tx, { ...baseInput, method: 'MOBILE_WALLET', walletMobileNumber: '01012345678' });
     const result = await useCase.callGateway(prepared);
 
-    expect(gateway.initiateMobileWalletPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ walletProvider: 'VODAFONE_CASH', walletMobileNumber: '+201012345678' }),
+    expect(fawryGateway.initiateMobileWalletPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ merchantReference: '4242', debitMobileWalletNo: '01012345678', expiresAt }),
     );
-    expect(result).toMatchObject({ redirectUrl: 'https://accept.paymob.com/wallet/x' });
+    expect(fawryGateway.initiateMobileWalletPayment.mock.calls[0][0]).not.toHaveProperty('walletProvider');
+    expect(gateway.initiateCardPayment).not.toHaveBeenCalled();
+    expect(result).toEqual({ metadata: { gatewayReference: '4242', referenceCode: '7700123' }, referenceCode: '7700123' });
   });
 
   it('marks the attempt FAILED (not the intent) when the gateway call throws — the intent stays retryable', async () => {

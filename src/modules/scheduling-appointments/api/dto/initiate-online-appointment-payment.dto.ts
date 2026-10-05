@@ -1,11 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDefined, IsIn, IsOptional, IsString, MaxLength, ValidateIf, ValidateNested } from 'class-validator';
+import { IsDefined, IsIn, IsOptional, IsString, Matches, MaxLength, ValidateIf, ValidateNested } from 'class-validator';
 import { AppointmentPaymentBillingDto } from './appointment-payment-billing.dto';
 import { AppointmentPaymentPhoneDto } from './appointment-payment-phone.dto';
 
 const ONLINE_METHODS = ['CARD', 'FAWRY', 'MOBILE_WALLET'] as const;
 const WALLET_PROVIDERS = ['VODAFONE_CASH', 'ETISALAT_CASH', 'ORANGE_CASH'] as const;
+
+/** Egyptian mobile, local (`01XXXXXXXXX`) or E.164 (`+201XXXXXXXXX`) — Fawry's `debitMobileWalletNo`. */
+const EGYPT_WALLET_MOBILE_PATTERN = /^(?:\+20|0)1[0125]\d{8}$/;
 
 /** File 12 Part 50.1 `POST /v1/appointments/{holdId}/payments`. */
 export class InitiateOnlineAppointmentPaymentDto {
@@ -20,9 +23,9 @@ export class InitiateOnlineAppointmentPaymentDto {
 
   @ApiPropertyOptional({
     type: AppointmentPaymentBillingDto,
-    description: 'Required for CARD/MOBILE_WALLET Paymob payments; omitted for Fawry.',
+    description: 'Required for CARD (Paymob). Not needed for FAWRY or MOBILE_WALLET (both Fawry); accepted and ignored there so older app versions still validate.',
   })
-  @ValidateIf((dto: InitiateOnlineAppointmentPaymentDto) => dto.method !== 'FAWRY')
+  @ValidateIf((dto: InitiateOnlineAppointmentPaymentDto) => dto.method === 'CARD' || dto.billingData !== undefined)
   @IsDefined()
   @ValidateNested()
   @Type(() => AppointmentPaymentBillingDto)
@@ -34,14 +37,22 @@ export class InitiateOnlineAppointmentPaymentDto {
   @MaxLength(12)
   paymentAmount?: string;
 
-  @ApiPropertyOptional({ enum: WALLET_PROVIDERS, description: 'Required when method=MOBILE_WALLET' })
+  /**
+   * File 12 Part 55: deprecated. Fawry MWALLET routes by the wallet number,
+   * so this is never sent anywhere. Still accepted (the global pipe rejects
+   * unknown fields) so older app versions don't start failing validation.
+   */
+  @ApiPropertyOptional({ enum: WALLET_PROVIDERS, deprecated: true, description: 'Deprecated and ignored — Fawry picks the wallet from walletMobileNumber.' })
   @IsOptional()
   @IsIn(WALLET_PROVIDERS)
   walletProvider?: (typeof WALLET_PROVIDERS)[number];
 
-  @ApiPropertyOptional({ description: 'Wallet-linked mobile number — required when method=MOBILE_WALLET. Never a PIN/OTP.' })
-  @IsOptional()
+  @ApiPropertyOptional({
+    example: '01012345678',
+    description: 'Required when method=MOBILE_WALLET: the number the wallet is registered on (01XXXXXXXXX or +201XXXXXXXXX). Fawry sends the payment request to that wallet. Never a PIN/OTP.',
+  })
+  @ValidateIf((dto: InitiateOnlineAppointmentPaymentDto) => dto.method === 'MOBILE_WALLET' || dto.walletMobileNumber !== undefined)
   @IsString()
-  @MaxLength(20)
+  @Matches(EGYPT_WALLET_MOBILE_PATTERN, { message: 'walletMobileNumber must be an Egyptian mobile number, e.g. 01012345678' })
   walletMobileNumber?: string;
 }

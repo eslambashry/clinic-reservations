@@ -51,7 +51,36 @@ describe('InitiateOnlineAppointmentPaymentDto', () => {
     );
   });
 
-  it.each(['CARD', 'MOBILE_WALLET'])(
+  async function errorsFor(body: Record<string, unknown>) {
+    return validate(plainToInstance(InitiateOnlineAppointmentPaymentDto, body), { whitelist: true, forbidNonWhitelisted: true });
+  }
+
+  it('accepts MOBILE_WALLET with only the phone and a wallet number (no billingData, no walletProvider)', async () => {
+    await expect(errorsFor({ method: 'MOBILE_WALLET', customer: { phone: '+201012345678' }, walletMobileNumber: '01012345678' })).resolves.toHaveLength(0);
+  });
+
+  it.each(['01012345678', '01112345678', '01212345678', '01512345678', '+201012345678'])('accepts wallet number %s', async (walletMobileNumber) => {
+    await expect(errorsFor({ method: 'MOBILE_WALLET', customer: { phone: '+201012345678' }, walletMobileNumber })).resolves.toHaveLength(0);
+  });
+
+  it.each([undefined, '', '0101234567', '01312345678', '201012345678', '+20101234567x'])('rejects MOBILE_WALLET with wallet number %p', async (walletMobileNumber) => {
+    const errors = await errorsFor({ method: 'MOBILE_WALLET', customer: { phone: '+201012345678' }, walletMobileNumber });
+    expect(errors).toEqual(expect.arrayContaining([expect.objectContaining({ property: 'walletMobileNumber' })]));
+  });
+
+  it('still accepts the deprecated walletProvider and billingData from older app versions', async () => {
+    await expect(
+      errorsFor({
+        method: 'MOBILE_WALLET',
+        customer: { phone: '+201012345678' },
+        walletMobileNumber: '01012345678',
+        walletProvider: 'VODAFONE_CASH',
+        billingData: { firstName: 'Sara', lastName: 'Ahmed', email: 'sara@example.com' },
+      }),
+    ).resolves.toHaveLength(0);
+  });
+
+  it.each(['CARD'])(
     'requires Paymob billing data for %s',
     async (method) => {
       const dto = plainToInstance(InitiateOnlineAppointmentPaymentDto, {

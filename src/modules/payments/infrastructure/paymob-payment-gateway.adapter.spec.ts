@@ -3,7 +3,6 @@ import { PaymobPaymentGatewayAdapter } from './paymob-payment-gateway.adapter';
 const CONFIG = {
   apiKey: 'test-api-key',
   integrationIdCard: 'card-int-1',
-  integrationIdWallet: 'wallet-int-1',
   iframeId: 'iframe-1',
   hmacSecret: 'test-hmac-secret',
 };
@@ -65,26 +64,27 @@ describe('PaymobPaymentGatewayAdapter', () => {
     expect(paymentKeysCall!.body.expiration).toBe(60);
   });
 
-  it('uses the wallet integration id (not card) when requesting the payment key for a mobile wallet payment', async () => {
+  it('uses the card integration id and returns the hosted iframe URL', async () => {
     const adapter = buildAdapter();
     const calls = mockFetchSequence([
       { token: 'auth-token' },
       { id: 555 },
       { token: 'payment-key' },
-      { redirect_url: 'https://accept.paymob.com/redirect/abc' },
     ]);
 
-    await adapter.initiateMobileWalletPayment({
+    const result = await adapter.initiateCardPayment({
       merchantReference: 'attempt-1',
       amount: '200.00',
       currency: 'EGP',
       customer,
-      expiresAt: new Date(Date.now() + 15 * 60_000),
-      walletProvider: 'VODAFONE_CASH',
-      walletMobileNumber: '+201000000000',
+      expiresAt: new Date(Date.now() + 5 * 60_000),
     });
 
     const paymentKeysCall = calls.find((c) => c.url.includes('/api/acceptance/payment_keys'));
-    expect(paymentKeysCall!.body.integration_id).toBe('wallet-int-1');
+    expect(paymentKeysCall!.body.integration_id).toBe('card-int-1');
+    expect(result).toEqual({
+      gatewayReference: 'attempt-1',
+      redirectUrl: 'https://accept.paymob.com/api/acceptance/iframes/iframe-1?payment_token=payment-key',
+    });
   });
 });

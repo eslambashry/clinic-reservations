@@ -1,29 +1,22 @@
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
 
 /**
- * File 12 Part 50 / DEC-001 (File 10 Part 10: gateway = Paymob, recommended,
- * not yet contracted). Mirrors the `OtpSenderPort` shape (File 12 Part 04) —
- * use-cases depend on this interface only, so the concrete gateway can be
- * swapped (or, for CARD/MOBILE_WALLET specifically, actually wired up once
- * Paymob credentials exist) with zero use-case changes. Unlike
- * `OtpSenderPort`'s `LoggingOtpSender` placeholder, the bound implementation
- * here (`PaymobPaymentGatewayAdapter`) is a real integration against
- * Paymob's documented Accept API — it only fails at call time, with a clear
- * `PAYMENT_GATEWAY_NOT_CONFIGURED` error, if the required env vars are
- * unset (never a fake/simulated success).
+ * File 12 Part 50 / DEC-001: the Paymob port, **card only** since File 12
+ * Part 55 (2026-10-05). Mirrors the `OtpSenderPort` shape (File 12 Part
+ * 04) — use-cases depend on this interface only. The bound implementation
+ * (`PaymobPaymentGatewayAdapter`) is a real integration against Paymob's
+ * Accept API; it fails at call time with `PAYMENT_GATEWAY_NOT_CONFIGURED`
+ * if the env vars are unset, never with a fake success.
  *
- * Never build a separate direct integration per telecom wallet (Vodafone
- * Cash/Etisalat Cash/Orange Cash) — `initiateMobileWalletPayment` passes the
- * chosen `walletProvider` through to the one aggregator integration.
+ * `FAWRY` and `MOBILE_WALLET` are NOT on this port: both go through the
+ * direct FawryPay integration (`FawryGatewayPort`, `fawry-gateway.port.ts`).
+ * `PaymentIntent.method` is the routing discriminator that
+ * `InitiateOnlinePaymentUseCase`, the cancel/late-refund use-cases, and
+ * `ProcessPaymentWebhookUseCase` use to pick the port.
  *
- * `FAWRY` is deliberately NOT part of this port — Paymob's current
- * documentation/Postman collection no longer show Fawry as a supported
- * method (verified directly against developers.paymob.com and
- * github.com/PaymobAccept/API-Postman-Collections), so it moved to a direct
- * FawryPay integration (`FawryGatewayPort`, `fawry-gateway.port.ts`) instead
- * of staying behind this Paymob-specific interface. `PaymentIntent.method`
- * is the routing discriminator both `InitiateOnlinePaymentUseCase` and
- * `ProcessPaymentWebhookUseCase` use to pick which port to call.
+ * The request/webhook shapes below (`InitiatePaymentInput`,
+ * `ParsedWebhookEvent`, `PaymentCustomerInfo`, …) are gateway-agnostic and
+ * shared with `FawryGatewayPort`.
  */
 export interface PaymentCustomerInfo {
   firstName: string;
@@ -40,11 +33,14 @@ export interface PaymentPhoneInfo {
 
 export interface InitiatePaymentInput {
   /**
-   * Our own `PaymentAttempt.id` (not the intent's id — a retried payment
-   * gets a fresh attempt, and therefore a fresh, unambiguous correlation
-   * key). Sent to the gateway as its "merchant order id" so a later webhook
-   * can be correlated back to this exact attempt without trusting any
-   * client-supplied identifier.
+   * Our own per-attempt reference (never the intent's id — a retried
+   * payment gets a fresh attempt, and therefore a fresh, unambiguous
+   * correlation key), sent to the gateway as its "merchant order id" so a
+   * later webhook can be correlated back to this exact attempt without
+   * trusting any client-supplied identifier. Paymob gets the attempt's UUID
+   * (`PaymentAttempt.id`); Fawry gets the numeric
+   * `PaymentAttempt.fawry_merchant_ref_num` as a decimal string, because
+   * Fawry documents `merchantRefNum` as an Integer (File 12 Part 55).
    */
   merchantReference: string;
   /** Decimal string, e.g. "200.00" — converted to integer cents internally (Paymob's API is cents-denominated). */
@@ -68,12 +64,6 @@ export interface InitiatePaymentInput {
   expiresAt: Date;
 }
 
-export interface InitiateMobileWalletPaymentInput extends InitiatePaymentInput {
-  walletProvider: 'VODAFONE_CASH' | 'ETISALAT_CASH' | 'ORANGE_CASH';
-  /** The wallet-linked mobile number — never a PIN/OTP; the telecom app/USSD prompt handles the user's approval, this backend never sees a wallet credential. */
-  walletMobileNumber: string;
-}
-
 export interface InitiatedCardPayment {
   /** The gateway's own transaction id — stored as `PaymentAttempt.gateway_reference`, and how a later webhook is correlated back to this attempt. */
   gatewayReference: string;
@@ -81,14 +71,14 @@ export interface InitiatedCardPayment {
   redirectUrl: string;
 }
 
-export interface InitiatedMobileWalletPayment {
-  gatewayReference: string;
-  /** Where the client sends the patient to approve the payment (USSD prompt / telecom app deep link, gateway-hosted). */
-  redirectUrl: string;
-}
-
 export interface ParsedWebhookEvent {
-  /** Matches `PaymentAttempt.gateway_reference` — the join key back to our own records. */
+  /**
+   * The merchant reference the gateway echoes back — the join key to our
+   * own records: `PaymentAttempt.gateway_reference` for Paymob, and
+   * `PaymentAttempt.fawry_merchant_ref_num` for Fawry (or, for a Fawry
+   * attempt created before File 12 Part 55, its legacy UUID
+   * `gateway_reference`). See `FindPaymentByGatewayReferenceUseCase`.
+   */
   gatewayReference: string;
   /** The gateway's own transaction id (Paymob's `obj.id`) — stable across a retried delivery of the same event, used as `webhook_events.idempotency_key` (distinct from `gatewayReference`, which identifies the attempt, not the delivery). */
   gatewayTransactionId: string;
@@ -98,7 +88,6 @@ export interface ParsedWebhookEvent {
 
 export interface PaymentGatewayPort {
   initiateCardPayment(input: InitiatePaymentInput): Promise<InitiatedCardPayment>;
-  initiateMobileWalletPayment(input: InitiateMobileWalletPaymentInput): Promise<InitiatedMobileWalletPayment>;
 
   /**
    * File 11 Part 06 / this task's security requirements: never trust a

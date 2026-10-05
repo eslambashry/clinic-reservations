@@ -88,6 +88,37 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       });
     });
 
+    it('MOBILE_WALLET (Fawry) needs no billingData, forwards only the phone, and passes the wallet number through', async () => {
+      const { initiatePayment, useCase } = arrange();
+
+      await useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, walletMobileNumber: '01012345678' }, actor);
+
+      const prepareInput = initiatePayment.prepare.mock.calls[0][1];
+      expect(prepareInput.customer).toEqual({ firstName: '', lastName: '', email: '', phone: customer.phone });
+      expect(prepareInput.walletMobileNumber).toBe('01012345678');
+      expect(prepareInput).not.toHaveProperty('walletProvider');
+    });
+
+    it('MOBILE_WALLET ignores billingData and walletProvider from older app versions', async () => {
+      const { initiatePayment, useCase } = arrange();
+
+      await useCase.execute(
+        'hold-1',
+        { method: 'MOBILE_WALLET', customer, billingData, walletProvider: 'VODAFONE_CASH', walletMobileNumber: '01012345678' } as any,
+        actor,
+      );
+
+      const prepareInput = initiatePayment.prepare.mock.calls[0][1];
+      expect(prepareInput.customer.email).toBe('');
+      expect(prepareInput).not.toHaveProperty('walletProvider');
+    });
+
+    it('still requires billingData for CARD (Paymob)', async () => {
+      const { useCase } = arrange();
+
+      await expect(useCase.execute('hold-1', { method: 'CARD', customer }, actor)).rejects.toMatchObject({ code: 'PAYMENT_BILLING_DATA_REQUIRED' });
+    });
+
     it.each([
       ['49.99', 'PAYMENT_AMOUNT_BELOW_MINIMUM'],
       ['0', 'PAYMENT_AMOUNT_INVALID'],
@@ -263,7 +294,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     holds.linkOnlinePayment.mockResolvedValue(false);
 
     await expect(
-      useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, billingData, walletProvider: 'VODAFONE_CASH', walletMobileNumber: '+201000000000' }, actor),
+      useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, walletMobileNumber: '01000000000' }, actor),
     ).rejects.toMatchObject({ code: 'HOLD_EXPIRED' });
 
     expect(initiatePayment.callGateway).not.toHaveBeenCalled();
