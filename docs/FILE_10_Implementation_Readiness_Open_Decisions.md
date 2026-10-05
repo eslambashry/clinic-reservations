@@ -625,7 +625,7 @@ stateDiagram-v2
 |---|---|:---:|---|---|---|
 | DEC-001 | Payment gateway (Egypt) | No (pay-at-clinic ships without it) | Paymob | Product + Finance | Open |
 | DEC-002 | Maps/geocoding provider | Yes (search needs distance) | Google Maps Platform | Engineering | Open |
-| DEC-003 | SMS/OTP provider | Yes (auth needs it) | Firebase Phone Auth + Unifonic/Vonage | Engineering | Open |
+| DEC-003 | SMS/OTP provider | Yes (auth needs it) | SMS Misr OTP API, OTP only (File 12 Part 54) | Engineering | **Resolved 2026-09-30** |
 | DEC-004 | Object storage region / data residency | Yes | AWS S3, region pending `DEC-009` | Engineering + Legal | Open, blocked by DEC-009 |
 | DEC-005 | OCR vendor | No (MVP prescription flow works with manual pharmacist entry if OCR isn't ready) | Google Cloud Vision | Engineering | Open |
 | DEC-006 | Flutter flavor split vs SRS role-context model (Contradiction #1) | Yes — affects router/DI structure fundamentally | Single binary, per-role-membership routing | Flutter Architect | **Open — needs resolution before Flutter work starts, not after** |

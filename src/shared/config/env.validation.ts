@@ -147,6 +147,50 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   FIREBASE_PRIVATE_KEY?: string;
+
+  /**
+   * File 12 Part 54 / `DEC-003`: which OTP sender to bind. Unset/empty
+   * means `logging` (dev-only — prints codes to the log). Choosing
+   * `smsmisr` requires the `SMSMISR_*` username/password/sender at boot, in
+   * every environment — an explicitly chosen provider with no credentials
+   * would otherwise only fail on the first OTP request.
+   */
+  @IsIn(['', 'logging', 'smsmisr'])
+  @IsOptional()
+  SMS_PROVIDER?: '' | 'logging' | 'smsmisr';
+
+  /** SMS Misr `environment`: `test` (default — nothing is delivered) or `live` (needs an approved sender + template). */
+  @IsIn(['', 'test', 'live'])
+  @IsOptional()
+  SMSMISR_ENVIRONMENT?: '' | 'test' | 'live';
+
+  /** From the SMS Misr console's API settings — not the account login. */
+  @IsString()
+  @IsOptional()
+  SMSMISR_USERNAME?: string;
+
+  @IsString()
+  @IsOptional()
+  SMSMISR_PASSWORD?: string;
+
+  /** Sender Token of the approved sender name. */
+  @IsString()
+  @IsOptional()
+  SMSMISR_SENDER?: string;
+
+  /**
+   * Token of the one approved OTP template, shared by login/signup and
+   * password-reset codes. Optional: unset means OTPs go out as free text
+   * through SMS Misr's SMS API (for use while the template awaits approval).
+   */
+  @IsString()
+  @IsOptional()
+  SMSMISR_OTP_TEMPLATE?: string;
+}
+
+function smsMisrConfigErrors(env: EnvironmentVariables): string[] {
+  const required = ['SMSMISR_USERNAME', 'SMSMISR_PASSWORD', 'SMSMISR_SENDER'] as const;
+  return required.filter((name) => !env[name]).map((name) => `${name} is required when SMS_PROVIDER=smsmisr`);
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
@@ -162,6 +206,12 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     throw new Error(`Invalid environment configuration:\n${messages}`);
   }
 
+  if (validated.SMS_PROVIDER === 'smsmisr') {
+    const smsMisrErrors = smsMisrConfigErrors(validated);
+    if (smsMisrErrors.length > 0) {
+      throw new Error(`Invalid environment configuration:\n${smsMisrErrors.join('\n')}`);
+    }
+  }
   if (validated.NODE_ENV === NodeEnv.Production) {
     const blockers: string[] = [];
     if (validated.JWT_ACCESS_SECRET.length < 32) {
@@ -197,9 +247,13 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
       );
     }
 
-    // This build still binds OTP_SENDER to LoggingOtpSender. Replace this
-    // blocker in the same change that installs a real, verified provider.
-    blockers.push('a production OTP sender must be selected and configured');
+    // LoggingOtpSender would silently swallow every OTP in production.
+    if (validated.SMS_PROVIDER !== 'smsmisr') {
+      blockers.push('SMS_PROVIDER must be smsmisr (the logging OTP sender is development-only)');
+    } else if (validated.SMSMISR_ENVIRONMENT !== 'live') {
+      // SMS Misr's test environment accepts requests but delivers nothing.
+      blockers.push('SMSMISR_ENVIRONMENT must be live (the test environment delivers no SMS)');
+    }
 
     if (blockers.length > 0) {
       throw new Error(

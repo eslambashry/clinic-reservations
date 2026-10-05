@@ -28,19 +28,48 @@ describe('validateEnv release configuration', () => {
         CORS_ALLOWED_ORIGINS: 'http://localhost:3000',
       }),
     ).toThrow(
-      /JWT_ACCESS_SECRET must contain at least 32 characters[\s\S]*REDIS_ENABLED must be true[\s\S]*CORS_ALLOWED_ORIGINS must list one or more HTTPS origins[\s\S]*production OTP sender must be selected/,
+      /JWT_ACCESS_SECRET must contain at least 32 characters[\s\S]*REDIS_ENABLED must be true[\s\S]*CORS_ALLOWED_ORIGINS must list one or more HTTPS origins[\s\S]*SMS_PROVIDER must be smsmisr/,
     );
   });
 
-  it('still blocks production until a real OTP sender is installed', () => {
+  const releaseConfig = {
+    ...baseConfig,
+    NODE_ENV: 'production',
+    JWT_ACCESS_SECRET: 'release-secret-with-at-least-32-characters',
+    CORS_ALLOWED_ORIGINS: 'https://pharmacy.example.test,https://laboratory.example.test',
+  };
+  const smsMisrConfig = {
+    SMS_PROVIDER: 'smsmisr',
+    SMSMISR_ENVIRONMENT: 'live',
+    SMSMISR_USERNAME: 'user',
+    SMSMISR_PASSWORD: 'pass',
+    SMSMISR_SENDER: 'sender-token',
+    SMSMISR_OTP_TEMPLATE: 'template-token',
+  };
+
+  it('treats an empty SMS_PROVIDER (as written by .env.example) as the dev logging sender', () => {
+    expect(validateEnv({ ...baseConfig, NODE_ENV: 'development', SMS_PROVIDER: '', SMSMISR_ENVIRONMENT: '' }).SMS_PROVIDER).toBe('');
+  });
+
+  it('blocks production while the dev-only logging OTP sender is selected', () => {
+    expect(() => validateEnv(releaseConfig)).toThrow('SMS_PROVIDER must be smsmisr');
+  });
+
+  it('blocks production on the SMS Misr test environment, which delivers nothing', () => {
+    expect(() => validateEnv({ ...releaseConfig, ...smsMisrConfig, SMSMISR_ENVIRONMENT: 'test' })).toThrow('SMSMISR_ENVIRONMENT must be live');
+  });
+
+  it('boots production once SMS Misr is selected, live, and fully configured', () => {
+    expect(validateEnv({ ...releaseConfig, ...smsMisrConfig }).SMS_PROVIDER).toBe('smsmisr');
+  });
+
+  it('fails fast in any environment when SMS Misr is selected without every credential', () => {
     expect(() =>
-      validateEnv({
-        ...baseConfig,
-        NODE_ENV: 'production',
-        JWT_ACCESS_SECRET: 'release-secret-with-at-least-32-characters',
-        CORS_ALLOWED_ORIGINS:
-          'https://pharmacy.example.test,https://laboratory.example.test',
-      }),
-    ).toThrow('a production OTP sender must be selected and configured');
+      validateEnv({ ...baseConfig, NODE_ENV: 'development', SMS_PROVIDER: 'smsmisr', SMSMISR_USERNAME: 'user' }),
+    ).toThrow(/SMSMISR_PASSWORD is required[\s\S]*SMSMISR_SENDER is required/);
+  });
+
+  it('does not require an OTP template (OTPs fall back to the SMS API until one is approved)', () => {
+    expect(validateEnv({ ...releaseConfig, ...smsMisrConfig, SMSMISR_OTP_TEMPLATE: undefined }).SMS_PROVIDER).toBe('smsmisr');
   });
 });

@@ -1922,3 +1922,85 @@ per-order analysis names and result links are preserved by migrating each
 legacy item into a `test_name` snapshot before dropping the catalog table.
 This decision supersedes the earlier test-catalog assumptions in Parts 47,
 50, and 51; `LabOrderItem` remains solely for historical item/result rows.
+
+---
+
+## PART 54 — OTP SMS Provider: SMS Misr (resolves `DEC-003`, 2026-09-30)
+
+**Decision.** SMS Misr's OTP API sends **OTP SMS only**: login/signup OTPs
+(`POST /v1/auth/otp/request`) and password-reset OTPs
+(`POST /v1/auth/password/forgot`). No other notification sends SMS. File 10's
+earlier recommendation (Firebase Phone Auth + Unifonic/Vonage) is superseded.
+Twilio was integrated first and then replaced the same day: Twilio offers no
+trial in Egypt, and its published Egypt rate ($0.3959 per SMS) is roughly
+20× SMS Misr's (≈1 EGP per SMS in its smallest package, cheaper with volume).
+
+**One template (user decision).** SMS Misr's OTP API only sends
+pre-approved templates, so the wording is fixed on SMS Misr's side, not in
+our code. One template covers both login/signup and password reset
+(`SMSMISR_OTP_TEMPLATE`). `OtpSenderPort.send` still receives the `purpose`
+(the dev logging sender prints it), but the template path ignores it.
+
+**Free-text fallback until the template is approved (2026-10-01).** Sender
+and template approval need company documents (delegation letter,
+commercial register, tax card), and a client demo was needed before then.
+While `SMSMISR_OTP_TEMPLATE` is unset, `SmsMisrOtpSender` sends the code
+through SMS Misr's SMS API (`POST /api/SMS/`, `language=2`, success
+`1901`) instead. The text comes from `domain/otp-message.util.ts`, which
+words login and reset differently and keeps both within one 70-char UCS-2
+segment. Setting the template token switches to the OTP API with no code
+change. The account's built-in "Test Sender" token works **only in the test
+environment**. On 2026-10-01 it returned `1901` there (and `1905` for an
+invalid mobile), but a live send returned `1904` (invalid sender). Real
+delivery therefore needs the approved `MedSuper` sender token.
+
+**We still own the codes.** The backend keeps generating, argon2-hashing,
+expiring, and attempt-limiting codes (`otp_requests`, File 10 §2.3).
+SMS Misr's `otp` field only receives our code to put into the template. The
+`requestId` contract, the "5 attempts then lock" rule, and the
+`PASSWORD_RESET` verify-then-reset flow are unchanged.
+
+**Shape.**
+- `src/shared/kernel/sms/sms-misr.client.ts` (global `SmsModule`) is the only
+  class that calls SMS Misr. It sends `POST https://smsmisr.com/api/OTP/`,
+  form-urlencoded, with `environment` (`2` = test, `1` = live), `username`,
+  `password`, `sender`, `mobile`, `template`, and `otp`. It uses plain
+  `fetch` with a 10 s timeout, no SDK.
+- Success is response code `4901`. Any other code surfaces as
+  `502 GATEWAY_UNAVAILABLE`, with the code and its meaning in the log line.
+  Neither the OTP nor the credentials are ever logged.
+- Confirmed against the real API on 2026-09-30: `/api/Balance/` accepts
+  `POST` only (not `GET`); `4903` means bad credentials; `4909` means an
+  invalid template, and the template is checked before sender and mobile.
+- `mobile` is our E.164 number without the `+` (`201XXXXXXXXX`). This still
+  has to be confirmed on the first real send with an approved template.
+- `identity-auth` binds `OTP_SENDER` through a factory keyed on
+  `SMS_PROVIDER`: `smsmisr` binds `SmsMisrOtpSender`, and unset, empty, or
+  `logging` binds the dev-only `LoggingOtpSender`.
+- `notifications` stays on the dev-only `LoggingSmsSender` in every
+  environment (user decision, 2026-09-30: SMS is for OTP only, to keep SMS
+  spend to OTP). The `SMS` channel on `AppointmentConfirmed`,
+  `AppointmentCancelled`, and `CriticalLabResult` is therefore logged, not
+  delivered; `PUSH` still delivers. Changing this is a spending decision, not
+  a bug fix.
+
+**Config.** `SMS_PROVIDER`, `SMSMISR_ENVIRONMENT` (`test` by default or
+`live`), `SMSMISR_USERNAME` and `SMSMISR_PASSWORD` (the console's API
+credentials, not the login), `SMSMISR_SENDER` (the Sender Token), and
+`SMSMISR_OTP_TEMPLATE` (optional; unset means the free-text fallback).
+- Selecting `smsmisr` without the username, password, and sender fails at
+  boot in every environment.
+- Production refuses to boot unless `SMS_PROVIDER=smsmisr` and
+  `SMSMISR_ENVIRONMENT=live`, because the test environment delivers nothing.
+
+**Operational prerequisites (outside code).**
+- Get the sender name and the OTP template approved in the SMS Misr console.
+  Live sends fail until both are approved.
+- Keep the balance topped up. When it runs out, OTP requests fail with
+  `502` until someone recharges.
+- The per-phone Redis limit (3 per 10 min) is the only defence against SMS
+  pumping, and every request costs balance. Watch spend in the SMS Misr
+  console.
+
+**Not changed.** Delivery reports (DLR) aren't consumed. A send counts as
+done once SMS Misr returns `4901`.

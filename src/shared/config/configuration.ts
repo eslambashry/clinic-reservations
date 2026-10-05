@@ -59,6 +59,23 @@ export interface AppConfig {
     clientEmail: string | null;
     privateKey: string | null;
   };
+  /**
+   * File 12 Part 54 / `DEC-003`: `provider` picks the OTP sender `identity-auth`
+   * binds (SMS Misr is OTP-only; notification SMS stays on the logging
+   * sender). `logging` (the default outside production) prints the code
+   * instead of sending it; production boot requires `smsmisr` with
+   * `environment: 'live'` plus credentials (`env.validation.ts`).
+   */
+  sms: {
+    provider: 'logging' | 'smsmisr';
+    smsMisr: {
+      username: string | null;
+      password: string | null;
+      sender: string | null;
+      otpTemplate: string | null;
+      environment: 'test' | 'live';
+    };
+  };
 }
 
 export default (): AppConfig => ({
@@ -104,5 +121,15 @@ export default (): AppConfig => ({
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
     // `.env` files can't hold a literal multi-line PEM, so the private key is stored with escaped `\n` sequences and unescaped here — the one place this needs to happen.
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
+  },
+  sms: {
+    provider: process.env.SMS_PROVIDER === 'smsmisr' ? 'smsmisr' : 'logging',
+    smsMisr: {
+      username: process.env.SMSMISR_USERNAME || null,
+      password: process.env.SMSMISR_PASSWORD || null,
+      sender: process.env.SMSMISR_SENDER || null,
+      otpTemplate: process.env.SMSMISR_OTP_TEMPLATE || null,
+      environment: process.env.SMSMISR_ENVIRONMENT === 'live' ? 'live' : 'test',
+    },
   },
 });

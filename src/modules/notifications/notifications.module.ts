@@ -47,6 +47,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetNotificationPreferencesUseCase,
     UpdateNotificationPreferencesUseCase,
     { provide: PUSH_NOTIFICATION_SENDER, useClass: FcmPushNotificationAdapter },
+    // File 12 Part 54: the SMS provider (SMS Misr) is OTP-only (user decision, 2026-09-30) — notification SMS stays on the logging sender so no paid SMS goes out for appointment/lab notifications.
     { provide: SMS_SENDER, useClass: LoggingSmsSender },
   ],
 })

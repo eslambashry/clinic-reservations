@@ -136,6 +136,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Notifications ───────────────────────────────────────────────────────
   SAFETY_CRITICAL_NOTIFICATION_NOT_DISABLEABLE: 'لا يمكن تعطيل الإشعارات الحرِجة المتعلقة بسلامتك.',
   PUSH_PROVIDER_NOT_CONFIGURED: 'خدمة الإشعارات غير مُهيّأة حاليًا.',
+  SMS_PROVIDER_NOT_CONFIGURED: 'خدمة الرسائل النصية غير مُهيّأة حاليًا. تواصل مع الدعم.',
 
   // ── Prescriptions ───────────────────────────────────────────────────────
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',

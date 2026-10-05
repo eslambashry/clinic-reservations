@@ -5,14 +5,14 @@ import { generateOtpCode, hashOtpCode } from '../domain/otp-code.util';
 import { OTP_CONSTANTS } from '../domain/otp.constants';
 import { OtpRequestRepository } from '../infrastructure/otp-request.repository';
 import { PhoneRateLimiterService } from '../infrastructure/phone-rate-limiter.service';
-import { OTP_SENDER, OtpSenderPort } from './ports/otp-sender.port';
+import { OTP_SENDER, OtpPurpose, OtpSenderPort } from './ports/otp-sender.port';
 
 export interface RequestOtpInput {
   phone: string;
   /** For the File 10 §2.3 security log (request attempt: phone, ip, timestamp) — not stored in `otp_requests`. */
   ip?: string;
   /** Defaults to the unified login/signup purpose — pass 'PASSWORD_RESET' for `ForgotPasswordUseCase`. */
-  purpose?: string;
+  purpose?: OtpPurpose;
 }
 
 export interface RequestOtpResult {
@@ -21,7 +21,7 @@ export interface RequestOtpResult {
 }
 
 /** No separate signup flow — OTP is unified login/signup (File 11 07.1). */
-const OTP_PURPOSE = 'LOGIN_OR_SIGNUP';
+const OTP_PURPOSE: OtpPurpose = 'LOGIN_OR_SIGNUP';
 
 @Injectable()
 export class RequestOtpUseCase {
@@ -49,14 +49,15 @@ export class RequestOtpUseCase {
     const expiresAt = new Date(Date.now() + OTP_CONSTANTS.EXPIRES_IN_SECONDS * 1000);
 
     // No multi-write atomicity concern here (one row) — no transaction needed.
+    const purpose = input.purpose ?? OTP_PURPOSE;
     const otpRequest = await this.otpRequests.create(this.prisma, {
       phone: input.phone,
       codeHash,
-      purpose: input.purpose ?? OTP_PURPOSE,
+      purpose,
       expiresAt,
     });
 
-    await this.otpSender.send(input.phone, code);
+    await this.otpSender.send(input.phone, code, purpose);
 
     // Security log (File 10 §2.3) — deliberately not a PHI/audit_logs row.
     this.logger.log(`OTP requested for ${input.phone} from ${input.ip ?? 'unknown-ip'}`);
