@@ -2,7 +2,7 @@ model Specialty {
   /// UUID like every other primary key in the schema. Kept named `code`
   /// (rather than `id`) so the API and clients that already send
   /// `specialty=<code>` keep working unchanged.
-  code        String      @id @default(uuid()) @db.Uuid
+  code        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name_ar     String
   parent_code String?     @db.Uuid
   created_at  DateTime    @default(now()) @db.Timestamptz(6)
@@ -98,6 +98,7 @@ model ClinicBranch {
   clinic        Clinic                    @relation(fields: [clinic_id], references: [id], onDelete: Cascade)
   affiliations  DoctorClinicAffiliation[]
   staff_assignments ClinicStaffAssignment[]
+  handover_pharmacy_orders PharmacyOrder[]
 
   @@map("clinic_branches")
 }

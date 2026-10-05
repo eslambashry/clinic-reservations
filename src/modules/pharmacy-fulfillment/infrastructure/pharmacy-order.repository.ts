@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { FulfillmentType, PharmacyOrder, PharmacyOrderRejectionReason, PharmacyOrderStatus, Prisma, RoleContextType } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
+import { TERMINAL_PHARMACY_ORDER_STATUSES } from '../domain/pharmacy-order.rules';
 
 export interface NewPharmacyOrder {
   prescriptionId: string;
   patientId: string;
   fulfillmentType: FulfillmentType;
+  appointmentId?: string;
+  handoverClinicBranchId?: string;
   createdByUserId?: string;
   createdByRole?: RoleContextType;
 }
@@ -47,23 +50,28 @@ function cursorFilter(cursor: ListOrdersCursor | undefined, direction: 'asc' | '
 
 @Injectable()
 export class PharmacyOrderRepository {
+  /** Hold routing stable while reading/signing or reviewing the linked prescription. */
+  async lockForPrescriptionAccess(db: Prisma.TransactionClient, id: string): Promise<void> {
+    await db.$queryRaw`SELECT id FROM pharmacy_orders WHERE id = ${id}::uuid FOR UPDATE`;
+  }
   create(db: Prisma.TransactionClient, input: NewPharmacyOrder): Promise<PharmacyOrder> {
     return db.pharmacyOrder.create({
       data: {
         prescription_id: input.prescriptionId,
         patient_id: input.patientId,
         fulfillment_type: input.fulfillmentType,
+        appointment_id: input.appointmentId,
+        handover_clinic_branch_id: input.handoverClinicBranchId,
         created_by_user_id: input.createdByUserId,
         created_by_role: input.createdByRole,
       },
     });
   }
 
-  /** Most recent order for this prescription, if any — callers check its status against `isActiveOrderStatus`. */
-  findLatestByPrescriptionId(db: Prisma.TransactionClient, prescriptionId: string): Promise<PharmacyOrder | null> {
+  /** Any active order, including older rows hidden by a newer terminal order. Caller holds the prescription lock. */
+  findActiveByPrescriptionId(db: Prisma.TransactionClient, prescriptionId: string): Promise<PharmacyOrder | null> {
     return db.pharmacyOrder.findFirst({
-      where: { prescription_id: prescriptionId },
-      orderBy: { created_at: 'desc' },
+      where: { prescription_id: prescriptionId, status: { notIn: TERMINAL_PHARMACY_ORDER_STATUSES } },
     });
   }
 
@@ -128,7 +136,7 @@ export class PharmacyOrderRepository {
           {
             OR: [
               { pharmacy_branch_id: branchId },
-              { status: 'RECEIVED', broadcasts: { some: { pharmacy_branch_id: branchId, response: null } } },
+              { status: 'RECEIVED', pharmacy_branch_id: null, broadcasts: { some: { pharmacy_branch_id: branchId, response: null } } },
             ],
           },
           ...(page.status ? [{ status: page.status }] : []),

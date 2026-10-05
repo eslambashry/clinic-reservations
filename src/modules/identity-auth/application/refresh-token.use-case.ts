@@ -3,6 +3,7 @@ import { UnauthenticatedError } from '../../../shared/core/errors/domain-errors'
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { hashRefreshToken } from '../domain/refresh-token.util';
 import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository';
+import { DeviceRepository } from '../infrastructure/device.repository';
 import { RoleMembershipRepository } from '../infrastructure/role-membership.repository';
 import { TokenService } from '../infrastructure/token.service';
 
@@ -25,6 +26,7 @@ export class RefreshTokenUseCase {
     @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
     @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
     @Inject(TokenService) private readonly tokens: TokenService,
+    @Inject(DeviceRepository) private readonly devices: DeviceRepository,
   ) {}
 
   async execute(input: RefreshTokenInput): Promise<RefreshTokenResult> {
@@ -39,7 +41,11 @@ export class RefreshTokenUseCase {
       // Replay of an already-rotated token — theft signal (File 11 07.1/Part
       // 05.1). Revoking must commit even though we then throw, so it's a
       // direct write, not inside the transaction below.
-      await this.refreshTokens.revokeAllActiveForUser(this.prisma, existing.user_id);
+      await this.prisma.$transaction(async (tx) => {
+        await this.refreshTokens.lockUserForAuthMutation(tx, existing.user_id);
+        await this.refreshTokens.revokeAllActiveForUser(tx, existing.user_id);
+        await this.devices.deleteAllForUser(tx, existing.user_id);
+      });
       this.logger.warn(`Refresh token reuse detected for user ${existing.user_id} — token family revoked.`);
       throw new UnauthenticatedError(
         'TOKEN_FAMILY_REVOKED',
@@ -52,6 +58,7 @@ export class RefreshTokenUseCase {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await this.refreshTokens.lockUserForAuthMutation(tx, existing.user_id);
       const revoked = await this.refreshTokens.revoke(tx, existing.id);
       if (!revoked) {
         // Lost a concurrent-refresh race: another call revoked this exact
@@ -70,7 +77,7 @@ export class RefreshTokenUseCase {
         throw new UnauthenticatedError('INVALID_REFRESH_TOKEN', 'لا يوجد دور نشِط لهذا الحساب. تواصل مع الدعم.');
       }
 
-      const issued = await this.tokens.rotate(tx, activeMembership, existing.id, existing.device_id ?? undefined);
+      const issued = await this.tokens.rotate(tx, activeMembership, existing.id, existing.session_id, existing.device_id ?? undefined);
 
       return {
         accessToken: issued.accessToken,

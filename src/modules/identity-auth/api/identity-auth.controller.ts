@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
@@ -9,6 +9,7 @@ import { LoginWithPasswordResult, LoginWithPasswordUseCase } from '../applicatio
 import { LogoutUseCase } from '../application/logout.use-case';
 import { RefreshTokenResult, RefreshTokenUseCase } from '../application/refresh-token.use-case';
 import { RegisterDeviceResult, RegisterDeviceUseCase } from '../application/register-device.use-case';
+import { UnregisterDeviceUseCase } from '../application/unregister-device.use-case';
 import { RequestOtpResult, RequestOtpUseCase } from '../application/request-otp.use-case';
 import { ResetPasswordUseCase } from '../application/reset-password.use-case';
 import { SetPasswordUseCase } from '../application/set-password.use-case';
@@ -22,6 +23,7 @@ import { LoginWithPasswordQueryDto } from './dto/login-with-password-query.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDeviceDto } from './dto/register-device.dto';
+import { UnregisterDeviceDto } from './dto/unregister-device.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
@@ -55,6 +57,7 @@ export class IdentityAuthController {
     @Inject(UpdateCurrentUserUseCase) private readonly updateCurrentUser: UpdateCurrentUserUseCase,
     @Inject(SwitchContextUseCase) private readonly switchContextUseCase: SwitchContextUseCase,
     @Inject(RegisterDeviceUseCase) private readonly registerDeviceUseCase: RegisterDeviceUseCase,
+    @Inject(UnregisterDeviceUseCase) private readonly unregisterDeviceUseCase: UnregisterDeviceUseCase,
   ) {}
 
   @Public()
@@ -79,7 +82,7 @@ export class IdentityAuthController {
   @Post('logout')
   @HttpCode(204)
   async signOut(@Body() dto: LogoutDto): Promise<void> {
-    await this.logout.execute({ refreshToken: dto.refreshToken, allDevices: dto.allDevices });
+    await this.logout.execute({ refreshToken: dto.refreshToken, allDevices: dto.allDevices, fcmToken: dto.fcmToken });
   }
 
   @Get('me')
@@ -91,14 +94,26 @@ export class IdentityAuthController {
   @Post('devices')
   @HttpCode(200)
   registerDevice(@CurrentUser() payload: AccessTokenPayload, @Body() dto: RegisterDeviceDto): Promise<RegisterDeviceResult> {
-    return this.registerDeviceUseCase.execute({ userId: payload.sub, fcmToken: dto.fcmToken, platform: dto.platform, appVersion: dto.appVersion });
+    return this.registerDeviceUseCase.execute({
+      userId: payload.sub,
+      sessionId: payload.sid,
+      fcmToken: dto.fcmToken,
+      platform: dto.platform,
+      appVersion: dto.appVersion,
+    });
+  }
+
+  @Delete('devices/current')
+  @HttpCode(204)
+  async unregisterDevice(@CurrentUser() payload: AccessTokenPayload, @Body() dto: UnregisterDeviceDto): Promise<void> {
+    await this.unregisterDeviceUseCase.execute(payload.sub, payload.sid, dto.fcmToken);
   }
 
   /** S-2 fix — see `SwitchContextUseCase`'s doc comment. Bearer-authenticated like `/me`, not `@Public()`. */
   @Post('context/switch')
   @HttpCode(200)
   switchContext(@CurrentUser() payload: AccessTokenPayload, @Body() dto: SwitchContextDto): Promise<SwitchContextResult> {
-    return this.switchContextUseCase.execute(payload.sub, { contextType: dto.contextType });
+    return this.switchContextUseCase.execute(payload.sub, { contextType: dto.contextType }, payload.sid);
   }
 
   @Patch('me')

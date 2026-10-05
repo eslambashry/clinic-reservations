@@ -18,9 +18,13 @@ describe('RescheduleAppointmentUseCase', () => {
     patient_id: 'patient-1',
     doctor_clinic_affiliation_id: 'aff-1',
     status: 'CONFIRMED',
+    visit_status: 'WAITING',
     version: 1,
   };
-  const newSlot = { id: 'new-slot', doctor_clinic_affiliation_id: 'aff-1', status: 'OPEN' };
+  // `start_at` far ahead: the PM-APPT-01 patient cutoff reads the current
+  // slot through the same `slots.findById` mock, so every slot fixture must
+  // be in the future unless a test is about the cutoff itself.
+  const newSlot = { id: 'new-slot', doctor_clinic_affiliation_id: 'aff-1', status: 'OPEN', start_at: new Date('2099-01-01T10:00:00Z') };
   const input = { newSlotId: 'new-slot' };
 
   function setup() {
@@ -32,6 +36,8 @@ describe('RescheduleAppointmentUseCase', () => {
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
     const appointmentScope = { execute: jest.fn().mockResolvedValue({ kind: 'PATIENT', patientUserId: 'patient-1' }) };
+    const affiliationBilling = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1', clinicBranchId: 'branch-1' }) };
+    const assistantUserIds = { execute: jest.fn().mockResolvedValue(['assistant-1']) };
     const useCase = new RescheduleAppointmentUseCase(
       prisma as any,
       appointments as any,
@@ -40,6 +46,8 @@ describe('RescheduleAppointmentUseCase', () => {
       audit as any,
       outbox as any,
       appointmentScope as any,
+      affiliationBilling as any,
+      assistantUserIds as any,
     );
     return { tx, appointments, slots, holds, audit, outbox, appointmentScope, useCase };
   }
@@ -96,29 +104,70 @@ describe('RescheduleAppointmentUseCase', () => {
     await expect(useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'SLOT_ALREADY_HELD', httpStatus: 409 });
   });
 
-  it('releases the old slot, claims the new one, creates a linked hold, audits, and emits AppointmentHeld', async () => {
-    const { tx, appointments, slots, holds, audit, outbox, useCase } = setup();
-    appointments.findById.mockResolvedValue(appointment);
-    slots.findById.mockResolvedValue(newSlot);
-    appointments.markRescheduled.mockResolvedValue(true);
-    slots.markHeld.mockResolvedValue(true);
-    holds.create.mockResolvedValue({ id: 'hold-2' });
+  describe('patient reschedule — confirmed in one step, payment carried over (no hold, no new charge)', () => {
+    function arrangePatient(paid: { payment_intent_id: string | null; remaining_balance: { toFixed: (d: number) => string } | null }) {
+      const s = setup();
+      s.appointments.findById.mockResolvedValue({ ...appointment, ...paid });
+      s.slots.findById.mockResolvedValue(newSlot);
+      s.appointments.markRescheduled.mockResolvedValue(true);
+      s.slots.markHeld.mockResolvedValue(true);
+      s.slots.markBooked.mockResolvedValue(true);
+      s.holds.create.mockResolvedValue({ id: 'hold-2', version: 1 });
+      s.holds.markConverted.mockResolvedValue(undefined);
+      s.appointments.create.mockResolvedValue({ id: 'appointment-2' });
+      return s;
+    }
 
-    const result = await useCase.execute('appointment-1', input, actor);
+    it('releases the old slot, books the new one, links the replacement, audits, and returns CONFIRMED', async () => {
+      const { tx, appointments, slots, holds, audit, useCase } = arrangePatient({ payment_intent_id: 'intent-1', remaining_balance: { toFixed: () => '450.00' } });
 
-    expect(result).toMatchObject({ holdId: 'hold-2', slotId: 'new-slot', status: 'HELD', previousAppointmentId: 'appointment-1' });
-    expect(appointments.markRescheduled).toHaveBeenCalledWith(tx, 'appointment-1', 1);
-    expect(slots.releaseBooked).toHaveBeenCalledWith(tx, 'old-slot');
-    expect(slots.markHeld).toHaveBeenCalledWith(tx, 'new-slot');
-    expect(holds.create).toHaveBeenCalledWith(
-      tx,
-      expect.objectContaining({ slotId: 'new-slot', patientId: 'patient-1', rescheduledFromAppointmentId: 'appointment-1' }),
-    );
-    expect(audit.record).toHaveBeenCalledWith(
-      tx,
-      expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment.reschedule', resourceId: 'appointment-1' }),
-    );
-    expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentHeld', expect.objectContaining({ holdId: 'hold-2', rescheduledFromAppointmentId: 'appointment-1' }));
+      const result = await useCase.execute('appointment-1', input, actor);
+
+      expect(result).toEqual({ status: 'CONFIRMED', appointmentId: 'appointment-2', slotId: 'new-slot', previousAppointmentId: 'appointment-1' });
+      expect(appointments.markRescheduled).toHaveBeenCalledWith(tx, 'appointment-1', 1, expect.any(Date));
+      expect(slots.releaseBooked).toHaveBeenCalledWith(tx, 'old-slot');
+      expect(slots.markHeld).toHaveBeenCalledWith(tx, 'new-slot');
+      expect(holds.markConverted).toHaveBeenCalledWith(tx, 'hold-2', 1, expect.any(Date));
+      expect(slots.markBooked).toHaveBeenCalledWith(tx, 'new-slot');
+      expect(holds.create).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({ slotId: 'new-slot', patientId: 'patient-1', rescheduledFromAppointmentId: 'appointment-1' }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({ actorUserId: 'patient-1', action: 'scheduling_appointments.appointment.reschedule', resourceId: 'appointment-1' }),
+      );
+    });
+
+    it('carries the SAME payment intent and remaining balance onto the new appointment (no second capture)', async () => {
+      const { tx, appointments, useCase } = arrangePatient({ payment_intent_id: 'intent-1', remaining_balance: { toFixed: () => '450.00' } });
+
+      await useCase.execute('appointment-1', input, actor);
+
+      expect(appointments.create).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({ paymentIntentId: 'intent-1', remainingBalance: '450.00', rescheduledFromAppointmentId: 'appointment-1' }),
+      );
+    });
+
+    it('works for a pay-at-clinic appointment too (NULL balance stays NULL)', async () => {
+      const { tx, appointments, useCase } = arrangePatient({ payment_intent_id: 'intent-1', remaining_balance: null });
+
+      await useCase.execute('appointment-1', input, actor);
+
+      expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ paymentIntentId: 'intent-1', remainingBalance: undefined }));
+    });
+
+    it('notifies patient, doctor and assistants — never emits a hold or the provider-only event', async () => {
+      const { tx, outbox, useCase } = arrangePatient({ payment_intent_id: 'intent-1', remaining_balance: null });
+
+      await useCase.execute('appointment-1', input, actor);
+
+      const events = outbox.emit.mock.calls.map((call: unknown[]) => call[1]);
+      expect(events).toEqual(['AppointmentConfirmed', 'AppointmentRescheduledForDoctor', 'AppointmentRescheduledForAssistant']);
+      expect(events).not.toContain('AppointmentHeld');
+      expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentRescheduledForDoctor', { appointmentId: 'appointment-2', doctorUserId: 'doctor-user-1' });
+    });
   });
 
   describe('provider reschedule — the replacement appointment keeps the payment trail', () => {
@@ -164,6 +213,59 @@ describe('RescheduleAppointmentUseCase', () => {
       await useCase.execute('appointment-1', input, doctorActor);
 
       expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: undefined }));
+    });
+  });
+
+  describe('approved V1 rules (PM-APPT-01/02)', () => {
+    afterEach(() => jest.useRealTimers());
+
+    function expectNothingMoved(m: ReturnType<typeof setup>) {
+      expect(m.appointments.markRescheduled).not.toHaveBeenCalled();
+      expect(m.slots.releaseBooked).not.toHaveBeenCalled();
+      expect(m.slots.markHeld).not.toHaveBeenCalled();
+      expect(m.holds.create).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+      expect(m.outbox.emit).not.toHaveBeenCalled();
+    }
+
+    it.each(['IN_DOCTOR_ROOM', 'LEFT'])('422s (APPOINTMENT_VISIT_IN_PROGRESS) without touching slots once the visit is %s', async (visitStatus) => {
+      const m = setup();
+      m.appointments.findById.mockResolvedValue({ ...appointment, visit_status: visitStatus });
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_VISIT_IN_PROGRESS', httpStatus: 422 });
+      expectNothingMoved(m);
+    });
+
+    it.each([
+      ['exactly at start_at', '2026-10-03T09:00:00.000Z'],
+      ['after start_at', '2026-10-03T10:30:00.000Z'],
+    ])('422s (APPOINTMENT_CHANGE_WINDOW_CLOSED) for a patient %s', async (_label, now) => {
+      jest.useFakeTimers().setSystemTime(new Date(now));
+      const m = setup();
+      m.appointments.findById.mockResolvedValue(appointment);
+      m.slots.findById.mockImplementation(async (_tx: unknown, id: string) =>
+        id === 'old-slot' ? { id: 'old-slot', start_at: new Date('2026-10-03T09:00:00.000Z') } : newSlot,
+      );
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_CHANGE_WINDOW_CLOSED', httpStatus: 422 });
+      expectNothingMoved(m);
+    });
+
+    it('lets a patient reschedule 1 ms before start_at and repeats the cutoff inside the write', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-03T08:59:59.999Z'));
+      const m = setup();
+      m.appointments.findById.mockResolvedValue(appointment);
+      m.slots.findById.mockImplementation(async (_tx: unknown, id: string) =>
+        id === 'old-slot' ? { id: 'old-slot', start_at: new Date('2026-10-03T09:00:00.000Z') } : newSlot,
+      );
+      m.appointments.markRescheduled.mockResolvedValue(true);
+      m.slots.markHeld.mockResolvedValue(true);
+      m.slots.markBooked.mockResolvedValue(true);
+      m.holds.create.mockResolvedValue({ id: 'hold-2', version: 1 });
+      m.appointments.create.mockResolvedValue({ id: 'appointment-2' });
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).resolves.toMatchObject({ status: 'CONFIRMED', appointmentId: 'appointment-2' });
+      expect(m.appointments.markRescheduled).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, new Date('2026-10-03T08:59:59.999Z'));
     });
   });
 });

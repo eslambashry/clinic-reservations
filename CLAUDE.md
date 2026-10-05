@@ -20,8 +20,9 @@ npm run start:dev          # API process, tsx watch (src/main.ts)
 npm run start:worker:dev   # worker process, tsx watch (src/worker.ts) — outbox drain + cron jobs
 npm run build               # tsc — compiles src/ to dist/ (both entrypoints)
 npm run lint                 # eslint src/**/*.ts
-npm test                     # jest (unit/integration, *.spec.ts) — passes with 0 tests until Phase 1 adds real ones
-npm run test:e2e             # jest against test/*.e2e-spec.ts
+npm test                     # jest unit specs only — never touches a database
+npm run test:integration     # *.integration.spec.ts — requires TEST_DATABASE_URL (disposable DB, see MEMORY.md §13)
+npm run test:e2e             # jest against test/*.e2e-spec.ts — same TEST_DATABASE_URL requirement
 npm run db:generate          # prisma generate (regenerate client after schema changes)
 npm run db:migrate           # prisma migrate dev (local schema changes -> new migration)
 npm run db:migrate:deploy    # prisma migrate deploy (apply existing migrations, e.g. in CI/prod)

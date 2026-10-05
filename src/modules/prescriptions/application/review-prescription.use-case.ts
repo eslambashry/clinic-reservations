@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PrescriptionReviewDecision } from '@prisma/client';
+import { Prisma, PrescriptionReviewDecision } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
-import { requiresControlledSubstanceConfirmation, resolvePrescriptionStatus } from '../domain/prescription-review.rules';
+import { canPharmacistReview, requiresControlledSubstanceConfirmation, resolvePrescriptionStatus } from '../domain/prescription-review.rules';
 import { DrugCatalogRepository } from '../infrastructure/drug-catalog.repository';
 import { PrescriptionItemRepository } from '../infrastructure/prescription-item.repository';
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
@@ -61,10 +61,19 @@ export class ReviewPrescriptionUseCase {
   ) {}
 
   async execute(prescriptionId: string, input: ReviewPrescriptionInput, actor: AccessTokenPayload): Promise<ReviewPrescriptionResult> {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction((tx) => this.executeInTransaction(tx, prescriptionId, input, actor));
+  }
+
+  /** Internal seam: the order authorization and prescription review share one transaction. */
+  async executeInTransaction(tx: Prisma.TransactionClient, prescriptionId: string, input: ReviewPrescriptionInput, actor: AccessTokenPayload): Promise<ReviewPrescriptionResult> {
+      await this.prescriptions.lockForReview(tx, prescriptionId);
       const prescription = await this.prescriptions.findById(tx, prescriptionId);
       if (!prescription) {
         throw new NotFoundError('Prescription', prescriptionId);
+      }
+
+      if (!canPharmacistReview(prescription)) {
+        throw new BusinessRuleError('PRESCRIPTION_NOT_REVIEWABLE', 'هذه الروشتة غير متاحة للمراجعة الصيدلية.');
       }
 
       const corrections = input.itemCorrections ?? [];
@@ -125,6 +134,5 @@ export class ReviewPrescriptionUseCase {
       }
 
       return { status: newStatus };
-    });
   }
 }

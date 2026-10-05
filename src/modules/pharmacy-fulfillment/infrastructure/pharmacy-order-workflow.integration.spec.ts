@@ -10,7 +10,7 @@ import { RejectPharmacyOrderUseCase } from '../application/reject-pharmacy-order
 import { SubmitPharmacyOrderQuoteUseCase } from '../application/submit-pharmacy-order-quote.use-case';
 import { AppConfigModule } from '../../../shared/config/config.module';
 import { RequestContextModule } from '../../../shared/core/context/request-context.module';
-import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxModule } from '../../../shared/core/outbox/outbox.module';
 import { WebhookEventModule } from '../../../shared/core/webhooks/webhook-event.module';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
@@ -34,6 +34,19 @@ dotenv.config();
  * pharmacy/branch pairs (Pharmacy A / Branch A1, Pharmacy B / Branch B1)
  * back the authorization/IDOR assertions.
  */
+/**
+ * The loser of a same-row race can fail two legitimate ways depending on
+ * timing: it read the row before the winner committed (stale `version` ->
+ * OptimisticLockError, 409) or after (the state machine rejects the
+ * transition -> that transition's BusinessRuleError, 422). Either way its
+ * write never lands; the row assertions after each race prove that part.
+ */
+function expectLostRace(reason: unknown, stateRuleCode: string): void {
+  if (reason instanceof OptimisticLockError) return;
+  expect(reason).toBeInstanceOf(BusinessRuleError);
+  expect((reason as BusinessRuleError).code).toBe(stateRuleCode);
+}
+
 describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
@@ -325,7 +338,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       const rejected = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(1);
-      expect(rejected[0].reason).toBeInstanceOf(OptimisticLockError);
+      expectLostRace(rejected[0].reason, 'PHARMACY_ORDER_NOT_UNDER_REVIEW');
 
       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
       expect(row.status).toBe('ACCEPTED');
@@ -346,7 +359,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       const rejected = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(1);
-      expect(rejected[0].reason).toBeInstanceOf(OptimisticLockError);
+      expectLostRace(rejected[0].reason, 'PHARMACY_ORDER_NOT_READY_FOR_FULFILLMENT');
 
       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
       expect(row.status).toBe('READY_FOR_PICKUP');
@@ -366,7 +379,7 @@ describe('Pharmacy Fulfillment workflow (integration, real Postgres)', () => {
       const rejected = outcomes.filter((o) => o.status === 'rejected') as PromiseRejectedResult[];
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(1);
-      expect(rejected[0].reason).toBeInstanceOf(OptimisticLockError);
+      expectLostRace(rejected[0].reason, 'PHARMACY_ORDER_NOT_READY_TO_COMPLETE');
 
       const row = await prisma.pharmacyOrder.findUniqueOrThrow({ where: { id: orderId } });
       expect(row.status).toBe('FULFILLED');

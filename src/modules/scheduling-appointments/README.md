@@ -2,6 +2,13 @@
 
 **MVP** — owns `ScheduleTemplate`, `AppointmentSlot`, `AppointmentHold`, `Appointment` (see `prisma/schema/scheduling.prisma`), per File 11 Part 03.
 
+**Appointment display contract (2026-10-03, LR-018):** patient list/detail
+summaries now include `ianaTimezone` from the same owning branch already
+loaded for display fields, matching the provider summary's existing field.
+`startAt` and `endAt` remain unchanged UTC instants. Flutter displays and
+filters calendar days using the branch zone, including DST; no schema,
+authorization, booking or cancellation policy changed.
+
 **Phase 3 (Availability) is complete**: Admin CRUD for `schedule_templates`, the `GenerateSlotsUseCase`/`SlotGenerationJob` rolling-window materialization job, and `GET /v1/doctors/{doctorId}/slots` — see `docs/FILE_12_Engineering_Decisions_And_Conventions.md` Part 33 for the engineering decisions this closed.
 
 **Phase 4 (Appointments) is complete** (Part 35). Implemented and tested against a real local Postgres (unit + integration, `appointment-hold-concurrency.integration.spec.ts`):

@@ -19,6 +19,8 @@ export class SetPasswordUseCase {
 
   async execute(input: SetPasswordInput): Promise<SetPasswordResult> {
     const passwordHash = await argon2.hash(input.password);
-    await this.users.setPassword(this.prisma, input.userId, passwordHash);
+    await this.prisma.$transaction(async (tx) => {
+      await this.users.setPassword(tx, input.userId, passwordHash);
+    });
   }
 }

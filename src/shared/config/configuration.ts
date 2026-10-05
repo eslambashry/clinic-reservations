@@ -10,6 +10,7 @@ export interface AppConfig {
   redis: {
     url: string;
     enabled: boolean;
+    caCert: string | null;
   };
   jwt: {
     accessSecret: string;
@@ -74,6 +75,9 @@ export interface AppConfig {
       otpTemplate: string | null;
       environment: 'test' | 'live';
     };
+  }
+  scheduling: {
+    appointmentEndGraceMinutes: number;
   };
 }
 
@@ -87,6 +91,7 @@ export default (): AppConfig => ({
   redis: {
     url: process.env.REDIS_URL as string,
     enabled: process.env.REDIS_ENABLED === 'true',
+    caCert: process.env.REDIS_CA_CERT || null,
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET as string,
@@ -117,7 +122,7 @@ export default (): AppConfig => ({
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID ?? null,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
-    // `.env` files can't hold a literal multi-line PEM, so the private key is stored with escaped `\n` sequences and unescaped here — the one place this needs to happen.
+    // Non-Google hosts may use an escaped PEM; Cloud Run uses its attached service identity through ADC.
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null,
   },
   sms: {
@@ -129,5 +134,11 @@ export default (): AppConfig => ({
       otpTemplate: process.env.SMSMISR_OTP_TEMPLATE || null,
       environment: process.env.SMSMISR_ENVIRONMENT === 'live' ? 'live' : 'test',
     },
+  },
+  scheduling: {
+    appointmentEndGraceMinutes: (() => {
+      const parsed = Number(process.env.APPOINTMENT_END_GRACE_MINUTES ?? '30');
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 30;
+    })(),
   },
 });

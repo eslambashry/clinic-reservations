@@ -41,10 +41,10 @@ export class GetPharmacyOrderUseCase {
       throw new NotFoundError('PharmacyOrder', pharmacyOrderId);
     }
 
-    const isOwner = order.patient_id === actor.sub;
+    const isOwner = actor.contextType === 'PATIENT' && order.patient_id === actor.sub;
     let isAssignedStaff = false;
     if (!isOwner && actor.contextType === 'PHARMACY_STAFF') {
-      const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
+      const membership = await this.getActiveRoleMembership.executeByRoleMembershipId(actor.roleMembershipId, 'PHARMACY_STAFF');
       isAssignedStaff = membership?.contextId !== null && membership?.contextId === order.pharmacy_branch_id;
     }
     let isOriginatingProvider = false;

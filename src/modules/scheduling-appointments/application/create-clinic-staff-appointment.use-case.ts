@@ -8,7 +8,7 @@ import { UserRepository } from '../../identity-auth/infrastructure/user.reposito
 import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
@@ -49,6 +49,10 @@ export class CreateClinicStaffAppointmentUseCase {
     const affiliation = scope.affiliations.find((item) => item.clinicBranchId === input.clinicBranchId);
     if (!affiliation) {
       throw new NotFoundError('ClinicBranch', input.clinicBranchId);
+    }
+    // A paused branch takes no new bookings — the app hides it, this is the real guard.
+    if (affiliation.affiliationStatus === 'PAUSED') {
+      throw new BusinessRuleError('AFFILIATION_PAUSED', 'الحجز متوقف مؤقتًا لهذا الفرع.');
     }
 
     return this.prisma.$transaction(async (tx) => {

@@ -8,6 +8,7 @@ import { OTP_CONSTANTS } from '../domain/otp.constants';
 import { OtpRequestRepository } from '../infrastructure/otp-request.repository';
 import { RoleMembershipRepository } from '../infrastructure/role-membership.repository';
 import { TokenService } from '../infrastructure/token.service';
+import { RefreshTokenRepository } from '../infrastructure/refresh-token.repository';
 import { UserRepository } from '../infrastructure/user.repository';
 
 export interface VerifyOtpInput {
@@ -35,6 +36,7 @@ export class VerifyOtpUseCase {
     @Inject(UserRepository) private readonly users: UserRepository,
     @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
     @Inject(TokenService) private readonly tokens: TokenService,
+    @Inject(RefreshTokenRepository) private readonly refreshTokens: RefreshTokenRepository,
     @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
@@ -86,6 +88,10 @@ export class VerifyOtpUseCase {
       if (!user) {
         user = await this.users.create(tx, otpRequest.phone);
       }
+
+      // Login token issuance participates in the same per-user lock as
+      // logout, password reset, refresh-token reuse, and device registration.
+      await this.refreshTokens.lockUserForAuthMutation(tx, user.id);
 
       let memberships = await this.roleMemberships.findActiveByUser(tx, user.id);
       if (memberships.length === 0) {

@@ -39,6 +39,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   TOKEN_EXPIRED: 'انتهت صلاحية جلستك. سجّل الدخول مرة أخرى للمتابعة.',
   INVALID_REFRESH_TOKEN: 'لم تعد جلستك صالحة. سجّل الدخول مرة أخرى.',
   TOKEN_FAMILY_REVOKED: 'تم إنهاء هذه الجلسة لأسباب أمنية. سجّل الدخول مرة أخرى.',
+  SESSION_REFRESH_REQUIRED: 'يلزم تحديث الجلسة قبل تفعيل الإشعارات.',
+  DEVICE_SESSION_ENDED: 'انتهت الجلسة التي طلبت تفعيل الإشعارات على هذا الجهاز.',
+  ACCOUNT_NOT_ACTIVE: 'هذا الحساب غير نشط. تواصل مع الجهة المسؤولة عن حسابك.',
 
   // ── Authorization (403) ─────────────────────────────────────────────────
   FORBIDDEN: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
@@ -54,8 +57,10 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
   // ── Accounts & staff provisioning ───────────────────────────────────────
   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
+  EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
+  STAFF_IDENTITY_CONFLICT: 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.',
   PHARMACY_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذه الصيدلية.',
   LAB_STAFF_ALREADY_PROVISIONED: 'يوجد حساب موظف نشط بالفعل لهذا المعمل.',
   PHARMACY_HAS_NO_BRANCH: 'لا يمكن إنشاء حساب موظف قبل إضافة فرع للصيدلية.',
@@ -84,13 +89,20 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Scheduling & appointments ───────────────────────────────────────────
   SLOT_ALREADY_BOOKED: 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.',
   SLOT_ALREADY_HELD: 'هذا الموعد محجوز مؤقتًا لمريض آخر. اختر موعدًا آخر.',
+  AFFILIATION_PAUSED: 'الحجز غير متاح حاليًا لدى هذا الطبيب في هذا الفرع.',
+  SLOT_ALREADY_STARTED: 'هذا الموعد بدأ بالفعل. اختر موعدًا لاحقًا.',
   HOLD_EXPIRED: 'انتهت مهلة الحجز المؤقت أو تم استخدامه. ابدأ حجزًا جديدًا.',
   HOLD_STATE_CHANGED: 'تم تعديل الحجز المؤقت من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_NOT_CANCELLABLE: 'لا يمكن إلغاء هذا الموعد إلا وهو مؤكَّد.',
   APPOINTMENT_NOT_RESCHEDULABLE: 'لا يمكن تغيير هذا الموعد إلا وهو مؤكَّد.',
   APPOINTMENT_STATE_CHANGED: 'تم تعديل هذا الموعد من جهة أخرى. حدِّث الصفحة ثم أعد المحاولة.',
   APPOINTMENT_VISIT_STATUS_NOT_UPDATABLE: 'يمكن تحديث حالة الزيارة للمواعيد المؤكدة فقط.',
+  APPOINTMENT_VISIT_IN_PROGRESS: 'لا يمكن إلغاء الموعد أو تغييره بعد دخول المريض إلى غرفة الطبيب.',
+  APPOINTMENT_VISIT_ENDED: 'انتهت زيارة هذا الموعد، فلا يمكن إلغاؤه أو تغييره.',
+  APPOINTMENT_CHANGE_WINDOW_CLOSED: 'لا يمكن إلغاء الموعد أو تغييره بعد بدء موعده.',
+  VISIT_STATUS_OUTSIDE_APPOINTMENT_DAY: 'يمكن بدء الزيارة في يوم الموعد فقط.',
   INVALID_VISIT_STATUS_TRANSITION: 'يجب تحديث حالة الزيارة بالترتيب: انتظار، ثم داخل غرفة الطبيب، ثم غادر.',
+  VISIT_STATUS_MANAGED_BY_SYSTEM: 'حالة إلغاء أو انتهاء الموعد تُحدَّث تلقائياً بواسطة النظام.',
   APPOINTMENT_PATIENT_MISMATCH: 'هذا الموعد لا يخص هذا المريض.',
   INVALID_SCHEDULE_WINDOW: 'وقت النهاية يجب أن يكون بعد وقت البداية.',
   SCHEDULE_WINDOW_OVERLAP: 'يوجد بالفعل فترة عمل في هذا اليوم تتداخل مع الوقت المحدد.',
@@ -140,9 +152,15 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
 
   // ── Prescriptions ───────────────────────────────────────────────────────
   PRESCRIPTION_NOT_ACCEPTED: 'لم تجتَز الروشتة فحص الجودة أو مراجعة الصيدلي بعد.',
+  PRESCRIPTION_NOT_REVIEWABLE: 'هذه الروشتة غير متاحة للمراجعة الصيدلية.',
+  DOCTOR_NOT_ELIGIBLE_TO_PRESCRIBE: 'لا يمكن إصدار روشتة أو اعتمادها للطبيب في حالته الحالية.',
   CONTROLLED_SUBSTANCE_CONFIRMATION_REQUIRED:
     'تحتوي الروشتة على دواء خاضع للرقابة. يلزم تأكيد صريح من الصيدلي قبل المتابعة.',
   PRESCRIPTION_NEEDS_ITEMS: 'أضف دواءً واحدًا على الأقل لإصدار الروشتة.',
+  PRESCRIPTION_NEEDS_FILES: 'أرفق صورة واحدة على الأقل للطلب.',
+  PRESCRIPTION_HAS_NO_CONTENT: 'أضف دواءً أو أرفق صورة للروشتة قبل إرسالها للصيدلية.',
+  DOCUMENT_NOT_A_PRESCRIPTION: 'لا يمكن إرسال إحالة المعمل إلى الصيدلية.',
+  PAYMENT_BILLING_DATA_REQUIRED: 'بيانات الفوترة مطلوبة لطريقة الدفع المحددة.',
   DUPLICATE_BATCH_PATIENT: 'لا يمكن إضافة المريض نفسه أكثر من مرة في نفس الدفعة.',
   BATCH_NEEDS_REQUESTS: 'أضف طلب مريض واحد على الأقل إلى الدفعة.',
 
@@ -152,6 +170,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   NO_PHARMACY_BRANCHES_AVAILABLE: 'لا توجد فروع صيدليات موثَّقة قريبة من الموقع المحدَّد.',
   PHARMACY_ORDER_LOCATION_REQUIRED: 'حدِّد موقعك أو اختر فرع صيدلية لإتمام الطلب.',
   PHARMACY_BRANCH_NOT_DELIVERY_CAPABLE: 'فرع الصيدلية المختار لا يوفّر خدمة التوصيل.',
+  PHARMACY_HANDOVER_APPOINTMENT_REQUIRED: 'اختر موعد العيادة المرتبط بطلب الدواء.',
+  PHARMACY_HANDOVER_APPOINTMENT_UNEXPECTED: 'اربط الموعد فقط عند اختيار التسليم إلى العيادة.',
+  PHARMACY_HANDOVER_APPOINTMENT_INACTIVE: 'الموعد المختار غير صالح لتسليم الدواء إلى العيادة.',
   ORDER_ALREADY_CLAIMED: 'استلم فرع صيدلية آخر هذا الطلب قبلك.',
   BROADCAST_ALREADY_RESPONDED: 'سبق لهذا الفرع الرد على هذا الطلب.',
   PHARMACY_ORDER_NOT_UNDER_REVIEW: 'هذا الطلب ليس في انتظار تسعير.',

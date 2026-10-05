@@ -9,7 +9,7 @@ describe('GetAcceptedPrescriptionForOrderUseCase', () => {
   const tx = buildTx();
 
   function setup() {
-    const prescriptions = { findById: jest.fn() };
+    const prescriptions = { findById: jest.fn(), lockForReview: jest.fn() };
     const items = { findByPrescriptionId: jest.fn() };
     const images = { findByPrescriptionId: jest.fn().mockResolvedValue([]) };
     const useCase = new GetAcceptedPrescriptionForOrderUseCase(prescriptions as any, items as any, images as any);

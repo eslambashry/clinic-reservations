@@ -16,6 +16,12 @@ RUN npm run db:generate \
     && npm run build \
     && npm prune --omit=dev --no-audit --no-fund
 
+# Small one-shot image for applying migrations in Docker Compose. Keep Prisma's
+# CLI available here; the API/worker runtime image below omits dev dependencies.
+FROM deps AS migrator
+COPY prisma ./prisma
+CMD ["npm", "run", "db:migrate:deploy"]
+
 FROM node:22-bookworm-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /app

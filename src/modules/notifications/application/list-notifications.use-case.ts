@@ -17,7 +17,7 @@ export interface ListNotificationsInput {
 }
 
 export interface ListNotificationsResult {
-  notifications: Notification[];
+  notifications: Omit<Notification, 'source_event_id' | 'visible_in_inbox' | 'lease_until' | 'retry_tokens' | 'accepted_device_count'>[];
   nextCursor: string | null;
 }
 
@@ -40,7 +40,7 @@ export class ListNotificationsUseCase {
 
     const last = rows.at(-1);
     return {
-      notifications: rows,
+      notifications: rows.map(({ source_event_id: _source_event_id, visible_in_inbox: _visible_in_inbox, lease_until: _lease_until, retry_tokens: _retry_tokens, accepted_device_count: _accepted_device_count, ...publicRow }) => publicRow),
       nextCursor: rows.length === input.limit && last ? encodeCursor<NotificationCursor>({ c: last.created_at.toISOString(), i: last.id }) : null,
     };
   }

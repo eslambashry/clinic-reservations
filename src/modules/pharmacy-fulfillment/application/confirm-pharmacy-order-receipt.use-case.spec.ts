@@ -5,8 +5,9 @@ function setup() {
   const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
   const pharmacyOrders = { findById: jest.fn(), setStatus: jest.fn() };
   const audit = { record: jest.fn() };
-  const useCase = new ConfirmPharmacyOrderReceiptUseCase(prisma as any, pharmacyOrders as any, audit as any);
-  return { tx, pharmacyOrders, useCase };
+  const outbox = { emit: jest.fn() };
+  const useCase = new ConfirmPharmacyOrderReceiptUseCase(prisma as any, pharmacyOrders as any, audit as any, outbox as any);
+  return { tx, pharmacyOrders, outbox, useCase };
 }
 
 describe('ConfirmPharmacyOrderReceiptUseCase', () => {
@@ -20,6 +21,21 @@ describe('ConfirmPharmacyOrderReceiptUseCase', () => {
 
     expect(pharmacyOrders.setStatus).toHaveBeenCalledWith(tx, 'order-1', 1, 'FULFILLED');
     expect(result).toEqual({ pharmacyOrderId: 'order-1', status: 'FULFILLED' });
+  });
+
+  it('notifies the originating provider after a patient confirms receipt, without pushing the patient again', async () => {
+    const { tx, pharmacyOrders, outbox, useCase } = setup();
+    pharmacyOrders.findById.mockResolvedValue({
+      id: 'order-1', version: 1, status: 'OUT_FOR_DELIVERY', patient_id: 'patient-1',
+      created_by_user_id: 'doctor-1', fulfillment_type: 'DELIVERY',
+    });
+
+    await useCase.execute('order-1', actor);
+
+    expect(outbox.emit).toHaveBeenCalledTimes(1);
+    expect(outbox.emit).toHaveBeenCalledWith(tx, 'ProviderPharmacyOrderStatusChanged', {
+      pharmacyOrderId: 'order-1', status: 'FULFILLED', fulfillmentType: 'DELIVERY', recipientUserId: 'doctor-1',
+    });
   });
 
   it('422s when the order is not out for delivery', async () => {

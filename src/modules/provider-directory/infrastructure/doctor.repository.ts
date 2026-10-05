@@ -55,6 +55,11 @@ export class DoctorRepository {
     return db.doctor.findUnique({ where: { id } });
   }
 
+  /** Held through the caller's clinical write; administrative status updates lock the same row. */
+  async lockForClinicalWrite(db: Prisma.TransactionClient, id: string): Promise<void> {
+    await db.$queryRaw`SELECT id FROM doctors WHERE id = ${id}::uuid FOR UPDATE`;
+  }
+
   findByUserId(db: Prisma.TransactionClient, userId: string): Promise<Doctor | null> {
     return db.doctor.findUnique({ where: { user_id: userId } });
   }

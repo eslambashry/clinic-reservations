@@ -40,6 +40,13 @@ export const OUTBOX_CONSTANTS = {
   MAX_ATTEMPTS: 5,
   POLL_INTERVAL_MS: 2000,
   BATCH_SIZE: 20,
+  /**
+   * A PROCESSING row untouched this long belongs to a worker that died
+   * mid-handler; it is claimable again. Handlers must stay idempotent
+   * (notifications dedupe on `source_event_id`), since a slow-but-alive
+   * worker can overlap with the reclaim (2026-09-26).
+   */
+  STALE_PROCESSING_MINUTES: 10,
 } as const;
 
 /**
@@ -55,6 +62,8 @@ export const NOTIFICATION_CONSTANTS = {
   MAX_SEND_ATTEMPTS: 5,
   RETRY_SWEEP_BATCH_SIZE: 50,
   DEFAULT_LIST_LIMIT: 20,
+  /** Delivery claim lease; an expired lease (crashed worker) makes the row retryable again (2026-09-26). */
+  DELIVERY_LEASE_MS: 10 * 60_000,
 } as const;
 
 /** File 11 Part 12 ("e.g., next 30 days") / File 12 Part 33.9. */
@@ -117,6 +126,12 @@ export const MEDIA_CONSTANTS = {
   MAX_DOCUMENT_SIZE_BYTES: 15 * 1024 * 1024,
   PRESCRIPTION_MAX_FILES: 5,
   LAB_RESULT_MAX_FILES: 5,
+  /** Largest upload DTO: provider patientId/documentType/appointmentId/notes. */
+  MULTIPART_MAX_FIELDS: 4,
+  /** Preserve Busboy's existing default per-field value cap. */
+  MULTIPART_MAX_FIELD_SIZE_BYTES: 1024 * 1024,
+  /** Explicitly enables Multer's multipart field-name length backstop. */
+  MULTIPART_MAX_FIELD_NAME_SIZE: 100,
   /** How long a freshly generated signed URL for a private file stays valid (read-time only — never persisted). */
   SIGNED_URL_TTL_SECONDS: 5 * 60,
 } as const;

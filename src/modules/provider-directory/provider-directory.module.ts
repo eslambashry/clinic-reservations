@@ -52,6 +52,7 @@ import { RejectVerificationDocumentUseCase } from './application/reject-verifica
 import { RejectDoctorUseCase } from './application/reject-doctor.use-case';
 import { ResolveAffiliationForSchedulingUseCase } from './application/resolve-affiliation-for-scheduling.use-case';
 import { ResolveDoctorScopeUseCase } from './application/resolve-doctor-scope.use-case';
+import { AssertDoctorPrescribingEligibilityUseCase } from './application/assert-doctor-prescribing-eligibility.use-case';
 import { SearchDoctorsUseCase } from './application/search-doctors.use-case';
 import { SearchPharmacyBranchesUseCase } from './application/search-pharmacy-branches.use-case';
 import { SelfRegisterProviderUseCase } from './application/self-register-provider.use-case';
@@ -197,6 +198,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     UpdateAssistantUseCase,
     DeleteAssistantUseCase,
     ResolveDoctorScopeUseCase,
+    AssertDoctorPrescribingEligibilityUseCase,
     ListMyDoctorClinicsUseCase,
     UpdateMyClinicBranchUseCase,
     UpdateMyAffiliationUseCase,
@@ -213,6 +215,7 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     // `scheduling-appointments` for schedule-template and appointment
     // ownership checks — never its `infrastructure/`.
     ResolveDoctorScopeUseCase,
+    AssertDoctorPrescribingEligibilityUseCase,
     ListAssistantUserIdsForBranchUseCase,
     // `addresses` is this module's table, but `laboratory` owns
     // `lab_branches` and needs to write the address behind one inside its

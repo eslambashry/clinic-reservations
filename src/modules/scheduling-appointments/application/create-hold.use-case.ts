@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
-import { ConflictError, DomainError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ConflictError, DomainError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
+import { isBeforeAppointmentStart } from '../domain/visit-status.rules';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { holdExpiresAt } from '../domain/appointment-lifecycle.rules';
@@ -62,6 +63,19 @@ export class CreateHoldUseCase {
       if (!slot || slot.doctor_clinic_affiliation_id !== input.doctorClinicAffiliationId) {
         throw new NotFoundError('AppointmentSlot', input.slotId);
       }
+      // LR-015: a slot that has already started is not bookable by a patient
+      // (same `now < start_at` boundary as PM-APPT-01; no lead time added).
+      if (!isBeforeAppointmentStart(slot.start_at, new Date())) {
+        throw slotAlreadyStarted(slot.id);
+      }
+
+      // A paused affiliation takes no new bookings. Search/slot listing already
+      // hide it, but a patient holding a stale slot list must be refused here too.
+      // Confirm/cancel deliberately don't re-check: existing holds stay honoured.
+      const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
+      if (billing.affiliationStatus === 'PAUSED') {
+        throw new BusinessRuleError('AFFILIATION_PAUSED', 'الحجز غير متاح حاليًا لدى هذا الطبيب في هذا الفرع.');
+      }
 
       const claimed = await this.slots.markHeld(tx, slot.id);
       if (!claimed) {
@@ -90,7 +104,6 @@ export class CreateHoldUseCase {
 
       // Informational only — confirm/payments re-read the fee and the
       // minimum and re-validate; the client can never supply either.
-      const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
       const fullAmount = Number(billing.consultFee).toFixed(2);
       const minPaymentAmount = await this.resolvePaymentAmount.findMinimum(tx, fullAmount);
 
@@ -118,4 +131,9 @@ export function translateCreateHoldError(error: unknown, slotId: string): Error 
     return new ConflictError('SLOT_ALREADY_HELD', 'هذا الموعد محجوز مؤقتًا لمريض آخر. اختر موعدًا آخر.', { slotId });
   }
   return new DomainError(500, 'INTERNAL_ERROR', 'تعذّر إتمام الحجز المؤقت. أعد المحاولة.');
+}
+
+/** LR-015: shared by patient hold creation and the patient reschedule target. */
+export function slotAlreadyStarted(slotId: string): BusinessRuleError {
+  return new BusinessRuleError('SLOT_ALREADY_STARTED', 'هذا الموعد بدأ بالفعل. اختر موعدًا لاحقًا.', { slotId });
 }

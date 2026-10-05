@@ -9,10 +9,12 @@ import { CancelAppointmentUseCase } from './application/cancel-appointment.use-c
 import { ConfirmAppointmentUseCase } from './application/confirm-appointment.use-case';
 import { CreateHoldUseCase } from './application/create-hold.use-case';
 import { AssertPatientInDoctorScopeUseCase } from './application/assert-patient-in-doctor-scope.use-case';
+import { GetPharmacyHandoverAppointmentUseCase } from './application/get-pharmacy-handover-appointment.use-case';
 import { CreateClinicStaffAppointmentUseCase } from './application/create-clinic-staff-appointment.use-case';
 import { CreateScheduleTemplateUseCase } from './application/create-schedule-template.use-case';
 import { DeleteScheduleTemplateUseCase } from './application/delete-schedule-template.use-case';
 import { ExpireHoldsUseCase } from './application/expire-holds.use-case';
+import { ExpireWaitingVisitsUseCase } from './application/expire-waiting-visits.use-case';
 import { GenerateSlotsUseCase } from './application/generate-slots.use-case';
 import { GetAppointmentUseCase } from './application/get-appointment.use-case';
 import { GetDoctorAppointmentUseCase } from './application/get-doctor-appointment.use-case';
@@ -33,6 +35,7 @@ import { AppointmentRepository } from './infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from './infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from './infrastructure/appointment-slot.repository';
 import { HoldExpiryJob } from './infrastructure/hold-expiry.job';
+import { WaitingVisitExpiryJob } from './infrastructure/waiting-visit-expiry.job';
 import { ScheduleTemplateRepository } from './infrastructure/schedule-template.repository';
 import { SlotGenerationJob } from './infrastructure/slot-generation.job';
 import { AuditModule } from '../audit/audit.module';
@@ -67,6 +70,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     AppointmentRepository,
     SlotGenerationJob,
     HoldExpiryJob,
+    WaitingVisitExpiryJob,
     // application
     CreateScheduleTemplateUseCase,
     UpdateScheduleTemplateUseCase,
@@ -89,16 +93,18 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetDoctorAppointmentUseCase,
     UpdateAppointmentVisitStatusUseCase,
     ExpireHoldsUseCase,
+    ExpireWaitingVisitsUseCase,
     ResolveAppointmentPaymentAmountUseCase,
     InitiateOnlineAppointmentPaymentUseCase,
     ProcessPaymentWebhookUseCase,
     AssertPatientInDoctorScopeUseCase,
+    GetPharmacyHandoverAppointmentUseCase,
   ],
   // File 12 Part 51: `AssertPatientInDoctorScopeUseCase` is consumed by
   // `prescriptions`/`laboratory` for the provider clinical-requests
   // patient-relationship check, and `GetDoctorAppointmentUseCase` for
   // validating an optional `appointmentId` link belongs to the same doctor
   // scope and patient — never this module's `infrastructure/`.
-  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase],
+  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase, GetPharmacyHandoverAppointmentUseCase],
 })
 export class SchedulingAppointmentsModule {}

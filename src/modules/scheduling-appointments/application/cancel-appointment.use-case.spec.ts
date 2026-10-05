@@ -12,9 +12,13 @@ describe('CancelAppointmentUseCase', () => {
     slot_id: 'slot-1',
     patient_id: 'patient-1',
     status: 'CONFIRMED',
+    visit_status: 'WAITING',
     version: 1,
     doctor_clinic_affiliation_id: 'aff-1',
   };
+  // Far enough ahead that the PM-APPT-01 patient cutoff never interferes
+  // with tests that are about something else.
+  const futureSlot = { id: 'slot-1', start_at: new Date('2099-01-01T09:00:00Z') };
   const appointmentWithPayment = { ...appointment, payment_intent_id: 'intent-1' };
   const input = { reason: 'PATIENT_REQUEST' as const };
 
@@ -22,7 +26,7 @@ describe('CancelAppointmentUseCase', () => {
     const tx = buildTx();
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const appointments = { findById: jest.fn(), cancel: jest.fn() };
-    const slots = { releaseBooked: jest.fn() };
+    const slots = { releaseBooked: jest.fn(), findById: jest.fn().mockResolvedValue(futureSlot) };
     const policyConfig = { getValue: jest.fn() };
     const refund = { execute: jest.fn() };
     const audit = { record: jest.fn() };
@@ -84,7 +88,8 @@ describe('CancelAppointmentUseCase', () => {
 
     expect(result).toEqual({ status: 'CANCELLED', refundAmount: 0, feeApplied: 0 });
     expect(refund.execute).not.toHaveBeenCalled();
-    expect(appointments.cancel).toHaveBeenCalledWith(tx, 'appointment-1', 1, 'patient-1', 'PATIENT_REQUEST');
+    // The patient cutoff instant is repeated inside the write (PM-APPT-01).
+    expect(appointments.cancel).toHaveBeenCalledWith(tx, 'appointment-1', 1, 'patient-1', 'PATIENT_REQUEST', expect.any(Date));
     expect(slots.releaseBooked).toHaveBeenCalledWith(tx, 'slot-1');
     expect(audit.record).toHaveBeenCalledWith(
       tx,
@@ -178,6 +183,85 @@ describe('CancelAppointmentUseCase', () => {
 
     await useCase.execute('appointment-1', { reason: 'OTHER', note: 'doctor unavailable' }, actor);
 
-    expect(appointments.cancel).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, 'patient-1', 'OTHER: doctor unavailable');
+    expect(appointments.cancel).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, 'patient-1', 'OTHER: doctor unavailable', expect.any(Date));
+  });
+
+  describe('approved V1 rules (PM-APPT-01/02/05)', () => {
+    afterEach(() => jest.useRealTimers());
+
+    function expectNoSideEffects(m: ReturnType<typeof setup>) {
+      expect(m.appointments.cancel).not.toHaveBeenCalled();
+      expect(m.slots.releaseBooked).not.toHaveBeenCalled();
+      expect(m.refund.execute).not.toHaveBeenCalled();
+      expect(m.audit.record).not.toHaveBeenCalled();
+      expect(m.outbox.emit).not.toHaveBeenCalled();
+    }
+
+    it.each(['IN_DOCTOR_ROOM', 'LEFT'])('422s (APPOINTMENT_VISIT_IN_PROGRESS) without writing anything once the visit is %s', async (visitStatus) => {
+      const m = setup();
+      m.appointments.findById.mockResolvedValue({ ...appointmentWithPayment, visit_status: visitStatus });
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_VISIT_IN_PROGRESS', httpStatus: 422 });
+      expectNoSideEffects(m);
+    });
+
+    it('422s (APPOINTMENT_VISIT_ENDED) for a visit the system already expired', async () => {
+      const m = setup();
+      m.appointments.findById.mockResolvedValue({ ...appointmentWithPayment, visit_status: 'TIME_EXPIRED' });
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_VISIT_ENDED', httpStatus: 422 });
+      expectNoSideEffects(m);
+    });
+
+    it.each([
+      ['exactly at start_at', '2026-10-03T09:00:00.000Z'],
+      ['after start_at', '2026-10-03T09:00:00.001Z'],
+      ['a day later', '2026-10-04T09:00:00.000Z'],
+    ])('422s (APPOINTMENT_CHANGE_WINDOW_CLOSED) for a patient %s, with no refund', async (_label, now) => {
+      jest.useFakeTimers().setSystemTime(new Date(now));
+      const m = setup();
+      m.appointments.findById.mockResolvedValue(appointmentWithPayment);
+      m.slots.findById.mockResolvedValue({ id: 'slot-1', start_at: new Date('2026-10-03T09:00:00.000Z') });
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_CHANGE_WINDOW_CLOSED', httpStatus: 422 });
+      expectNoSideEffects(m);
+    });
+
+    it('lets a patient cancel 1 ms before start_at, with the unchanged pre-start fee/refund behaviour', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-03T08:59:59.999Z'));
+      const m = setup();
+      m.appointments.findById.mockResolvedValue(appointmentWithPayment);
+      m.appointments.cancel.mockResolvedValue(true);
+      m.slots.findById.mockResolvedValue({ id: 'slot-1', start_at: new Date('2026-10-03T09:00:00.000Z') });
+      m.policyConfig.getValue.mockResolvedValue({ feePercent: 10 });
+      m.refund.execute.mockResolvedValue({ refundAmount: '180.00', feeApplied: '20.00' });
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).resolves.toEqual({ status: 'CANCELLED', refundAmount: 180, feeApplied: 20 });
+      expect(m.appointments.cancel).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, 'patient-1', 'PATIENT_REQUEST', new Date('2026-10-03T08:59:59.999Z'));
+      expect(m.refund.execute).toHaveBeenCalledWith(expect.anything(), { paymentIntentId: 'intent-1', feePercent: 10 });
+    });
+
+    it('403s an assistant (CLINIC_STAFF) before reading the appointment — provider cancellation is doctor-only', async () => {
+      const m = setup();
+      m.appointmentScope.execute.mockResolvedValue({ kind: 'CLINIC_STAFF', doctorId: 'doctor-1', affiliationIds: ['aff-1'] });
+      const assistant = { ...actor, sub: 'assistant-1', roleCode: 'CLINIC_STAFF', contextType: 'CLINIC_STAFF' };
+
+      await expect(m.useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST' }, assistant)).rejects.toMatchObject({
+        code: 'ROLE_NOT_PERMITTED',
+        httpStatus: 403,
+      });
+      expect(m.appointments.findById).not.toHaveBeenCalled();
+      expectNoSideEffects(m);
+    });
+
+    it('409s (APPOINTMENT_STATE_CHANGED) when the visit starts between the check and the guarded write', async () => {
+      const m = setup();
+      m.appointments.findById.mockResolvedValue(appointment);
+      m.appointments.cancel.mockResolvedValue(false); // repository WHERE no longer matches WAITING
+
+      await expect(m.useCase.execute('appointment-1', input, actor)).rejects.toMatchObject({ code: 'APPOINTMENT_STATE_CHANGED', httpStatus: 409 });
+      expect(m.slots.releaseBooked).not.toHaveBeenCalled();
+      expect(m.refund.execute).not.toHaveBeenCalled();
+    });
   });
 });

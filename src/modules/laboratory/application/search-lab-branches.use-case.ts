@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
+import { decodeSortBoundCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { LabBranchSearchRepository, LabBranchSearchRow, LabBranchSearchSort } from '../infrastructure/lab-branch-search.repository';
 
 export interface SearchLabBranchesInput {
@@ -46,6 +46,7 @@ const SORT_WHITELIST: Record<string, { field: LabBranchSearchSort; dir: 'asc' | 
 };
 
 interface LabBranchSearchCursor {
+  s: string;
   v: string;
   b: string;
 }
@@ -68,7 +69,7 @@ export class SearchLabBranchesUseCase {
     const { field: sort, dir: sortDir } = SORT_WHITELIST[sortKey];
 
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
-    const cursor = decodeCursor<LabBranchSearchCursor>(input.cursor);
+    const cursor = decodeSortBoundCursor<LabBranchSearchCursor>(input.cursor, sortKey, { numericValue: sort === 'distance' });
 
     const rows = await this.repository.search({
       q: input.q,
@@ -88,7 +89,7 @@ export class SearchLabBranchesUseCase {
 
     return {
       items: page.map(toSearchItem),
-      nextCursor: hasMore && last ? encodeCursor<LabBranchSearchCursor>({ v: last.sort_value, b: last.branch_id }) : null,
+      nextCursor: hasMore && last ? encodeCursor<LabBranchSearchCursor>({ s: sortKey, v: last.sort_value, b: last.branch_id }) : null,
     };
   }
 }

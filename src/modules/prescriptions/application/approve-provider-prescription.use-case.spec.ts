@@ -1,6 +1,8 @@
 import { ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { ApproveProviderPrescriptionUseCase } from './approve-provider-prescription.use-case';
+import { AssertDoctorPrescribingEligibilityUseCase } from '../../provider-directory/application/assert-doctor-prescribing-eligibility.use-case';
+import { DoctorRepository } from '../../provider-directory/infrastructure/doctor.repository';
 
 describe('ApproveProviderPrescriptionUseCase', () => {
   const doctorActor = { sub: 'doctor-user-1', roleMembershipId: 'membership-1', roleCode: 'DOCTOR', contextType: 'DOCTOR', permissions: [] } as any;
@@ -14,16 +16,26 @@ describe('ApproveProviderPrescriptionUseCase', () => {
   };
 
   function setup() {
-    const tx = {} as any;
+    const tx = { $queryRaw: jest.fn().mockResolvedValue([]), doctor: { findUnique: jest.fn().mockResolvedValue({ id: 'doctor-1', status: 'VERIFIED', deleted_at: null }) } } as any;
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const prescriptions = { findById: jest.fn(), approve: jest.fn() };
     const doctorScope = { execute: jest.fn().mockResolvedValue(scope) };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
 
-    const useCase = new ApproveProviderPrescriptionUseCase(prisma as any, prescriptions as any, doctorScope as any, audit as any, outbox as any);
+    const useCase: ApproveProviderPrescriptionUseCase = new (ApproveProviderPrescriptionUseCase as any)(prisma, prescriptions, doctorScope, audit, outbox, new AssertDoctorPrescribingEligibilityUseCase(new DoctorRepository()));
     return { tx, prescriptions, doctorScope, audit, outbox, useCase };
   }
+
+  it.each(['PENDING', 'REJECTED', 'SUSPENDED', 'DELETED'])('blocks an otherwise in-scope draft for a %s supervising doctor', async (status) => {
+    const { tx, prescriptions, audit, outbox, useCase } = setup();
+    tx.doctor.findUnique.mockResolvedValue({ id: 'doctor-1', status, deleted_at: status === 'DELETED' ? new Date() : null });
+    prescriptions.findById.mockResolvedValue(pendingPrescription);
+    await expect(useCase.execute('prescription-1', 1, doctorActor)).rejects.toMatchObject({ code: status === 'DELETED' ? 'RESOURCE_NOT_FOUND' : 'DOCTOR_NOT_ELIGIBLE_TO_PRESCRIBE' });
+    expect(prescriptions.approve).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(outbox.emit).not.toHaveBeenCalled();
+  });
 
   it('approves a pending draft owned by the calling doctor', async () => {
     const { tx, prescriptions, audit, outbox, useCase } = setup();

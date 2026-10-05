@@ -1,16 +1,26 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, RefreshToken } from '@prisma/client';
 
+/** Shared identity lock: membership, status, credentials and sessions use the same PostgreSQL row. */
+export async function lockUserForAuthMutation(db: Prisma.TransactionClient, userId: string): Promise<void> {
+  await db.$queryRaw(Prisma.sql`SELECT "id" FROM "users" WHERE "id" = ${userId}::uuid FOR UPDATE`);
+}
+
 @Injectable()
 export class RefreshTokenRepository {
+  /** Serialize all token/device mutations for one identity, including new sibling refresh tokens. */
+  async lockUserForAuthMutation(db: Prisma.TransactionClient, userId: string): Promise<void> {
+    await lockUserForAuthMutation(db, userId);
+  }
   create(
     db: Prisma.TransactionClient,
-    params: { userId: string; tokenHash: string; expiresAt: Date; deviceId?: string; rotatedFromTokenId?: string },
+    params: { userId: string; tokenHash: string; sessionId: string; expiresAt: Date; deviceId?: string; rotatedFromTokenId?: string },
   ): Promise<RefreshToken> {
     return db.refreshToken.create({
       data: {
         user_id: params.userId,
         token_hash: params.tokenHash,
+        session_id: params.sessionId,
         expires_at: params.expiresAt,
         device_id: params.deviceId,
         rotated_from_token_id: params.rotatedFromTokenId,
@@ -35,6 +45,35 @@ export class RefreshTokenRepository {
   async revoke(db: Prisma.TransactionClient, id: string): Promise<boolean> {
     const result = await db.refreshToken.updateMany({ where: { id, revoked_at: null }, data: { revoked_at: new Date() } });
     return result.count === 1;
+  }
+
+  /**
+   * Share-locks one live refresh token of the session for the rest of the
+   * caller's transaction. A concurrent logout's `revokeSession` UPDATE on
+   * the same row therefore waits for the caller to commit (and then sees
+   * and removes whatever the caller wrote), while a caller that runs after
+   * logout committed finds no live row. `false` means the session ended.
+   */
+  async lockLiveSession(db: Prisma.TransactionClient, userId: string, sessionId: string): Promise<boolean> {
+    const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT "id" FROM "refresh_tokens"
+      WHERE "session_id" = ${sessionId}::uuid
+        AND "user_id" = ${userId}::uuid
+        AND "revoked_at" IS NULL
+        AND "expires_at" > NOW()
+      LIMIT 1
+      FOR SHARE
+    `);
+    return rows.length === 1;
+  }
+
+  /** Logout of one login session: revokes every still-active token in the family (a context switch can leave more than one). */
+  async revokeSession(db: Prisma.TransactionClient, userId: string, sessionId: string): Promise<number> {
+    const result = await db.refreshToken.updateMany({
+      where: { user_id: userId, session_id: sessionId, revoked_at: null },
+      data: { revoked_at: new Date() },
+    });
+    return result.count;
   }
 
   /**

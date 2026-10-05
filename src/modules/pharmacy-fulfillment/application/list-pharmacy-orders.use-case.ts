@@ -67,7 +67,7 @@ export class ListPharmacyOrdersUseCase {
     if (actor.contextType === 'PATIENT') {
       rows = await this.pharmacyOrders.findForPatient(this.prisma, actor.sub, page);
     } else if (actor.contextType === 'PHARMACY_STAFF') {
-      const membership = await this.getActiveRoleMembership.execute(actor.sub, 'PHARMACY_STAFF');
+      const membership = await this.getActiveRoleMembership.executeByRoleMembershipId(actor.roleMembershipId, 'PHARMACY_STAFF');
       if (!membership || !membership.contextId) {
         throw new ForbiddenError('FORBIDDEN', 'هذا الحساب غير مرتبط بفرع صيدلية نشِط.');
       }

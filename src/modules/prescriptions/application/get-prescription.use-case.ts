@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prescription, Prisma } from '@prisma/client';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS } from '../../../shared/config/constants';
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -20,13 +21,11 @@ export interface PrescriptionDetail {
 }
 
 /**
- * File 11 05.7 `GET /v1/prescriptions/{id}` — owning patient, `PHARMACY_STAFF`,
- * or `ADMIN`. File 12 Part 37.4/37.6: no branch-scoping for pharmacy staff
- * yet (Phase 7 dependency), and no mandatory-reason-code Admin-read audit
- * variant exists — both flagged gaps, not silently built. 404 hides
- * existence from anyone not entitled to see this prescription at all
- * (a patient who isn't the owner), same pattern as every other detail
- * endpoint in this codebase.
+ * `GET /v1/prescriptions/{id}` — owning patient or ADMIN only. Approved
+ * PM-SEC-01 restricts pharmacy staff reads/reviews to authorized branch orders
+ * through pharmacy-fulfillment; executeForOrder is that module's internal seam.
+ * File 12 Part 37.6 still flags the missing mandatory-reason-code Admin-read
+ * audit variant. Unauthorized global reads return 404 to hide existence.
  */
 @Injectable()
 export class GetPrescriptionUseCase {
@@ -41,8 +40,8 @@ export class GetPrescriptionUseCase {
 
   async execute(prescriptionId: string, actor: AccessTokenPayload): Promise<PrescriptionDetail> {
     const prescription = await this.prescriptions.findById(this.prisma, prescriptionId);
-    const isOwner = prescription?.patient_id === actor.sub;
-    const isStaff = actor.contextType === 'PHARMACY_STAFF' || actor.contextType === 'ADMIN';
+    const isOwner = actor.contextType === 'PATIENT' && prescription?.patient_id === actor.sub;
+    const isStaff = actor.contextType === 'ADMIN';
 
     if (!prescription || (!isOwner && !isStaff)) {
       throw new NotFoundError('Prescription', prescriptionId);
@@ -51,10 +50,25 @@ export class GetPrescriptionUseCase {
       throw new NotFoundError('Prescription', prescriptionId);
     }
 
+    return this.detail(this.prisma, prescription);
+  }
+
+  /** Internal seam: pharmacy-fulfillment must authorize and lock the linked order first. */
+  async executeForOrder(db: Prisma.TransactionClient, prescriptionId: string): Promise<PrescriptionDetail> {
+    const prescription = await this.prescriptions.findById(db, prescriptionId);
+    if (!prescription || prescription.status === 'PENDING_DOCTOR_APPROVAL' || prescription.document_type !== 'PRESCRIPTION') {
+      throw new NotFoundError('Prescription', prescriptionId);
+    }
+    return this.detail(db, prescription);
+  }
+
+  private async detail(db: Prisma.TransactionClient, prescription: Prescription): Promise<PrescriptionDetail> {
+    const prescriptionId = prescription.id;
+
     const [images, items, reviews] = await Promise.all([
-      this.images.findByPrescriptionId(this.prisma, prescriptionId),
-      this.items.findByPrescriptionId(this.prisma, prescriptionId),
-      this.reviews.findByPrescriptionId(this.prisma, prescriptionId),
+      this.images.findByPrescriptionId(db, prescriptionId),
+      this.items.findByPrescriptionId(db, prescriptionId),
+      this.reviews.findByPrescriptionId(db, prescriptionId),
     ]);
 
     return {

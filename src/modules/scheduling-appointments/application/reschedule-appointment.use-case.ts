@@ -6,8 +6,12 @@ import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { OptimisticLockError } from '../../../shared/kernel/prisma/optimistic-lock';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { holdExpiresAt } from '../domain/appointment-lifecycle.rules';
-import { translateCreateHoldError } from './create-hold.use-case';
+import { isBeforeAppointmentStart } from '../domain/visit-status.rules';
+import { slotAlreadyStarted, translateCreateHoldError } from './create-hold.use-case';
+import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
+import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
 import { isAppointmentInScope, ResolveAppointmentScopeUseCase } from './resolve-appointment-scope.use-case';
+import { assertBookingChangeAllowed } from './booking-change.guard';
 import { AppointmentRepository } from '../infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
@@ -16,16 +20,7 @@ export interface RescheduleAppointmentInput {
   newSlotId: string;
 }
 
-/** Patient-initiated: a fresh hold the patient still has to confirm (Part 35.10). */
-export interface RescheduleAppointmentHeldResult {
-  status: 'HELD';
-  holdId: string;
-  slotId: string;
-  expiresAt: Date;
-  previousAppointmentId: string;
-}
-
-/** Provider-initiated: the move is already complete (File 12 Part 49.9). */
+/** The move is already complete for both patient and provider (File 12 Part 49.9): no hold to confirm, no new payment. */
 export interface RescheduleAppointmentConfirmedResult {
   status: 'CONFIRMED';
   appointmentId: string;
@@ -33,7 +28,7 @@ export interface RescheduleAppointmentConfirmedResult {
   previousAppointmentId: string;
 }
 
-export type RescheduleAppointmentResult = RescheduleAppointmentHeldResult | RescheduleAppointmentConfirmedResult;
+export type RescheduleAppointmentResult = RescheduleAppointmentConfirmedResult;
 
 /**
  * File 10 §2.3 `POST /v1/appointments/{appointmentId}/reschedule` (patient)
@@ -48,29 +43,20 @@ export type RescheduleAppointmentResult = RescheduleAppointmentHeldResult | Resc
  * rejected as a 404 (Part 35.11), which also means a doctor can never move a
  * patient onto another provider's calendar.
  *
- * The two paths differ only in who completes the hold:
+ * Patient and provider take the SAME path: the hold is converted inside the
+ * same transaction, producing the new `CONFIRMED` appointment immediately.
+ * This is not a bypass of the hold/confirm rules — every guard still runs, in
+ * order (`markHeld` -> `markConverted` -> `markBooked`). What it skips is the
+ * client round-trip and, crucially, a second payment: the consult fee was
+ * captured at the original confirm and `payment_intent_id` /
+ * `remaining_balance` carry over to the new row, so a later cancellation
+ * refunds the right intent. Handing the patient a 5-minute hold + payment
+ * screen (the old behaviour) double-charged wallet/Fawry payments, wrote a
+ * second ledger entry, and left the patient with NO appointment if the hold
+ * expired (the old row is already `RESCHEDULED`).
  *
- * - **Patient**: the hold is returned unconfirmed and the patient confirms
- *   it via `POST /v1/appointments/{holdId}/confirm`, exactly as before. This
- *   path is byte-for-byte unchanged.
- * - **Provider**: the same hold is converted inside the *same* transaction,
- *   producing the new `CONFIRMED` appointment immediately. This is not a
- *   bypass of the hold/confirm rules — every guard still runs, in order
- *   (`markHeld` -> `markConverted` -> `markBooked`), the hold row is really
- *   written and really converted. What it skips is the client round-trip,
- *   and deliberately: the hold TTL exists to reserve a slot while a
- *   *patient* decides and pays (`APPOINTMENT_CONSTANTS.HOLD_TTL_MINUTES`,
- *   5 minutes). Handing a doctor-initiated move back as a patient-owned
- *   5-minute hold would strand the patient with **no** appointment whenever
- *   they were not holding their phone at that moment — the old row is
- *   already `RESCHEDULED` and the reaper would release the new slot. There
- *   is nothing for the patient to decide or pay here: the consult fee was
- *   captured at the original confirm, and `payment_intent_id` carries over
- *   to the new row so a later cancellation still refunds the right intent.
- *
- * The hold is always owned by `appointment.patient_id`, never by the actor —
- * identical to the old behaviour on the patient path (ownership guarantees
- * they are the same user there), and correct on the provider path.
+ * The hold is always owned by `appointment.patient_id`, never by the actor
+ * (correct on the provider path; on the patient path they are the same user).
  */
 @Injectable()
 export class RescheduleAppointmentUseCase {
@@ -82,6 +68,8 @@ export class RescheduleAppointmentUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ResolveAppointmentScopeUseCase) private readonly appointmentScope: ResolveAppointmentScopeUseCase,
+    @Inject(GetAffiliationBillingInfoUseCase) private readonly affiliationBilling: GetAffiliationBillingInfoUseCase,
+    @Inject(ListAssistantUserIdsForBranchUseCase) private readonly assistantUserIds: ListAssistantUserIdsForBranchUseCase,
   ) {}
 
   async execute(appointmentId: string, input: RescheduleAppointmentInput, actor: AccessTokenPayload): Promise<RescheduleAppointmentResult> {
@@ -98,14 +86,20 @@ export class RescheduleAppointmentUseCase {
             status: appointment.status,
           });
         }
+        // PM-APPT-01/02 (PM-APPT-05: assistants may reschedule within these rules).
+        const startsAfter = await assertBookingChangeAllowed(tx, this.slots, appointment, scope);
 
         const newSlot = await this.slots.findById(tx, input.newSlotId);
         if (!newSlot || newSlot.doctor_clinic_affiliation_id !== appointment.doctor_clinic_affiliation_id) {
           // File 12 Part 35.11: a different affiliation isn't a "reschedule" — existence-hiding 404, same pattern as CreateHoldUseCase.
           throw new NotFoundError('AppointmentSlot', input.newSlotId);
         }
+        // LR-015: a patient cannot move onto a slot that has already started.
+        if (scope.kind === 'PATIENT' && !isBeforeAppointmentStart(newSlot.start_at, startsAfter ?? new Date())) {
+          throw slotAlreadyStarted(newSlot.id);
+        }
 
-        const rescheduled = await this.appointments.markRescheduled(tx, appointment.id, appointment.version);
+        const rescheduled = await this.appointments.markRescheduled(tx, appointment.id, appointment.version, startsAfter);
         if (!rescheduled) {
           throw new ConflictError('APPOINTMENT_STATE_CHANGED', 'تم تعديل هذا الموعد من جهة أخرى. حدّث الصفحة ثم أعد المحاولة.', { appointmentId });
         }
@@ -142,25 +136,7 @@ export class RescheduleAppointmentUseCase {
           subjectPatientId: appointment.patient_id,
         });
 
-        if (scope.kind === 'PATIENT') {
-          await this.outbox.emit(tx, 'AppointmentHeld', {
-            holdId: hold.id,
-            slotId: newSlot.id,
-            patientId: appointment.patient_id,
-            expiresAt: expiresAt.toISOString(),
-            rescheduledFromAppointmentId: appointment.id,
-          });
-
-          return {
-            status: 'HELD' as const,
-            holdId: hold.id,
-            slotId: newSlot.id,
-            expiresAt,
-            previousAppointmentId: appointment.id,
-          };
-        }
-
-        // --- Provider path: complete the hold in this same transaction. ---
+        // --- Complete the hold in this same transaction (patient and provider). ---
         try {
           await this.holds.markConverted(tx, hold.id, hold.version, new Date());
         } catch (error) {
@@ -205,14 +181,36 @@ export class RescheduleAppointmentUseCase {
           subjectPatientId: appointment.patient_id,
         });
 
-        await this.outbox.emit(tx, 'AppointmentRescheduledByProvider', {
-          appointmentId: replacement.id,
-          previousAppointmentId: appointment.id,
-          slotId: newSlot.id,
-          previousSlotId: appointment.slot_id,
-          patientId: appointment.patient_id,
-          doctorClinicAffiliationId: appointment.doctor_clinic_affiliation_id,
-        });
+        if (scope.kind === 'DOCTOR') {
+          await this.outbox.emit(tx, 'AppointmentRescheduledByProvider', {
+            appointmentId: replacement.id,
+            previousAppointmentId: appointment.id,
+            slotId: newSlot.id,
+            previousSlotId: appointment.slot_id,
+            patientId: appointment.patient_id,
+            doctorClinicAffiliationId: appointment.doctor_clinic_affiliation_id,
+          });
+        } else {
+          // Patient-initiated: tell the patient it is confirmed and fan out to
+          // the doctor/assistants exactly like a confirm-of-a-reschedule-hold.
+          const billing = await this.affiliationBilling.execute(tx, appointment.doctor_clinic_affiliation_id);
+          await this.outbox.emit(tx, 'AppointmentConfirmed', {
+            appointmentId: replacement.id,
+            slotId: newSlot.id,
+            patientId: appointment.patient_id,
+          });
+          await this.outbox.emit(tx, 'AppointmentRescheduledForDoctor', {
+            appointmentId: replacement.id,
+            doctorUserId: billing.doctorUserId,
+          });
+          const assistantIds = await this.assistantUserIds.execute(tx, billing.clinicBranchId);
+          for (const assistantUserId of assistantIds) {
+            await this.outbox.emit(tx, 'AppointmentRescheduledForAssistant', {
+              appointmentId: replacement.id,
+              assistantUserId,
+            });
+          }
+        }
 
         return {
           status: 'CONFIRMED' as const,

@@ -6,10 +6,11 @@ import { GetPharmacyBranchUseCase } from '../../provider-directory/application/g
 import { SearchPharmacyBranchesUseCase } from '../../provider-directory/application/search-pharmacy-branches.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AssertPatientInDoctorScopeUseCase } from '../../scheduling-appointments/application/assert-patient-in-doctor-scope.use-case';
+import { GetPharmacyHandoverAppointmentUseCase } from '../../scheduling-appointments/application/get-pharmacy-handover-appointment.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { PHARMACY_CONSTANTS } from '../../../shared/config/constants';
-import { BusinessRuleError, ForbiddenError } from '../../../shared/core/errors/domain-errors';
+import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { assertCanCreatePharmacyOrder, assertNoActiveOrderExists } from '../domain/pharmacy-order.rules';
@@ -20,6 +21,7 @@ import { PharmacyOrderRepository } from '../infrastructure/pharmacy-order.reposi
 export interface CreatePharmacyOrderInput {
   prescriptionId: string;
   fulfillmentType: FulfillmentType;
+  appointmentId?: string;
   lat?: number;
   lng?: number;
   pharmacyBranchId?: string;
@@ -73,6 +75,7 @@ export class CreatePharmacyOrderUseCase {
     @Inject(ListStaffByContextUseCase) private readonly listStaffByContext: ListStaffByContextUseCase,
     @Inject(ResolveDoctorScopeUseCase) private readonly resolveDoctorScope: ResolveDoctorScopeUseCase,
     @Inject(AssertPatientInDoctorScopeUseCase) private readonly assertPatientInScope: AssertPatientInDoctorScopeUseCase,
+    @Inject(GetPharmacyHandoverAppointmentUseCase) private readonly getHandoverAppointment: GetPharmacyHandoverAppointmentUseCase,
   ) {}
 
   async execute(input: CreatePharmacyOrderInput, actor: AccessTokenPayload): Promise<CreatePharmacyOrderResult> {
@@ -88,7 +91,7 @@ export class CreatePharmacyOrderUseCase {
     }
     const scope = await this.resolveDoctorScope.execute(actor);
     await this.assertPatientInScope.execute(input.patientId, scope.affiliationIds);
-    return this.create(input, actor, input.patientId, scope.doctorUserId);
+    return this.create(input, actor, input.patientId, scope.doctorUserId, scope.affiliationIds);
   }
 
   private async create(
@@ -96,7 +99,16 @@ export class CreatePharmacyOrderUseCase {
     actor: AccessTokenPayload,
     patientId: string,
     providerDoctorUserId?: string,
+    providerAffiliationIds?: string[],
   ): Promise<CreatePharmacyOrderResult> {
+    if (input.fulfillmentType === 'CLINIC_HANDOVER') {
+      if (!input.appointmentId) {
+        throw new BusinessRuleError('PHARMACY_HANDOVER_APPOINTMENT_REQUIRED', 'اختر موعد العيادة المرتبط بطلب الدواء.');
+      }
+    } else if (input.appointmentId) {
+      throw new BusinessRuleError('PHARMACY_HANDOVER_APPOINTMENT_UNEXPECTED', 'اربط الموعد فقط عند اختيار التسليم إلى العيادة.');
+    }
+
     let branchIds: string[];
     if (input.pharmacyBranchId) {
       branchIds = [await this.resolveChosenBranch(input.pharmacyBranchId, input.fulfillmentType)];
@@ -111,18 +123,34 @@ export class CreatePharmacyOrderUseCase {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const latestOrder = await this.pharmacyOrders.findLatestByPrescriptionId(tx, input.prescriptionId);
-      assertNoActiveOrderExists(latestOrder);
-
+      let handoverClinicBranchId: string | undefined;
+      if (input.appointmentId) {
+        // Read through scheduling's exported application service inside the
+        // order transaction; neither pharmacy nor notifications joins its tables.
+        const appointment = await this.getHandoverAppointment.execute(tx, input.appointmentId, patientId);
+        if (providerAffiliationIds && !providerAffiliationIds.includes(appointment.doctorClinicAffiliationId)) {
+          throw new NotFoundError('Appointment', input.appointmentId);
+        }
+        if (!['CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED'].includes(appointment.status)) {
+          throw new BusinessRuleError('PHARMACY_HANDOVER_APPOINTMENT_INACTIVE', 'الموعد المختار غير صالح لتسليم الدواء إلى العيادة.');
+        }
+        handoverClinicBranchId = appointment.clinicBranchId;
+      }
       const prescription = providerDoctorUserId
         ? await this.getAcceptedPrescription.executeForProvider(tx, input.prescriptionId, patientId, providerDoctorUserId)
         : await this.getAcceptedPrescription.execute(tx, input.prescriptionId, patientId);
+      // The prescription service holds the shared row lock until this transaction commits.
+      // Checking all active rows after authorization also avoids revealing another patient's order.
+      const activeOrder = await this.pharmacyOrders.findActiveByPrescriptionId(tx, input.prescriptionId);
+      assertNoActiveOrderExists(activeOrder);
       assertCanCreatePharmacyOrder(prescription.items, prescription.imageCount);
 
       const order = await this.pharmacyOrders.create(tx, {
         prescriptionId: input.prescriptionId,
         patientId,
         fulfillmentType: input.fulfillmentType,
+        appointmentId: input.appointmentId,
+        handoverClinicBranchId,
         createdByUserId: providerDoctorUserId ? actor.sub : undefined,
         createdByRole: providerDoctorUserId ? actor.contextType : undefined,
       });
@@ -148,6 +176,12 @@ export class CreatePharmacyOrderUseCase {
         prescriptionId: input.prescriptionId,
         patientId,
         broadcastBranchIds: branchIds,
+      });
+      // "Prescription received" goes out only now, once the patient finished
+      // all 3 steps (upload -> choose pharmacy -> delivery), not at upload.
+      await this.outbox.emit(tx, 'PrescriptionUploaded', {
+        prescriptionId: input.prescriptionId,
+        patientId,
       });
       if (providerDoctorUserId) {
         await this.outbox.emit(tx, 'ProviderPharmacyOrderCreated', {

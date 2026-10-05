@@ -21,6 +21,7 @@ describe('ProvisionStaffUserUseCase', () => {
   function setup() {
     const tx = buildTx();
     const users = {
+      lockForAuthMutation: jest.fn(),
       findByPhone: jest.fn(),
       create: jest.fn(),
       setPassword: jest.fn(),
@@ -28,6 +29,7 @@ describe('ProvisionStaffUserUseCase', () => {
       setStatus: jest.fn(),
     };
     const roleMemberships = {
+      findAllByUser: jest.fn().mockResolvedValue([]),
       findByUserRoleContext: jest.fn(),
       findActiveByUserRoleContextType: jest.fn(),
       create: jest.fn(),
@@ -65,6 +67,7 @@ describe('ProvisionStaffUserUseCase', () => {
     const { tx, users, roleMemberships, useCase } = setup();
     users.findByPhone.mockResolvedValue({ id: 'user-1', phone: baseInput.phone, password_hash: null, status: 'ACTIVE' });
     roleMemberships.findByUserRoleContext.mockResolvedValue({ id: 'membership-1', status: 'ACTIVE', context_id: 'doctor-1', version: 1 });
+    roleMemberships.findAllByUser.mockResolvedValue([{ role_code: 'CLINIC_STAFF', context_type: 'CLINIC_STAFF', context_id: 'doctor-1' }]);
 
     await expect(useCase.execute(tx, baseInput)).rejects.toMatchObject({ code: 'STAFF_ALREADY_PROVISIONED', httpStatus: 409 });
     expect(users.setPassword).not.toHaveBeenCalled();
@@ -75,6 +78,7 @@ describe('ProvisionStaffUserUseCase', () => {
     users.findByPhone.mockResolvedValue({ id: 'user-1', phone: baseInput.phone, password_hash: null, status: 'ACTIVE' });
     roleMemberships.findByUserRoleContext.mockResolvedValue(null);
     roleMemberships.findActiveByUserRoleContextType.mockResolvedValue([{ context_id: 'doctor-2' }]);
+    roleMemberships.findAllByUser.mockResolvedValue([{ role_code: 'CLINIC_STAFF', context_type: 'CLINIC_STAFF', context_id: 'doctor-2' }]);
 
     await expect(useCase.execute(tx, baseInput)).rejects.toMatchObject({ code: 'STAFF_ASSIGNED_ELSEWHERE', httpStatus: 409 });
   });
@@ -88,20 +92,17 @@ describe('ProvisionStaffUserUseCase', () => {
     await expect(useCase.execute(tx, baseInput)).rejects.toMatchObject({ code: 'PHONE_ALREADY_REGISTERED', httpStatus: 409 });
   });
 
-  it('reuses an existing password-less user (e.g. an OTP-only patient shell) and grants a new staff membership', async () => {
+  it('rejects an existing password-less identity with no proven employee ownership', async () => {
     const { tx, users, roleMemberships, useCase } = setup();
     const existingUser = { id: 'user-1', phone: baseInput.phone, password_hash: null, status: 'ACTIVE', first_name: null };
     users.findByPhone.mockResolvedValue(existingUser);
     roleMemberships.findByUserRoleContext.mockResolvedValue(null);
     roleMemberships.findActiveByUserRoleContextType.mockResolvedValue([]);
-    users.setPassword.mockResolvedValue(existingUser);
-    users.updateProfile.mockResolvedValue({ ...existingUser, first_name: baseInput.displayName });
-    roleMemberships.create.mockResolvedValue({ id: 'membership-1', created_at: new Date() });
-
-    const result = await useCase.execute(tx, baseInput);
-
+    await expect(useCase.execute(tx, baseInput)).rejects.toMatchObject({ code: 'PHONE_ALREADY_REGISTERED' });
     expect(users.create).not.toHaveBeenCalled();
-    expect(result.displayName).toBe(baseInput.displayName);
+    expect(users.setPassword).not.toHaveBeenCalled();
+    expect(users.updateProfile).not.toHaveBeenCalled();
+    expect(roleMemberships.create).not.toHaveBeenCalled();
   });
 
   it('reactivates a previously revoked membership for the same phone/owner instead of inserting a new row, even though the user already has a password_hash set from the original provisioning', async () => {
@@ -110,6 +111,7 @@ describe('ProvisionStaffUserUseCase', () => {
     users.findByPhone.mockResolvedValue(existingUser);
     const revoked = { id: 'membership-1', status: 'REVOKED', context_id: 'doctor-1', version: 2, created_at: new Date('2026-01-01T00:00:00Z') };
     roleMemberships.findByUserRoleContext.mockResolvedValue(revoked);
+    roleMemberships.findAllByUser.mockResolvedValue([{ ...revoked, role_code: 'CLINIC_STAFF', context_type: 'CLINIC_STAFF' }]);
     roleMemberships.findActiveByUserRoleContextType.mockResolvedValue([]);
     users.setPassword.mockResolvedValue(existingUser);
     users.updateProfile.mockResolvedValue({ ...existingUser, first_name: baseInput.displayName });

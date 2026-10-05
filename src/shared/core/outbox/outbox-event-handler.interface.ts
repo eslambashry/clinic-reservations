@@ -8,5 +8,5 @@
  */
 export interface OutboxEventHandler {
   readonly eventName: string;
-  handle(payload: unknown): Promise<void>;
+  handle(payload: unknown, eventId?: string): Promise<void>;
 }

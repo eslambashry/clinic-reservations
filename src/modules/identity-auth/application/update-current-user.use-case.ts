@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { GetCurrentUserResult, GetCurrentUserUseCase } from './get-current-user.use-case';
 import { UpdateUserProfileUseCase } from './update-user-profile.use-case';
+import { BusinessRuleError } from '../../../shared/core/errors/domain-errors';
 
 export interface UpdateCurrentUserInput {
   userId: string;
@@ -40,7 +41,20 @@ export class UpdateCurrentUserUseCase {
           ? splitDisplayName(input.displayName)
           : { firstName: undefined, lastName: undefined };
       await this.prisma.$transaction(async (tx) => {
-        await this.updateUserProfile.execute(tx, { userId: input.userId, firstName, lastName, email: input.email });
+        // An email may be supplied once during onboarding when the account has
+        // none. Once present it is an account identifier, not profile data.
+        // This server-side rule protects every client, including a forged
+        // PATCH that bypasses the disabled profile field.
+        const current = await tx.user.findUnique({ where: { id: input.userId }, select: { email: true } });
+        if (input.email !== undefined && current?.email && current.email.toLowerCase() !== input.email.toLowerCase()) {
+          throw new BusinessRuleError('EMAIL_NOT_EDITABLE', 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.');
+        }
+        await this.updateUserProfile.execute(tx, {
+          userId: input.userId,
+          firstName,
+          lastName,
+          email: current?.email ? undefined : input.email,
+        });
       });
     }
 

@@ -40,6 +40,11 @@ class EnvironmentVariables {
   @IsString()
   REDIS_URL: string;
 
+  /** Optional trusted Redis server CA certificate for managed TLS Redis. */
+  @IsString()
+  @IsOptional()
+  REDIS_CA_CERT?: string;
+
   @IsIn(['true', 'false'])
   REDIS_ENABLED: string;
 
@@ -124,13 +129,7 @@ class EnvironmentVariables {
   @IsOptional()
   FAWRY_BASE_URL?: string;
 
-  /**
-   * Firebase (File 12 Part 53) — all optional, same reasoning as `PAYMOB_*`:
-   * a fresh environment won't have a service account yet, and the process
-   * must still boot. `FcmPushNotificationAdapter` fails clearly the first
-   * time a push is actually attempted without these, rather than pretending
-   * to succeed.
-   */
+  /** Firebase project used for FCM; optional for environments without push delivery. */
   @IsString()
   @IsOptional()
   FIREBASE_PROJECT_ID?: string;
@@ -139,7 +138,7 @@ class EnvironmentVariables {
   @IsOptional()
   FIREBASE_CLIENT_EMAIL?: string;
 
-  /** PEM private key from the service account JSON, with real newlines escaped as `\n` (single-line env var). */
+  /** Optional non-Google-host service-account PEM; Cloud Run should use ADC instead. */
   @IsString()
   @IsOptional()
   FIREBASE_PRIVATE_KEY?: string;
@@ -182,6 +181,12 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   SMSMISR_OTP_TEMPLATE?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  APPOINTMENT_END_GRACE_MINUTES: number = 30;
 }
 
 function smsMisrConfigErrors(env: EnvironmentVariables): string[] {

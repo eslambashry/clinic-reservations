@@ -34,9 +34,10 @@ describe('ResetPasswordUseCase', () => {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const otpRequests = { findById: jest.fn(), incrementAttempts: jest.fn(), markConsumed: jest.fn() };
     const users = { findByPhone: jest.fn(), setPassword: jest.fn() };
-    const refreshTokens = { revokeAllActiveForUser: jest.fn() };
-    const useCase = new ResetPasswordUseCase(prisma as any, otpRequests as any, users as any, refreshTokens as any);
-    return { tx, prisma, otpRequests, users, refreshTokens, useCase };
+    const refreshTokens = { lockUserForAuthMutation: jest.fn(), revokeAllActiveForUser: jest.fn() };
+    const devices = { deleteAllForUser: jest.fn() };
+    const useCase = new ResetPasswordUseCase(prisma as any, otpRequests as any, users as any, refreshTokens as any, devices as any);
+    return { tx, prisma, otpRequests, users, refreshTokens, devices, useCase };
   }
 
   it('400s INVALID_CODE when the requestId does not exist', async () => {
@@ -101,7 +102,7 @@ describe('ResetPasswordUseCase', () => {
   });
 
   it('on a correct code: consumes the OTP, hashes and sets the new password, and revokes every existing refresh token for the user — all in one transaction', async () => {
-    const { tx, otpRequests, users, refreshTokens, useCase } = setup();
+    const { tx, otpRequests, users, refreshTokens, devices, useCase } = setup();
     otpRequests.findById.mockResolvedValue({ ...otpRequest, verified_at: now });
     const existingUser = { id: 'user-1', phone: otpRequest.phone };
     users.findByPhone.mockResolvedValue(existingUser);
@@ -111,10 +112,12 @@ describe('ResetPasswordUseCase', () => {
     expect(result).toBeUndefined();
     expect(otpRequests.markConsumed).toHaveBeenCalledWith(tx, 'request-1');
     expect(users.setPassword).toHaveBeenCalledWith(tx, 'user-1', 'hashed:NewPass1!');
+    expect(refreshTokens.lockUserForAuthMutation).toHaveBeenCalledWith(tx, 'user-1');
 
     // The load-bearing assertion for this flow: a successful reset must
     // invalidate every existing session for the user, not just leave old
     // refresh tokens usable alongside the new password.
     expect(refreshTokens.revokeAllActiveForUser).toHaveBeenCalledWith(tx, 'user-1');
+    expect(devices.deleteAllForUser).toHaveBeenCalledWith(tx, 'user-1');
   });
 });

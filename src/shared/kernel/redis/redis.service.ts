@@ -62,10 +62,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   constructor(@Inject(ConfigService) config: ConfigService) {
     this.enabled = config.get<boolean>('redis.enabled') ?? true;
+    const caCert = config.get<string>('redis.caCert');
 
     this.client = new Redis(config.get<string>('redis.url') as string, {
       lazyConnect: true,
       maxRetriesPerRequest: 3,
+      ...(caCert ? { tls: { ca: caCert } } : {}),
     });
   }
 

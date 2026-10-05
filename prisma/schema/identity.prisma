@@ -146,7 +146,12 @@ model OtpRequest {
 model Device {
   id             String         @id @default(uuid()) @db.Uuid
   user_id        String         @db.Uuid
-  fcm_token      String
+  /// One FCM token has exactly one owner (2026-09-26): registering it from
+  /// another account transfers the row instead of duplicating delivery.
+  fcm_token      String         @unique
+  /// Login session (`RefreshToken.session_id`) that registered this token;
+  /// logout of that session removes it. Null for pre-2026-09-26 rows.
+  session_id     String?        @db.Uuid
   platform       String
   app_version    String?
   last_seen_at   DateTime       @default(now()) @db.Timestamptz(6)
@@ -156,6 +161,8 @@ model Device {
   user           User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
   refresh_tokens RefreshToken[]
 
+  @@index([session_id])
+  @@index([user_id])
   @@map("devices")
 }
 
@@ -163,6 +170,10 @@ model RefreshToken {
   id                    String    @id @default(uuid()) @db.Uuid
   user_id               String    @db.Uuid
   token_hash            String    @unique
+  /// Login-session family: new on OTP/password login, inherited by rotation
+  /// and context switch, embedded in access tokens as `sid`. Logout revokes
+  /// the whole family (2026-09-26).
+  session_id            String    @default(uuid()) @db.Uuid
   device_id             String?   @db.Uuid
   rotated_from_token_id String?   @db.Uuid
   expires_at            DateTime  @db.Timestamptz(6)
@@ -173,5 +184,6 @@ model RefreshToken {
   device                Device?   @relation(fields: [device_id], references: [id])
   user                  User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([session_id])
   @@map("refresh_tokens")
 }

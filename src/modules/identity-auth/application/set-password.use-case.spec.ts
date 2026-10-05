@@ -6,18 +6,20 @@ jest.mock('@node-rs/argon2', () => ({
 
 describe('SetPasswordUseCase', () => {
   function setup() {
-    const prisma = {};
+    const tx = {};
+    const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const users = { setPassword: jest.fn() };
     const useCase = new SetPasswordUseCase(prisma as any, users as any);
-    return { prisma, users, useCase };
+    return { prisma, tx, users, useCase };
   }
 
   it('hashes the password and persists it via UserRepository.setPassword', async () => {
-    const { prisma, users, useCase } = setup();
+    const { prisma, tx, users, useCase } = setup();
 
     const result = await useCase.execute({ userId: 'user-1', password: 'NewPass1!' });
 
     expect(result).toBeUndefined();
-    expect(users.setPassword).toHaveBeenCalledWith(prisma, 'user-1', 'hashed:NewPass1!');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(users.setPassword).toHaveBeenCalledWith(tx, 'user-1', 'hashed:NewPass1!');
   });
 });

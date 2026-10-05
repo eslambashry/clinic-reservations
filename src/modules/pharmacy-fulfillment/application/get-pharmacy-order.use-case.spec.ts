@@ -3,7 +3,7 @@ import { GetPharmacyOrderUseCase } from './get-pharmacy-order.use-case';
 function setup() {
   const prisma = {} as any;
   const pharmacyOrders = { findById: jest.fn() };
-  const getActiveRoleMembership = { execute: jest.fn() };
+  const getActiveRoleMembership = { execute: jest.fn(), executeByRoleMembershipId: jest.fn() };
   const getUserSummary = { execute: jest.fn() };
   const getPrescriptionSummary = { execute: jest.fn() };
   const resolveDoctorScope = { execute: jest.fn().mockResolvedValue({ doctorUserId: 'doctor-user-1' }) };
@@ -60,7 +60,7 @@ describe('GetPharmacyOrderUseCase', () => {
   it('returns the order for the assigned pharmacy branch staff', async () => {
     const { pharmacyOrders, getActiveRoleMembership, getUserSummary, getPrescriptionSummary, useCase } = setup();
     pharmacyOrders.findById.mockResolvedValue(order);
-    getActiveRoleMembership.execute.mockResolvedValue({ roleMembershipId: 'm-2', contextId: 'branch-1' });
+    getActiveRoleMembership.executeByRoleMembershipId.mockResolvedValue({ roleMembershipId: 'm-2', contextId: 'branch-1' });
     getUserSummary.execute.mockResolvedValue(patient);
     getPrescriptionSummary.execute.mockResolvedValue(prescription);
 
@@ -72,7 +72,7 @@ describe('GetPharmacyOrderUseCase', () => {
   it('404s for pharmacy staff from a different branch', async () => {
     const { pharmacyOrders, getActiveRoleMembership, useCase } = setup();
     pharmacyOrders.findById.mockResolvedValue(order);
-    getActiveRoleMembership.execute.mockResolvedValue({ roleMembershipId: 'm-2', contextId: 'other-branch' });
+    getActiveRoleMembership.executeByRoleMembershipId.mockResolvedValue({ roleMembershipId: 'm-2', contextId: 'other-branch' });
 
     await expect(useCase.execute('order-1', staffActor)).rejects.toMatchObject({ httpStatus: 404 });
   });

@@ -83,6 +83,8 @@ import { SchedulingAppointmentsModule } from '../scheduling-appointments/schedul
     ListProviderPrescriptionsUseCase,
   ],
   exports: [
+    GetPrescriptionUseCase,
+    ReviewPrescriptionUseCase,
     GetAcceptedPrescriptionForOrderUseCase,
     GetPrescriptionItemDrugCodesUseCase,
     GetDrugCatalogControlledStatusUseCase,

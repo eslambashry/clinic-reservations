@@ -57,16 +57,22 @@ describe('GetPrescriptionUseCase', () => {
     expect(result.notes).toBe('Take with food');
   });
 
-  it('allows PHARMACY_STAFF to read any prescription (no branch-scoping yet, File 12 Part 37.4)', async () => {
-    const { prescriptions, images, items, reviews, useCase } = setup();
+  it.each(['someone-else', 'patient-1'])('denies global prescription access to pharmacy staff subject %s before signing images', async (sub) => {
+    const { prescriptions, images, items, reviews, mediaStorage, useCase } = setup();
     prescriptions.findById.mockResolvedValue(prescription);
+    await expect(useCase.execute('prescription-1', { sub, contextType: 'PHARMACY_STAFF' } as any)).rejects.toBeInstanceOf(NotFoundError);
+    expect(images.findByPrescriptionId).not.toHaveBeenCalled();
+    expect(items.findByPrescriptionId).not.toHaveBeenCalled();
+    expect(reviews.findByPrescriptionId).not.toHaveBeenCalled();
+    expect(mediaStorage.getSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('preserves Admin detail reads', async () => {
+    const { prescriptions, images, items, reviews, useCase } = setup();
+    prescriptions.findById.mockResolvedValue({ ...prescription, status: 'PENDING_DOCTOR_APPROVAL' });
     images.findByPrescriptionId.mockResolvedValue([]);
     items.findByPrescriptionId.mockResolvedValue([]);
     reviews.findByPrescriptionId.mockResolvedValue([]);
-
-    const actor = { sub: 'someone-else', contextType: 'PHARMACY_STAFF' } as any;
-    const result = await useCase.execute('prescription-1', actor);
-
-    expect(result.prescriptionId).toBe('prescription-1');
+    await expect(useCase.execute('prescription-1', { sub: 'admin-1', contextType: 'ADMIN' } as any)).resolves.toMatchObject({ prescriptionId: 'prescription-1' });
   });
 });

@@ -280,14 +280,24 @@ describe('Doctor Dashboard (e2e)', () => {
       expect(doctor.specialty_code).toBe(specialtyCode);
     });
 
-    it('updates the account name/email through the shared /v1/auth/me endpoint', async () => {
+    it('updates the account name through the shared /v1/auth/me endpoint, but never an existing email', async () => {
       const response = await request(server())
         .patch('/v1/auth/me')
         .set('Authorization', `Bearer ${doctorAToken}`)
-        .send({ email: `doctor.a.updated.${suffix}@example.com` })
+        .send({ display_name: 'Amr Adel-Updated' })
         .expect(200);
-
       expect(response.body.success).toBe(true);
+
+      // Once set, an email is an account identifier (00878e1), not profile data.
+      const rejected = await request(server())
+        .patch('/v1/auth/me')
+        .set('Authorization', `Bearer ${doctorAToken}`)
+        .send({ email: `doctor.a.updated.${suffix}@example.com` })
+        .expect(422);
+      expect(rejected.body.error.code).toBe('EMAIL_NOT_EDITABLE');
+
+      const user = await prisma.user.findFirstOrThrow({ where: { email: `doctor.a.${suffix}@example.com` } });
+      expect(user).toMatchObject({ first_name: 'Amr', last_name: 'Adel-Updated' });
     });
   });
 
@@ -758,6 +768,24 @@ describe('Doctor Dashboard (e2e)', () => {
   });
 
   describe('5. no regression on the existing patient surface', () => {
+    it('returns the actual non-Cairo branch zone on patient list and detail without shifting UTC instants', async () => {
+      const start = new Date('2027-02-06T06:30:00Z');
+      const booked = await bookConfirmedAppointment(affiliationAId, start);
+      await prisma.clinicBranch.update({ where: { id: branchAId }, data: { iana_timezone: 'Asia/Riyadh' } });
+      try {
+        const list = await request(server()).get('/v1/appointments')
+          .query({ from: start.toISOString(), to: new Date(start.getTime() + 60000).toISOString() })
+          .set('Authorization', `Bearer ${patientToken}`).expect(200);
+        expect(list.body.data.items.find((item: { appointmentId: string }) => item.appointmentId === booked.appointmentId))
+          .toMatchObject({ ianaTimezone: 'Asia/Riyadh', startAt: start.toISOString(), clinicBranchId: branchAId });
+        const detail = await request(server()).get(`/v1/appointments/${booked.appointmentId}`)
+          .set('Authorization', `Bearer ${patientToken}`).expect(200);
+        expect(detail.body.data).toMatchObject({ ianaTimezone: 'Asia/Riyadh', startAt: start.toISOString(), clinicBranchId: branchAId });
+      } finally {
+        await prisma.clinicBranch.update({ where: { id: branchAId }, data: { iana_timezone: 'Africa/Cairo' } });
+      }
+    });
+
     it('still scopes GET /v1/appointments to the calling patient and rejects a DOCTOR token', async () => {
       const asPatient = await request(server()).get('/v1/appointments').set('Authorization', `Bearer ${patientToken}`).expect(200);
       expect(asPatient.body.success).toBe(true);
@@ -765,7 +793,7 @@ describe('Doctor Dashboard (e2e)', () => {
       await request(server()).get('/v1/appointments').set('Authorization', `Bearer ${doctorAToken}`).expect(403);
     });
 
-    it('still returns an unconfirmed HOLD for a patient-initiated reschedule (unchanged contract)', async () => {
+    it('completes a patient-initiated reschedule in one step on the same payment (894cba6)', async () => {
       const booked = await bookConfirmedAppointment(affiliationAId, new Date('2027-02-06T09:00:00Z'));
       const newSlot = await freshOpenSlot(affiliationAId, new Date('2027-02-06T10:00:00Z'));
 
@@ -776,9 +804,16 @@ describe('Doctor Dashboard (e2e)', () => {
         .send({ newSlotId: newSlot.id })
         .expect(201);
 
-      expect(response.body.data).toMatchObject({ status: 'HELD', previousAppointmentId: booked.appointmentId });
-      expect(response.body.data).toHaveProperty('holdId');
-      expect(response.body.data).toHaveProperty('expiresAt');
+      expect(response.body.data).toMatchObject({ status: 'CONFIRMED', slotId: newSlot.id, previousAppointmentId: booked.appointmentId });
+      expect(response.body.data).not.toHaveProperty('holdId');
+
+      const [previous, replacement] = await Promise.all([
+        prisma.appointment.findUniqueOrThrow({ where: { id: booked.appointmentId } }),
+        prisma.appointment.findUniqueOrThrow({ where: { id: response.body.data.appointmentId } }),
+      ]);
+      expect(previous.status).toBe('RESCHEDULED');
+      expect(replacement.status).toBe('CONFIRMED');
+      expect(replacement.payment_intent_id).toBe(previous.payment_intent_id);
     }, 60000);
 
     it('still gates schedule-template admin CRUD to ADMIN only', async () => {

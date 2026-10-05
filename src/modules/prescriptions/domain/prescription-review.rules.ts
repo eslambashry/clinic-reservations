@@ -1,4 +1,15 @@
-import { PrescriptionReviewDecision, PrescriptionStatus } from '@prisma/client';
+import { PrescriptionDocumentType, PrescriptionReviewDecision, PrescriptionSource, PrescriptionStatus } from '@prisma/client';
+
+/** Pharmacist review belongs only to the quality-checked patient medication queue. */
+export function canPharmacistReview(prescription: {
+  source: PrescriptionSource;
+  document_type: PrescriptionDocumentType;
+  status: PrescriptionStatus;
+}): boolean {
+  return prescription.source === 'PATIENT_UPLOADED'
+    && prescription.document_type === 'PRESCRIPTION'
+    && prescription.status === 'QUALITY_CHECK_PASSED';
+}
 
 export interface ReviewedItem {
   drugCode: string | null;

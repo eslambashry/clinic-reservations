@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { decodeCursor } from '../../../shared/core/pagination/cursor.util';
+import { decodeCursor, encodeCursor } from '../../../shared/core/pagination/cursor.util';
 import { DoctorSearchRow } from '../infrastructure/doctor-search.repository';
 import { SearchDoctorsUseCase } from './search-doctors.use-case';
 
@@ -85,7 +85,7 @@ describe('SearchDoctorsUseCase', () => {
 
     expect(result.items).toHaveLength(1);
     expect(result.nextCursor).not.toBeNull();
-    expect(decodeCursor(result.nextCursor!)).toEqual({ v: '4.5', a: 'a' });
+    expect(decodeCursor(result.nextCursor!)).toEqual({ s: 'rating:desc', v: '4.5', a: 'a' });
   });
 
   it('always returns nextAvailableSlot: null (Part 32.12 — Phase 3 dependency)', async () => {
@@ -95,5 +95,32 @@ describe('SearchDoctorsUseCase', () => {
     const result = await useCase.execute({});
 
     expect(result.items[0].nextAvailableSlot).toBeNull();
+  });
+  it('passes a cursor issued under the same sort through to the repository', async () => {
+    const { repository, useCase } = setup();
+    repository.search.mockResolvedValue([row()]);
+
+    await useCase.execute({ sort: 'price:asc', cursor: encodeCursor({ s: 'price:asc', v: '350.00', a: 'aff-9' }) });
+
+    expect(repository.search).toHaveBeenCalledWith(expect.objectContaining({ cursor: { value: '350.00', affiliationId: 'aff-9' } }));
+  });
+
+  it('rejects a cursor issued under a different sort as a 400 before querying', async () => {
+    const { repository, useCase } = setup();
+
+    // A rating cursor replayed once lat/lng switch the default sort to distance.
+    await expect(
+      useCase.execute({ lat: 28.65, lng: 30.84, cursor: encodeCursor({ s: 'rating:desc', v: '4.5', a: 'aff-1' }) }),
+    ).rejects.toMatchObject({ httpStatus: 400, code: 'VALIDATION_ERROR' });
+    expect(repository.search).not.toHaveBeenCalled();
+  });
+
+  it('rejects a cursor whose value is not numeric for a numeric sort', async () => {
+    const { repository, useCase } = setup();
+
+    await expect(
+      useCase.execute({ cursor: encodeCursor({ s: 'rating:desc', v: "4.5'; --", a: 'aff-1' }) }),
+    ).rejects.toMatchObject({ httpStatus: 400, code: 'VALIDATION_ERROR' });
+    expect(repository.search).not.toHaveBeenCalled();
   });
 });

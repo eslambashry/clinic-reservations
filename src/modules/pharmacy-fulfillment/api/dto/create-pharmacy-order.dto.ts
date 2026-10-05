@@ -27,6 +27,11 @@ export class CreatePharmacyOrderDto {
   @IsIn(['PICKUP', 'DELIVERY', 'CLINIC_HANDOVER'])
   fulfillmentType: FulfillmentType;
 
+  @ApiPropertyOptional({ format: 'uuid', description: 'Required for CLINIC_HANDOVER; identifies the patient appointment whose clinic receives the order.' })
+  @IsOptional()
+  @IsUUID()
+  appointmentId?: string;
+
   @ApiPropertyOptional({ example: 30.0444 })
   @IsOptional()
   @Type(() => Number)

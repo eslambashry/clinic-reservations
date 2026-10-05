@@ -6,6 +6,8 @@ Phase 2 (complete): directory CRUD + manual verification workflow (Admin-only, F
 
 Added 2026-08-28 (Part 37): `GET /v1/pharmacy-branches/search` — a pharmacy-search contract no source doc defines, filling the same category of gap Part 32 closed for doctors. The branch, not the pharmacy chain, is the searchable/browsable unit (only a branch has an address/phone).
 
+2026-10-03: doctor and pharmacy-branch search cursors are sort-bound (`decodeSortBoundCursor`, `shared/core/pagination/cursor.util.ts`). A cursor carries `s` (its sort key), and replaying it under a different sort is rejected as `400 VALIDATION_ERROR`. Before this change, a name cursor sent with `lat`/`lng`, which switches the default sort to distance, failed in Postgres as `brand_name::numeric`. Cursors issued before this change carry no `s` and are rejected the same way.
+
 Emits `ProviderVerified` (`{ providerType: 'DOCTOR'|'CLINIC'|'PHARMACY', providerId }`) on `POST /{doctors|clinics|pharmacies}/{id}/verify` — no consumer registered yet (Notifications is Phase 8), expected quiet backlog per File 11 Part 20.
 
 Added 2026-09-04 (Part 49): the **doctor-scoped ownership primitive**,
@@ -29,3 +31,13 @@ staff identity phone fields remain restricted to Egyptian mobile numbers.
 Provider self-registration retains its separate phone mapping as described in
 ADR-005 until product confirms whether that field is the doctor's phone or the
 clinic branch's contact number.
+
+2026-10-03 (LR017): `Specialty.code` declares the existing PostgreSQL
+`gen_random_uuid()` default through Prisma `dbgenerated`. The previous Prisma
+`uuid()` declaration generated UUIDv4 values in the client while the deployed
+2026-09-23 migration also installed a database UUIDv4 default, leaving schema
+parity drift. A new forward migration reasserts that existing database default;
+historical migrations, specialty codes, API fields and foreign keys are unchanged.
+The specialty repository still creates with name and optional parent only.
+`specialty-default.integration.spec.ts` checks the actual column default, verifies
+that Prisma omits `code` from the insert, and reads back the generated UUIDv4.

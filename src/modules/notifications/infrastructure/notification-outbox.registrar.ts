@@ -30,7 +30,7 @@ export class NotificationOutboxRegistrar implements OnModuleInit {
     for (const eventName of Object.keys(NOTIFICATION_TEMPLATES)) {
       this.outboxWorker.registerHandler({
         eventName,
-        handle: (payload) => this.dispatch.executeFromEvent(eventName, payload),
+        handle: (payload, eventId) => this.dispatch.executeFromEvent(eventName, payload, eventId),
       });
     }
   }

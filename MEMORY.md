@@ -37,7 +37,7 @@ Runtime/framework decisions (`docs/FILE_12` Part 02–04, resolving `DEC-B01`):
 - **Auth**: `argon2` (OTP hashing — slow/salted), SHA-256 (refresh token hashing — deterministic lookup), `@nestjs/jwt` (access tokens).
 - **Validation**: `class-validator` + `class-transformer` on DTOs.
 - **Dates/timezones**: `luxon` (branches carry `iana_timezone`; all storage/API timestamps are UTC).
-- **Tests**: `jest` + `ts-jest` (unit/integration `*.spec.ts`), separate `test/jest-e2e.json` config for `*.e2e-spec.ts`.
+- **Tests**: `jest` + `ts-jest` — unit `*.spec.ts` (`jest.config.js`), DB-backed `*.integration.spec.ts` (`jest.integration.config.js`) and `*.e2e-spec.ts` (`test/jest-e2e.json`), the latter two gated on `TEST_DATABASE_URL`.
 - **Dev runtime**: `tsx watch` for both entrypoints; `tsc` for production build → `dist/`.
 
 **Global middleware/guard/interceptor order** (registered once, centrally, in `core.module.ts`): `Throttler → JwtAuthGuard → RbacGuard → handler → ResponseInterceptor/ErrorEnvelopeFilter`. Never reimplement any of this per-module — extend what's in `src/shared/core/`.
@@ -167,6 +167,8 @@ Full decisions live in `docs/FILE_10_...`, `docs/FILE_11_...`, and `docs/FILE_12
   - **Online appointment payment (Part 50)**: `AppointmentHold.payment_intent_id` links a hold to its in-flight `CARD`/`FAWRY`/`MOBILE_WALLET` `PaymentIntent` — this pairing (`hold.status=ACTIVE` + `intent.status=CREATED`) IS the "pending payment" state; no new `AppointmentStatus` exists for it. The payment webhook (`POST /v1/webhooks/payments/{provider}`, hosted in `scheduling-appointments` to avoid a circular import with `payments`) re-checks the hold is still `ACTIVE`/unexpired inside the same transaction it converts it in — a webhook arriving after expiry hits `HandleLatePaymentAfterExpiryUseCase` (capture-then-auto-refund via the gateway's own refund API) instead of confirming a stale booking. `ExpireHoldsUseCase` cancels the linked `PaymentIntent` (`CREATED→CANCELLED`) in the same transaction it releases the slot, so a late webhook can tell the difference.
   - **Wallet debit (Part 50)**: `WalletRepository.debit` is a single conditional `UPDATE wallets SET balance = balance - amount WHERE id=? AND balance >= amount` — never "read balance, check in app code, write balance" (that pattern cannot prevent a concurrent overdraft). Double-debit-by-retry is prevented the same way pay-at-clinic's capture already is: the caller (`ConfirmAppointmentUseCase`) only reaches the debit after `AppointmentHold.markConverted`'s optimistic lock, which guarantees the whole confirm runs at most once per hold.
   - All mutating writes on these paths are guarded by an `Idempotency-Key` request header — repeat requests with the same key must be safe no-ops.
+  - **Appointment lifecycle (PM-APPT-01..05, approved 2026-10-03)**: cancel/reschedule require `CONFIRMED` + `visit_status=WAITING` for every actor, and for a patient also `now < slot.start_at`; the same conditions are repeated in the repository `WHERE` (`bookingChangeGuard`). Provider cancellation is `DOCTOR`-only (route + use-case); `CLINIC_STAFF` may reschedule and run visit status within their `clinic_staff_assignments` branches. `WAITING→IN_DOCTOR_ROOM` only on the slot's calendar day in the branch `iana_timezone`; `IN_DOCTOR_ROOM→LEFT` always. `LEFT` sets `status=COMPLETED` in the same write; the expiry sweep sets `NO_SHOW` only for still-`CONFIRMED` unattended visits and moves no money. Canonical record: `docs/V1_LAUNCH_READINESS.md` §3.
+- **Data migrations** that rewrite historical business rows live in `prisma/data-migrations/` (plain SQL, dry run by default, `-v apply=1` to commit) — never in `prisma/migrations/`, which `migrate deploy` runs automatically. Run per environment only with explicit authorization.
 
 ---
 
@@ -182,6 +184,9 @@ Reference module: `src/modules/identity-auth/`.
 - OTP SMS provider is **SMS Misr** (`DEC-003`, File 12 Part 54), OTP only (login/signup + password reset): `SMS_PROVIDER=smsmisr` binds `SmsMisrOtpSender` over the shared `src/shared/kernel/sms/SmsMisrClient` (one approved template, `SMSMISR_*` env vars); unset/`logging` binds the dev-only logging sender. Notification SMS always stays on `LoggingSmsSender`. Production requires `smsmisr` + `SMSMISR_ENVIRONMENT=live`. Codes are still generated/hashed/attempt-limited by us. Twilio was tried and dropped (no Egypt trial, ~20x the price).
 - A user's active JWT role-context = their first active `role_membership` — correct only because Phase 1 users have exactly one (`PATIENT`, auto-provisioned on first verify). Which membership is "active" once a user can have more than one (Phase 2+, provider staff) is **genuinely unresolved**, flagged inline in `verify-otp.use-case.ts`/`refresh-token.use-case.ts` — don't silently pick a resolution.
 - Global guard order: `JwtAuthGuard → RbacGuard`. `@Roles()`/`@Permissions()` for authorization; `@CurrentUser()` to access the authenticated principal; `@Public()` for no-auth routes; `@OptionalAuth()` (added Phase 2) for routes that are public but unlock extra detail for an authenticated Admin (verifies a token if present, never throws if absent).
+- **Managed employee identities (approved 2026-10-03):** doctor-managed clinic employees, and branch-managed pharmacy/lab staff, use an identity separate from personal PATIENT/DOCTOR accounts and other owners. All historical memberships count, including REVOKED. Only a new phone or that exact owner's previously revoked staff identity can be provisioned; an OTP-only patient or an account with no proven staff ownership is never a reusable employee shell. Owner updates, shared membership creation and token issuance/rotation enforce this rule. A personal PATIENT + DOCTOR account remains supported. See `src/modules/identity-auth/README.md` and `domain/staff-identity.rules.ts`.
+- **Identity mutation serialization:** token issuance/rotation, membership writes, credential changes and suspension share the per-user PostgreSQL auth row lock. TokenService rechecks ACTIVE/non-deleted identity and current membership under that lock before signing or storing refresh credentials. Suspension atomically revokes all refresh tokens and devices; existing access JWTs retain their configured TTL (no immediate global JWT invalidation claim). Live staff membership lookups additionally require an ACTIVE/non-deleted user.
+- **Legacy conflict remediation gate:** an existing mixed staff/personal or multi-owner identity fails closed with `STAFF_IDENTITY_CONFLICT`; revoked history still counts. Separate identities and remediate credentials/sessions only under an explicit, reviewed per-environment data operation. No automatic production rewrite or history deletion is part of the fix.
 
 ---
 
@@ -199,6 +204,7 @@ Reference module: `src/modules/identity-auth/`.
 - **Live visit updates (revised 2026-09-25):** `PATCH /v1/doctors/me/appointments/{id}/visit-status` is independent of the scheduled slot time so a doctor or assigned clinic assistant can record early starts and delayed completions. It still requires a confirmed appointment, the next valid `WAITING → IN_DOCTOR_ROOM → LEFT` transition, current optimistic-lock version, and resolved doctor/branch scope; writes remain transactional and audited. The former 30-minute/end-time rejection has been removed.
 - Cursor pagination: shared `src/shared/core/pagination/cursor.util.ts` (opaque base64 JSON cursor) — don't build a bespoke pagination scheme per module.
 - Admin routes are **not** namespaced under `/admin` — authorization is via `@Roles(ADMIN)` on the route, not the URL path.
+- **Multipart buffering bounds (2026-10-03):** all four document upload routes use `buildMemoryMulterOptions`; shared parser caps are 4 text fields, 5 file parts, 1 MiB per field value and explicit 100-length field names. The installed Busboy parts threshold is 10 (reaching it rejects), permitting the largest legitimate request's 4 metadata + 5 file parts. Route-specific file maxima remain stricter where applicable (one provider-verification file); per-file document limits remain 15 MiB. These caps bound one parsed request, not deployment-wide concurrent memory consumption.
 
 ---
 
@@ -213,8 +219,8 @@ Reference module: `src/modules/identity-auth/`.
 
 ## 13. Testing Strategy
 
-- **Unit/integration**: `*.spec.ts` colocated next to the code under test (e.g. `domain/*.rules.spec.ts`, `application/*.use-case.spec.ts`, `infrastructure/*.repository.integration.spec.ts`), run via `npm test` (jest + ts-jest). Passes with 0 tests until a module adds real ones — an empty suite is not a red flag pre-Phase-1.
-- **E2E**: `test/*.e2e-spec.ts`, separate config (`test/jest-e2e.json`), run via `npm run test:e2e`.
+- **Unit**: `*.spec.ts` colocated next to the code under test (e.g. `domain/*.rules.spec.ts`, `application/*.use-case.spec.ts`), run via `npm test` (jest + ts-jest). `npm test` never touches a database: it excludes `*.integration.spec.ts`.
+- **DB-backed (integration + E2E)**: `*.integration.spec.ts` via `npm run test:integration`, and `test/*.e2e-spec.ts` via `npm run test:e2e`. Both create/delete real rows, so both refuse to start unless `TEST_DATABASE_URL` names a disposable Postgres+PostGIS (`test/require-disposable-db.js` swaps it in for `DATABASE_URL`/`DIRECT_URL` and rejects a value equal to `.env`'s). Set `TEST_REDIS_URL` too, or the suites fall back to `.env`'s Redis. Prepare the database with `prisma migrate deploy` then `npm run db:seed` (the appointment suites read the seeded `CANCELLATION_TIER`/`COMMISSION_RATE` policies).
 - Domain-layer tests are framework-free, pure-function style (see `slot-generation.rules.spec.ts`) — assert exact boundaries/timezone conversions, not just "doesn't throw."
 - **Concurrency-critical paths get concurrency tests written alongside the feature, not after** (File 11 Part 26, explicit requirement) — appointment hold and pharmacy first-accept-wins are the two named paths so far. A phase without a documented concurrency-critical path (e.g. Provider Directory verify/suspend, protected only by optimistic locking) intentionally has no N-simultaneous-requests test — don't add one speculatively.
 - `npm run test:cov` for coverage; `npm run test:watch` during active development.
@@ -229,7 +235,8 @@ npm run start:dev            # API process, tsx watch (src/main.ts)
 npm run start:worker:dev     # worker process, tsx watch (src/worker.ts)
 npm run build                # tsc -> dist/ (both entrypoints)
 npm run lint                 # eslint src/**/*.ts
-npm test                     # jest unit/integration
+npm test                     # jest unit only (no database)
+npm run test:integration     # *.integration.spec.ts — needs TEST_DATABASE_URL (disposable DB)
 npm run test:watch
 npm run test:cov
 npm run test:e2e             # jest against test/*.e2e-spec.ts

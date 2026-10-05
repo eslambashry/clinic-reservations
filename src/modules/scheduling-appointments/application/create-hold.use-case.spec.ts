@@ -13,7 +13,7 @@ function uniqueViolation() {
 describe('CreateHoldUseCase', () => {
   const actor = { sub: 'patient-1', roleMembershipId: 'membership-1', roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
   const input = { doctorClinicAffiliationId: 'aff-1', slotId: 'slot-1', patientId: 'patient-1' };
-  const slot = { id: 'slot-1', doctor_clinic_affiliation_id: 'aff-1', status: 'OPEN' };
+  const slot = { id: 'slot-1', doctor_clinic_affiliation_id: 'aff-1', status: 'OPEN', start_at: new Date('2099-01-01T09:00:00Z') };
 
   function setup() {
     const tx = buildTx();
@@ -106,6 +106,17 @@ describe('CreateHoldUseCase', () => {
     expect(result).toMatchObject({ fullAmount: '500.00', currency: 'EGP', minPaymentAmount: '50.00' });
   });
 
+  it('refuses a new hold on a paused affiliation without claiming the slot', async () => {
+    const { slots, holds, affiliationBilling, useCase } = setup();
+    slots.findById.mockResolvedValue(slot);
+    affiliationBilling.execute.mockResolvedValue({ consultFee: '500', currency: 'EGP', affiliationStatus: 'PAUSED' });
+
+    await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'AFFILIATION_PAUSED' });
+
+    expect(slots.markHeld).not.toHaveBeenCalled();
+    expect(holds.create).not.toHaveBeenCalled();
+  });
+
   it('returns a null minimum when the policy is not configured, without failing the hold', async () => {
     const { slots, holds, resolvePaymentAmount, useCase } = setup();
     slots.findById.mockResolvedValue(slot);
@@ -115,4 +126,21 @@ describe('CreateHoldUseCase', () => {
 
     await expect(useCase.execute(input, actor)).resolves.toMatchObject({ holdId: 'hold-1', minPaymentAmount: null });
   });
+
+  describe('started slots (LR-015)', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it.each([
+      ['exactly at start', '2026-10-03T09:00:00.000Z'],
+      ['an hour after start', '2026-10-03T10:00:00.000Z'],
+    ])('422s (SLOT_ALREADY_STARTED) %s and never claims the slot', async (_label, now) => {
+      jest.useFakeTimers().setSystemTime(new Date(now));
+      const { slots, useCase } = setup();
+      slots.findById.mockResolvedValue({ ...slot, start_at: new Date('2026-10-03T09:00:00.000Z') });
+
+      await expect(useCase.execute(input, actor)).rejects.toMatchObject({ code: 'SLOT_ALREADY_STARTED', httpStatus: 422 });
+      expect(slots.markHeld).not.toHaveBeenCalled();
+    });
+  });
 });
+

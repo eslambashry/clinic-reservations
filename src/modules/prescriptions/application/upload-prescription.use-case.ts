@@ -12,6 +12,7 @@ import { PrescriptionImageRepository } from '../infrastructure/prescription-imag
 import { PrescriptionItemRepository } from '../infrastructure/prescription-item.repository';
 import { PrescriptionRepository } from '../infrastructure/prescription.repository';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
+import { AssertDoctorPrescribingEligibilityUseCase } from '../../provider-directory/application/assert-doctor-prescribing-eligibility.use-case';
 import { AssertPatientInDoctorScopeUseCase } from '../../scheduling-appointments/application/assert-patient-in-doctor-scope.use-case';
 import { GetDoctorAppointmentUseCase } from '../../scheduling-appointments/application/get-doctor-appointment.use-case';
 
@@ -63,6 +64,7 @@ export class UploadPrescriptionUseCase {
     @Inject(ResolveDoctorScopeUseCase) private readonly doctorScope: ResolveDoctorScopeUseCase,
     @Inject(AssertPatientInDoctorScopeUseCase) private readonly patientAccess: AssertPatientInDoctorScopeUseCase,
     @Inject(GetDoctorAppointmentUseCase) private readonly getDoctorAppointment: GetDoctorAppointmentUseCase,
+    @Inject(AssertDoctorPrescribingEligibilityUseCase) private readonly prescribingEligibility: AssertDoctorPrescribingEligibilityUseCase,
   ) {}
 
   async execute(input: UploadPrescriptionInput, actor: AccessTokenPayload): Promise<UploadPrescriptionResult> {
@@ -107,7 +109,10 @@ export class UploadPrescriptionUseCase {
         resourceId: prescription.id,
       });
 
-      await this.outbox.emit(tx, 'PrescriptionUploaded', { prescriptionId: prescription.id, patientId: actor.sub, status });
+      // NOTE: intentionally no patient notification here. Upload is only step 1
+      // of the pharmacy/lab flow (upload -> choose pharmacy -> delivery); the
+      // "received" notification is sent when the order is created (last step).
+      // Sending it mid-flow is wrong and must not return.
 
       return { prescriptionId: prescription.id, status };
     });
@@ -136,6 +141,9 @@ export class UploadPrescriptionUseCase {
     }
 
     const scope = await this.doctorScope.execute(actor);
+    if (input.documentType === PrescriptionDocumentType.PRESCRIPTION) {
+      await this.prescribingEligibility.execute(this.prisma, scope.doctorId, false);
+    }
     await this.patientAccess.execute(input.patientId, scope.affiliationIds);
     if (input.appointmentId) {
       const appointment = await this.getDoctorAppointment.execute(input.appointmentId, actor);
@@ -156,6 +164,9 @@ export class UploadPrescriptionUseCase {
 
     return this.prisma.$transaction(async (tx) => {
       const pendingMedicationApproval = isAssistant && input.documentType === PrescriptionDocumentType.PRESCRIPTION && allPassed;
+      if (input.documentType === PrescriptionDocumentType.PRESCRIPTION) {
+        await this.prescribingEligibility.execute(tx, scope.doctorId);
+      }
       const status: PrescriptionStatus = !allPassed
         ? 'QUALITY_CHECK_FAILED'
         : pendingMedicationApproval

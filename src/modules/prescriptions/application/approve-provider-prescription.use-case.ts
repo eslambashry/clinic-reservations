@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { RoleContextType } from '@prisma/client';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
+import { AssertDoctorPrescribingEligibilityUseCase } from '../../provider-directory/application/assert-doctor-prescribing-eligibility.use-case';
 import { AuditService } from '../../audit/application/audit.service';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -33,6 +34,7 @@ export class ApproveProviderPrescriptionUseCase {
     @Inject(ResolveDoctorScopeUseCase) private readonly doctorScope: ResolveDoctorScopeUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(AssertDoctorPrescribingEligibilityUseCase) private readonly prescribingEligibility: AssertDoctorPrescribingEligibilityUseCase,
   ) {}
 
   async execute(prescriptionId: string, expectedVersion: number, actor: AccessTokenPayload): Promise<ApproveProviderPrescriptionResult> {
@@ -43,6 +45,7 @@ export class ApproveProviderPrescriptionUseCase {
     const scope = await this.doctorScope.execute(actor);
 
     return this.prisma.$transaction(async (tx) => {
+      await this.prescribingEligibility.execute(tx, scope.doctorId);
       const prescription = await this.prescriptions.findById(tx, prescriptionId);
       if (!prescription || prescription.doctor_id !== scope.doctorUserId || prescription.status !== 'PENDING_DOCTOR_APPROVAL') {
         throw new NotFoundError('Prescription', prescriptionId);

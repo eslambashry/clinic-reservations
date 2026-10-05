@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, RoleContextType, RoleMembership, RoleMembershipStatus } from '@prisma/client';
 import { updateWithOptimisticLock } from '../../../shared/kernel/prisma/optimistic-lock';
+import { ConflictError } from '../../../shared/core/errors/domain-errors';
+import { canAddIdentityMembership } from '../domain/staff-identity.rules';
+import { lockUserForAuthMutation } from './refresh-token.repository';
 
 const WITH_USER = { user: true } satisfies Prisma.RoleMembershipInclude;
 export type RoleMembershipWithUser = Prisma.RoleMembershipGetPayload<{ include: typeof WITH_USER }>;
@@ -19,16 +22,20 @@ export class RoleMembershipRepository {
    */
   findActiveByUser(db: Prisma.TransactionClient, userId: string): Promise<RoleMembership[]> {
     return db.roleMembership.findMany({
-      where: { user_id: userId, status: 'ACTIVE' },
+      where: { user_id: userId, status: 'ACTIVE', user: { status: 'ACTIVE', deleted_at: null } },
       orderBy: { created_at: 'desc' },
     });
   }
 
   findActiveById(db: Prisma.TransactionClient, id: string): Promise<RoleMembership | null> {
-    return db.roleMembership.findFirst({ where: { id, status: 'ACTIVE' } });
+    return db.roleMembership.findFirst({ where: { id, status: 'ACTIVE', user: { status: 'ACTIVE', deleted_at: null } } });
   }
 
-  create(
+  findAllByUser(db: Prisma.TransactionClient, userId: string): Promise<RoleMembership[]> {
+    return db.roleMembership.findMany({ where: { user_id: userId } });
+  }
+
+  async create(
     db: Prisma.TransactionClient,
     params: {
       userId: string;
@@ -39,6 +46,13 @@ export class RoleMembershipRepository {
       subtitle?: string;
     },
   ): Promise<RoleMembership> {
+    // Every caller (OTP, admin role grant, walk-in patient creation and staff
+    // provisioning) shares this boundary and serializes on the identity row.
+    await lockUserForAuthMutation(db, params.userId);
+    const history = await this.findAllByUser(db, params.userId);
+    if (!canAddIdentityMembership(history, { role_code: params.roleCode, context_type: params.contextType, context_id: params.contextId ?? null })) {
+      throw new ConflictError('STAFF_IDENTITY_CONFLICT', 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.');
+    }
     return db.roleMembership.create({
       data: {
         user_id: params.userId,
@@ -142,6 +156,13 @@ export class RoleMembershipRepository {
     currentVersion: number,
     status: RoleMembershipStatus,
   ): Promise<void> {
+    const membership = await db.roleMembership.findUnique({ where: { id } });
+    if (membership) {
+      await lockUserForAuthMutation(db, membership.user_id);
+      if (status === 'ACTIVE' && !canAddIdentityMembership(await this.findAllByUser(db, membership.user_id), membership)) {
+        throw new ConflictError('STAFF_IDENTITY_CONFLICT', 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.');
+      }
+    }
     await updateWithOptimisticLock(db.roleMembership, id, currentVersion, { status });
   }
 }

@@ -27,6 +27,9 @@ export interface AcceptedPrescriptionForOrder {
  * rules (does it have any fulfillable items, does an order already exist) to
  * the caller, same division of responsibility that use-case already
  * established.
+ * The prescription row is locked for the caller's entire write transaction,
+ * so all patient/provider creates can check active orders and insert under
+ * one shared serialization boundary owned by this module.
  *
  * File 12 Part 44: accepts `QUALITY_CHECK_PASSED` as well as `ACCEPTED` —
  * `ACCEPTED` only comes from a `PHARMACY_STAFF` review endpoint nothing in
@@ -46,6 +49,8 @@ export class GetAcceptedPrescriptionForOrderUseCase {
   ) {}
 
   async execute(tx: Prisma.TransactionClient, prescriptionId: string, patientId: string): Promise<AcceptedPrescriptionForOrder> {
+    // This lock survives through the caller's active-order check and insert.
+    await this.prescriptions.lockForReview(tx, prescriptionId);
     const prescription = await this.prescriptions.findById(tx, prescriptionId);
     if (!prescription || prescription.patient_id !== patientId) {
       throw new NotFoundError('Prescription', prescriptionId);
@@ -84,6 +89,7 @@ export class GetAcceptedPrescriptionForOrderUseCase {
     patientId: string,
     doctorUserId: string,
   ): Promise<AcceptedPrescriptionForOrder> {
+    await this.prescriptions.lockForReview(tx, prescriptionId);
     const prescription = await this.prescriptions.findById(tx, prescriptionId);
     if (
       !prescription ||
