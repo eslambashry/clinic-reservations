@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsLatitude, IsLongitude, IsOptional, IsString, Max, Min } from 'class-validator';
 
 const SORT_VALUES = ['distance:asc', 'name:asc'] as const;
@@ -39,7 +39,8 @@ export class PharmacyBranchSearchQueryDto {
 
   @ApiPropertyOptional({ description: 'Filter to branches that deliver' })
   @IsOptional()
-  @Type(() => Boolean)
+  // `@Type(() => Boolean)` alone turns the string "false" into true; read the text.
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   deliveryCapable?: boolean;
 
