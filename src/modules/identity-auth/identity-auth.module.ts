@@ -4,6 +4,9 @@ import { AppConfig } from '../../shared/config/configuration';
 import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
 import { SmsMisrClient } from '../../shared/kernel/sms/sms-misr.client';
 import { IdentityAuthController } from './api/identity-auth.controller';
+import { AcceptLegalUseCase } from './application/accept-legal.use-case';
+import { DeleteAccountUseCase } from './application/delete-account.use-case';
+import { LegalController } from './api/legal.controller';
 import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
 import { GetActiveRoleMembershipUseCase } from './application/get-active-role-membership.use-case';
 import { GrantRoleMembershipUseCase } from './application/grant-role-membership.use-case';
@@ -76,8 +79,10 @@ import { UserRepository } from './infrastructure/user.repository';
  */
 @Module({
   imports: [AuthCoreModule],
-  controllers: [IdentityAuthController],
+  controllers: [IdentityAuthController, LegalController],
   providers: [
+    AcceptLegalUseCase,
+    DeleteAccountUseCase,
     RequestOtpUseCase,
     VerifyOtpUseCase,
     RefreshTokenUseCase,
