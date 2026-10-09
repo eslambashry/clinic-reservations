@@ -58,6 +58,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Accounts & staff provisioning ───────────────────────────────────────
   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
   EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
+  ACCOUNT_HAS_OPEN_APPOINTMENTS: 'لديك مواعيد قائمة. يرجى إلغاؤها أو إنهاؤها قبل حذف الحساب.',
+  ACCOUNT_HAS_WALLET_BALANCE: 'لديك رصيد في المحفظة. يرجى استرداده أو استخدامه قبل حذف الحساب.',
+  LEGAL_VERSION_MISMATCH: 'نسخة الشروط والأحكام غير صحيحة.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
   STAFF_IDENTITY_CONFLICT: 'يجب استخدام حساب موظف مستقل عن الحسابات الشخصية والجهات الأخرى.',

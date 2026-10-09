@@ -3,6 +3,8 @@ import { Request } from 'express';
 import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Public } from '../../../shared/core/auth/public.decorator';
+import { AcceptLegalUseCase } from '../application/accept-legal.use-case';
+import { DeleteAccountUseCase } from '../application/delete-account.use-case';
 import { ForgotPasswordResult, ForgotPasswordUseCase } from '../application/forgot-password.use-case';
 import { GetCurrentUserResult, GetCurrentUserUseCase } from '../application/get-current-user.use-case';
 import { LoginWithPasswordResult, LoginWithPasswordUseCase } from '../application/login-with-password.use-case';
@@ -17,6 +19,7 @@ import { SwitchContextResult, SwitchContextUseCase } from '../application/switch
 import { UpdateCurrentUserUseCase } from '../application/update-current-user.use-case';
 import { VerifyOtpResult, VerifyOtpUseCase } from '../application/verify-otp.use-case';
 import { VerifyResetCodeResult, VerifyResetCodeUseCase } from '../application/verify-reset-code.use-case';
+import { AcceptLegalDto } from './dto/accept-legal.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginWithPasswordDto } from './dto/login-with-password.dto';
 import { LoginWithPasswordQueryDto } from './dto/login-with-password-query.dto';
@@ -58,6 +61,8 @@ export class IdentityAuthController {
     @Inject(SwitchContextUseCase) private readonly switchContextUseCase: SwitchContextUseCase,
     @Inject(RegisterDeviceUseCase) private readonly registerDeviceUseCase: RegisterDeviceUseCase,
     @Inject(UnregisterDeviceUseCase) private readonly unregisterDeviceUseCase: UnregisterDeviceUseCase,
+    @Inject(DeleteAccountUseCase) private readonly deleteAccount: DeleteAccountUseCase,
+    @Inject(AcceptLegalUseCase) private readonly acceptLegal: AcceptLegalUseCase,
   ) {}
 
   @Public()
@@ -124,6 +129,20 @@ export class IdentityAuthController {
       displayName: dto.display_name,
       email: dto.email,
     });
+  }
+
+  /** Self-service account deletion (soft-delete + anonymise) — see `DeleteAccountUseCase`. */
+  @Delete('me')
+  @HttpCode(204)
+  async deleteMe(@CurrentUser() payload: AccessTokenPayload): Promise<void> {
+    await this.deleteAccount.execute(payload.sub);
+  }
+
+  /** Records acceptance of the Terms of Service + Privacy Policy for the given version. */
+  @Post('legal/accept')
+  @HttpCode(204)
+  async acceptLegalEndpoint(@CurrentUser() payload: AccessTokenPayload, @Body() dto: AcceptLegalDto): Promise<void> {
+    await this.acceptLegal.execute(payload.sub, dto.version);
   }
 
   @Post('password/set')
