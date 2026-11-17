@@ -1,0 +1,23 @@
+/// Patient -> provider reviews. Doctors only for now (`subject_type = DOCTOR`,
+/// `subject_id = doctors.id`); the generic columns leave room for clinics/
+/// pharmacies/labs. One review per completed appointment (unique
+/// `appointment_id`). `status`: `PUBLISHED` | `HIDDEN` (admin moderation) —
+/// hidden rows are excluded from public lists and from `doctors.rating_*`.
+model Review {
+  id             String       @id @default(uuid()) @db.Uuid
+  patient_id     String       @db.Uuid
+  subject_type   ProviderType
+  subject_id     String       @db.Uuid
+  appointment_id String       @unique @db.Uuid
+  rating         Int
+  comment        String?
+  status         String       @default("PUBLISHED")
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime     @updatedAt @db.Timestamptz(6)
+  version        Int          @default(1)
+  appointment    Appointment  @relation(fields: [appointment_id], references: [id])
+  patient        User         @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([subject_type, subject_id, status, created_at])
+  @@map("reviews")
+}

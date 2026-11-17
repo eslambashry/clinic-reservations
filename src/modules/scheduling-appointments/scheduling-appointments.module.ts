@@ -31,6 +31,7 @@ import { RescheduleAppointmentUseCase } from './application/reschedule-appointme
 import { ResolveAppointmentScopeUseCase } from './application/resolve-appointment-scope.use-case';
 import { UpdateScheduleTemplateUseCase } from './application/update-schedule-template.use-case';
 import { UpdateAppointmentVisitStatusUseCase } from './application/update-appointment-visit-status.use-case';
+import { GetAppointmentForReviewUseCase } from './application/get-appointment-for-review.use-case';
 import { AppointmentRepository } from './infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from './infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from './infrastructure/appointment-slot.repository';
@@ -68,6 +69,7 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     AppointmentSlotRepository,
     AppointmentHoldRepository,
     AppointmentRepository,
+    GetAppointmentForReviewUseCase,
     SlotGenerationJob,
     HoldExpiryJob,
     WaitingVisitExpiryJob,
@@ -105,6 +107,6 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
   // patient-relationship check, and `GetDoctorAppointmentUseCase` for
   // validating an optional `appointmentId` link belongs to the same doctor
   // scope and patient — never this module's `infrastructure/`.
-  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase, GetPharmacyHandoverAppointmentUseCase],
+  exports: [AssertPatientInDoctorScopeUseCase, GetDoctorAppointmentUseCase, GetPharmacyHandoverAppointmentUseCase, GetAppointmentForReviewUseCase],
 })
 export class SchedulingAppointmentsModule {}

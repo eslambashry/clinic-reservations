@@ -18,6 +18,8 @@ describe('ListDoctorsUseCase', () => {
       region_code: 'CAI',
       status: 'PENDING',
       photo_url: null,
+      rating_avg: '4.6',
+      rating_count: 12,
       created_at: new Date('2026-09-01T00:00:00.000Z'),
       ...overrides,
     };
@@ -40,6 +42,8 @@ describe('ListDoctorsUseCase', () => {
         regionCode: 'CAI',
         status: 'PENDING',
         photoUrl: null,
+        ratingAvg: 4.6,
+        ratingCount: 12,
         createdAt: '2026-09-01T00:00:00.000Z',
       },
     ]);
