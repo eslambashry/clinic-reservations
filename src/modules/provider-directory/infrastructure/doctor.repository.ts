@@ -89,6 +89,11 @@ export class DoctorRepository {
     });
   }
 
+  /** Denormalized aggregate — no version bump, so it never fights an admin edit's optimistic lock. */
+  async setRating(db: Prisma.TransactionClient, id: string, ratingAvg: number, ratingCount: number): Promise<void> {
+    await db.doctor.update({ where: { id }, data: { rating_avg: ratingAvg, rating_count: ratingCount } });
+  }
+
   async setStatus(
     db: Prisma.TransactionClient,
     id: string,

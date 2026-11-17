@@ -26,7 +26,6 @@ model Encounter {
   doctor           Doctor          @relation(fields: [doctor_id], references: [id])
   health_record    HealthRecord    @relation(fields: [health_record_id], references: [id], onDelete: Cascade)
   prescriptions    Prescription[]
-  reviews          Review[]
 
   @@map("encounters")
 }
@@ -44,24 +43,6 @@ model Consent {
   patient      User      @relation(fields: [patient_id], references: [id], onDelete: Cascade)
 
   @@map("consents")
-}
-
-model Review {
-  id           String       @id @default(uuid()) @db.Uuid
-  patient_id   String       @db.Uuid
-  subject_type ProviderType
-  subject_id   String       @db.Uuid
-  encounter_id String       @db.Uuid
-  rating       Int
-  comment      String?
-  status       String       @default("PENDING")
-  created_at   DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime     @updatedAt @db.Timestamptz(6)
-  version      Int          @default(1)
-  encounter    Encounter    @relation(fields: [encounter_id], references: [id])
-  patient      User         @relation(fields: [patient_id], references: [id], onDelete: Cascade)
-
-  @@map("reviews")
 }
 
 model FraudFlag {

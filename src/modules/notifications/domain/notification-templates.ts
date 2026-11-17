@@ -47,6 +47,16 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { appointmentId: p.appointmentId },
     }),
   },
+  DoctorReviewed: {
+    tier: 'INFORMATIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({
+      title: 'تقييم جديد',
+      body: `حصلت على تقييم جديد: ${p.rating} من 5.`,
+      data: { reviewId: p.reviewId },
+    }),
+  },
   AppointmentCancelled: {
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],

@@ -23,6 +23,8 @@ export interface DoctorListItem {
   regionCode: string | null;
   status: DoctorStatus;
   photoUrl: string | null;
+  ratingAvg: number;
+  ratingCount: number;
   createdAt: string;
 }
 
@@ -112,6 +114,8 @@ function toListItem(row: DoctorWithUser): DoctorListItem {
     regionCode: row.region_code,
     status: row.status,
     photoUrl: row.photo_url,
+    ratingAvg: Number(row.rating_avg),
+    ratingCount: row.rating_count,
     createdAt: row.created_at.toISOString(),
   };
 }
