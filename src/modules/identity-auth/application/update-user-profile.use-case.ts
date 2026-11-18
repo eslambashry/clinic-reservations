@@ -34,7 +34,8 @@ export class UpdateUserProfileUseCase {
       await this.users.updateProfile(tx, userId, fields);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && fields.email !== undefined) {
-        const { email: _dropped, ...withoutEmail } = fields;
+        const withoutEmail = { ...fields };
+        delete withoutEmail.email;
         if (withoutEmail.firstName !== undefined || withoutEmail.lastName !== undefined) {
           await this.users.updateProfile(tx, userId, withoutEmail);
         }

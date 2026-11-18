@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { FawryPaymentGatewayAdapter, toFawryLocalMobile } from './fawry-payment-gateway.adapter';
 
 function build(overrides: Record<string, unknown> = {}) {
@@ -44,7 +45,6 @@ describe('FawryPaymentGatewayAdapter branches', () => {
   });
 
   describe('verifyWebhookSignature', () => {
-    const { createHash } = require('node:crypto');
     const sha = (v: string) => createHash('sha256').update(v).digest('hex');
 
     it('false without a signature', () => {

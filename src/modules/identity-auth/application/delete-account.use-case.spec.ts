@@ -53,7 +53,13 @@ describe('DeleteAccountUseCase', () => {
     await expect(setup({ user: { id: 'u1', deleted_at: new Date() } }).useCase.execute('u1')).rejects.toBeInstanceOf(NotFoundError);
   });
 
-  it('refuses staff/admin accounts', async () => {
+  it('allows a clinic assistant to delete their own account', async () => {
+    const { tx, useCase } = setup({ roles: ['CLINIC_STAFF'] });
+    await expect(useCase.execute('u1')).resolves.toBeUndefined();
+    expect(tx.user.update).toHaveBeenCalled();
+  });
+
+  it('refuses pharmacy/lab/admin accounts', async () => {
     const { tx, useCase } = setup({ roles: ['PATIENT', 'PHARMACY_STAFF'] });
     await expect(useCase.execute('u1')).rejects.toBeInstanceOf(ForbiddenError);
     expect(tx.user.update).not.toHaveBeenCalled();

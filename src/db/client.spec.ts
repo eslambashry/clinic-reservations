@@ -22,6 +22,7 @@ describe('db/client', () => {
     delete (global as any).prisma;
     let mod: any;
     jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.isolateModules needs a synchronous require
       mod = require('./client');
     });
     return mod;
@@ -46,6 +47,7 @@ describe('db/client', () => {
     (global as any).prisma = existing;
     let mod: any;
     jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.isolateModules needs a synchronous require
       mod = require('./client');
     });
     expect(mod.prisma).toBe(existing);
