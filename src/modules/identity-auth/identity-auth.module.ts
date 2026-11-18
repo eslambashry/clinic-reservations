@@ -5,6 +5,8 @@ import { AuthCoreModule } from '../../shared/core/auth/auth-core.module';
 import { SmsMisrClient } from '../../shared/kernel/sms/sms-misr.client';
 import { IdentityAuthController } from './api/identity-auth.controller';
 import { AcceptLegalUseCase } from './application/accept-legal.use-case';
+import { ConfirmAccountDeletionUseCase } from './application/confirm-account-deletion.use-case';
+import { RequestAccountDeletionOtpUseCase } from './application/request-account-deletion-otp.use-case';
 import { DeleteAccountUseCase } from './application/delete-account.use-case';
 import { LegalController } from './api/legal.controller';
 import { ForgotPasswordUseCase } from './application/forgot-password.use-case';
@@ -83,6 +85,8 @@ import { UserRepository } from './infrastructure/user.repository';
   providers: [
     AcceptLegalUseCase,
     DeleteAccountUseCase,
+    RequestAccountDeletionOtpUseCase,
+    ConfirmAccountDeletionUseCase,
     RequestOtpUseCase,
     VerifyOtpUseCase,
     RefreshTokenUseCase,

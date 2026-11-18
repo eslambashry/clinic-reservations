@@ -4,6 +4,8 @@ import { CurrentUser } from '../../../shared/core/auth/current-user.decorator';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { Public } from '../../../shared/core/auth/public.decorator';
 import { AcceptLegalUseCase } from '../application/accept-legal.use-case';
+import { ConfirmAccountDeletionUseCase } from '../application/confirm-account-deletion.use-case';
+import { RequestAccountDeletionOtpUseCase } from '../application/request-account-deletion-otp.use-case';
 import { DeleteAccountUseCase } from '../application/delete-account.use-case';
 import { ForgotPasswordResult, ForgotPasswordUseCase } from '../application/forgot-password.use-case';
 import { GetCurrentUserResult, GetCurrentUserUseCase } from '../application/get-current-user.use-case';
@@ -19,6 +21,7 @@ import { SwitchContextResult, SwitchContextUseCase } from '../application/switch
 import { UpdateCurrentUserUseCase } from '../application/update-current-user.use-case';
 import { VerifyOtpResult, VerifyOtpUseCase } from '../application/verify-otp.use-case';
 import { VerifyResetCodeResult, VerifyResetCodeUseCase } from '../application/verify-reset-code.use-case';
+import { ConfirmAccountDeletionDto } from './dto/confirm-account-deletion.dto';
 import { AcceptLegalDto } from './dto/accept-legal.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginWithPasswordDto } from './dto/login-with-password.dto';
@@ -63,6 +66,8 @@ export class IdentityAuthController {
     @Inject(UnregisterDeviceUseCase) private readonly unregisterDeviceUseCase: UnregisterDeviceUseCase,
     @Inject(DeleteAccountUseCase) private readonly deleteAccount: DeleteAccountUseCase,
     @Inject(AcceptLegalUseCase) private readonly acceptLegal: AcceptLegalUseCase,
+    @Inject(RequestAccountDeletionOtpUseCase) private readonly requestDeletionOtp: RequestAccountDeletionOtpUseCase,
+    @Inject(ConfirmAccountDeletionUseCase) private readonly confirmDeletion: ConfirmAccountDeletionUseCase,
   ) {}
 
   @Public()
@@ -136,6 +141,21 @@ export class IdentityAuthController {
   @HttpCode(204)
   async deleteMe(@CurrentUser() payload: AccessTokenPayload): Promise<void> {
     await this.deleteAccount.execute(payload.sub);
+  }
+
+  /** Website flow (no app/session): OTP to the account's phone. Never reveals whether the phone has an account. */
+  @Public()
+  @Post('delete-account/otp/request')
+  requestAccountDeletionOtp(@Body() dto: RequestOtpDto, @Req() req: Request): Promise<RequestOtpResult> {
+    return this.requestDeletionOtp.execute({ phone: dto.phone, ip: req.ip });
+  }
+
+  /** Website flow: verifies the OTP, then soft-deletes + anonymises the account (same rules as `DELETE /me`). */
+  @Public()
+  @Post('delete-account/confirm')
+  @HttpCode(204)
+  async confirmAccountDeletion(@Body() dto: ConfirmAccountDeletionDto): Promise<void> {
+    await this.confirmDeletion.execute({ requestId: dto.requestId, code: dto.code });
   }
 
   /** Records acceptance of the Terms of Service + Privacy Policy for the given version. */
