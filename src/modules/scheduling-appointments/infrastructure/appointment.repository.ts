@@ -22,7 +22,7 @@ const WITH_SLOT_TIMES = {
   // what's left for the clinic to collect) — safe to expose on the patient
   // surface unlike `WITH_DOCTOR_VIEW`'s `patient` include, since it is the
   // caller's own money, not another person's identity.
-  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true, refunds: { select: { amount: true, status: true } } } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },
@@ -63,7 +63,7 @@ export type AppointmentWithSlotTimes = Prisma.AppointmentGetPayload<{ include: t
 const WITH_DOCTOR_VIEW = {
   slot: { select: { start_at: true, end_at: true } },
   patient: { select: { id: true, first_name: true, last_name: true, phone: true } },
-  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true } },
+  payment_intent: { select: { method: true, amount: true, full_amount: true, currency: true, refunds: { select: { amount: true, status: true } } } },
   affiliation: {
     select: {
       doctor: { select: { id: true, user: { select: { first_name: true, last_name: true } } } },

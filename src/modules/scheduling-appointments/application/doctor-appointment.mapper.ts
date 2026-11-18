@@ -19,6 +19,14 @@ export interface DoctorAppointmentPayment {
   fullAmount: string;
   paidAmount: string;
   remainingBalance: string;
+  /**
+   * Present only once a refund has completed (a cancelled, paid appointment):
+   * what went back to the patient, and the cancellation fee kept out of
+   * `paidAmount`. The cancel call reports them once; this keeps them readable
+   * afterwards.
+   */
+  refundedAmount?: string;
+  cancellationFee?: string;
 }
 
 /**
@@ -68,7 +76,13 @@ function fullName(user: { first_name: string | null; last_name: string | null })
 }
 
 interface AppointmentPaymentSource {
-  payment_intent: { method: PaymentMethod; amount: { toFixed(digits: number): string }; full_amount: { toFixed(digits: number): string } | null; currency: string } | null;
+  payment_intent: {
+    method: PaymentMethod;
+    amount: { toFixed(digits: number): string };
+    full_amount: { toFixed(digits: number): string } | null;
+    currency: string;
+    refunds?: { amount: { toFixed(digits: number): string }; status: string }[];
+  } | null;
   remaining_balance: { toFixed(digits: number): string } | null;
 }
 
@@ -83,6 +97,7 @@ export function toAppointmentPayment(appointment: AppointmentPaymentSource): Doc
   }
 
   const paidAmount = intent.amount.toFixed(2);
+  const refund = summarizeRefund(intent.amount, intent.refunds);
   // `full_amount` is null on intents created before partial payments existed,
   // where `amount` was always the whole fee.
   const fullAmount = (intent.full_amount ?? intent.amount).toFixed(2);
@@ -92,6 +107,23 @@ export function toAppointmentPayment(appointment: AppointmentPaymentSource): Doc
     fullAmount,
     paidAmount,
     remainingBalance: appointment.remaining_balance?.toFixed(2) ?? computeRemainingBalance(fullAmount, paidAmount),
+    ...refund,
+  };
+}
+
+/** Sums the completed refunds on an intent; the fee kept is what was paid minus what went back. `{}` when nothing was refunded. */
+function summarizeRefund(
+  paid: { toFixed(digits: number): string },
+  refunds: { amount: { toFixed(digits: number): string }; status: string }[] | undefined,
+): { refundedAmount?: string; cancellationFee?: string } {
+  const completed = (refunds ?? []).filter((refund) => refund.status === 'COMPLETED');
+  if (completed.length === 0) return {};
+  // Cents, so the sum and the difference stay exact.
+  const refundedCents = completed.reduce((total, refund) => total + Math.round(Number(refund.amount.toFixed(2)) * 100), 0);
+  const paidCents = Math.round(Number(paid.toFixed(2)) * 100);
+  return {
+    refundedAmount: (refundedCents / 100).toFixed(2),
+    cancellationFee: (Math.max(paidCents - refundedCents, 0) / 100).toFixed(2),
   };
 }
 

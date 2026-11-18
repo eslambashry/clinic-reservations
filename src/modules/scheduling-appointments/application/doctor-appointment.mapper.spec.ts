@@ -72,6 +72,33 @@ describe('toDoctorAppointmentSummary payment', () => {
     expect(summary.payment).toMatchObject({ fullAmount: '300.00', paidAmount: '300.00', remainingBalance: '0.00' });
   });
 
+  it('exposes what was refunded and the cancellation fee kept once a refund has completed', () => {
+    // 500 fee, 50 paid, 10% cancellation fee -> 45 back, 5 kept.
+    const summary = toDoctorAppointmentSummary(
+      row({
+        status: 'CANCELLED',
+        payment_intent: {
+          ...intent('FAWRY', '50', '500'),
+          refunds: [{ amount: new Prisma.Decimal('45'), status: 'COMPLETED' }],
+        },
+      }),
+    );
+
+    expect(summary.payment).toMatchObject({ paidAmount: '50.00', refundedAmount: '45.00', cancellationFee: '5.00' });
+  });
+
+  it('reports no refund fields when nothing was refunded or the refund has not completed', () => {
+    const noRefunds = toDoctorAppointmentSummary(row({ payment_intent: { ...intent('FAWRY', '50', '500'), refunds: [] } }));
+    const pending = toDoctorAppointmentSummary(
+      row({
+        payment_intent: { ...intent('FAWRY', '50', '500'), refunds: [{ amount: new Prisma.Decimal('45'), status: 'REQUESTED' }] },
+      }),
+    );
+
+    expect(noRefunds.payment).not.toHaveProperty('refundedAmount');
+    expect(pending.payment).not.toHaveProperty('refundedAmount');
+  });
+
   it('is null when no payment intent is on record', () => {
     expect(toDoctorAppointmentSummary(row()).payment).toBeNull();
   });

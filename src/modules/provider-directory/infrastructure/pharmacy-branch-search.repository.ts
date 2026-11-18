@@ -83,7 +83,9 @@ export class PharmacyBranchSearchRepository {
       );
     }
     if (params.deliveryCapable !== undefined) {
-      whereParts.push(Prisma.sql`pb.delivery_capable = ${params.deliveryCapable}`);
+      whereParts.push(// Explicit cast: the bound parameter reaches Postgres untyped, and
+      // `boolean = text` has no operator (every deliveryCapable search was a 500).
+      Prisma.sql`pb.delivery_capable = ${params.deliveryCapable}::boolean`);
     }
     if (hasLocation) {
       whereParts.push(Prisma.sql`ST_DWithin(
