@@ -47,7 +47,7 @@ Database: Neon Postgres. `DATABASE_URL` (pooled, PgBouncer, `sslmode=require`) i
 
 | Status | Modules |
 |---|---|
-| **MVP** | identity-auth, provider-directory, scheduling-appointments, prescriptions (patient-uploaded only), pharmacy-fulfillment, payments (pay-at-clinic only), notifications (transactional/informational tiers only), audit, delivery (pickup-first tracking only), laboratory (2026-09-02, File 12 Part 47 — no auth bridge yet for `medsuper-laboratory-dashboard`, see that Part), reviews (2026-11-16 — doctor reviews only, see `src/modules/reviews/README.md`) |
+| **MVP** | identity-auth, provider-directory, scheduling-appointments, prescriptions (patient-uploaded only), pharmacy-fulfillment, payments (pay-at-clinic only), notifications (transactional/informational tiers only), audit, delivery (pickup-first tracking only), laboratory (2026-09-02, File 12 Part 47 — no auth bridge yet for `medsuper-laboratory-dashboard`, see that Part), reviews (2026-11-16 — doctor reviews only, see `src/modules/reviews/README.md`), doctor-requests (2026-11-20 — patient requests to add a doctor not on the platform, see `src/modules/doctor-requests/README.md`) |
 | **POSTPONE** | encounter-emr, fraud, analytics, family-accounts |
 
 POSTPONE modules have a schema in `prisma/schema/postponed.prisma` for forward-compatibility but no logic should be built for them without an explicit product decision to un-postpone.

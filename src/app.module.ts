@@ -7,6 +7,7 @@ import { PharmacyFulfillmentModule } from './modules/pharmacy-fulfillment/pharma
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import { ProviderDirectoryModule } from './modules/provider-directory/provider-directory.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { DoctorRequestsModule } from './modules/doctor-requests/doctor-requests.module';
 import { SchedulingAppointmentsModule } from './modules/scheduling-appointments/scheduling-appointments.module';
 import { AppConfigModule } from './shared/config/config.module';
 import { CoreModule } from './shared/core/core.module';
@@ -43,6 +44,7 @@ import { WebhookEventModule } from './shared/core/webhooks/webhook-event.module'
     LaboratoryModule,
     NotificationsModule,
     ReviewsModule,
+    DoctorRequestsModule,
   ],
 })
 export class AppModule {}

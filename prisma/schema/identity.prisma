@@ -46,6 +46,7 @@ model User {
   pharmacy_orders_created          PharmacyOrder[]                  @relation("PharmacyOrderCreatedBy")
   provider_verifications_reviewed ProviderVerificationDocument[] @relation("ReviewedByAdmin")
   reviews                         Review[]
+  doctor_requests                 DoctorRequest[]
   substitutions_proposed          Substitution[]
   wallet                          Wallet?
 

@@ -216,6 +216,9 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   LAB_ORDER_NOT_REJECTABLE: 'انتهت المهلة التي يمكن فيها رفض هذا الطلب.',
   REVIEW_ALREADY_EXISTS: 'لقد قيّمت هذا الموعد من قبل.',
   APPOINTMENT_NOT_REVIEWABLE: 'يمكنك تقييم الدكتور بعد انتهاء الكشف فقط.',
+  DOCTOR_REQUEST_EMPTY: 'أدخل معلومة واحدة على الأقل عن الدكتور.',
+  DOCTOR_REQUEST_LIMIT_REACHED: 'لديك طلبات مفتوحة كثيرة. انتظر مراجعتها قبل إرسال طلب جديد.',
+  DOCTOR_REQUEST_INVALID_TRANSITION: 'لا يمكن تغيير حالة هذا الطلب.',
 };
 
 /**
