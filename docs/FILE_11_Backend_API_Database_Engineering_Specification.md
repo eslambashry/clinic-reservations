@@ -85,7 +85,7 @@ Format: **Module** — MVP/POSTPONE — one-line purpose, key entities (REF Part
 | Delivery | **MVP-lite** (pickup-first tracking only; courier assignment = POSTPONE, File 10 §6.5) | Track pharmacy-arranged delivery | `delivery_orders` | No `delivery_order` is created before its `pharmacy_order` reaches `PREPARING`+ (File 10 §6.4) | Pharmacy Fulfillment | `DeliveryStatusChanged` |
 | Audit | **MVP** | Append-only compliance log | `audit_logs` | Written in the *same* transaction as the business action, never async-only (File 10 §2.2) | all modules | none (terminal sink) |
 | Laboratory | **POSTPONE** (Phase 3, File 10 §1) | — | — | — | — | — |
-| Reviews | **POSTPONE** (Phase 2) | — | — | — | — | — |
+| Reviews | **MVP (doctors only, 2026-11-16 — see File 12 addendum)** | Patient rates the doctor after a COMPLETED appointment | `reviews` | One review per appointment; only when `appointments.status = COMPLETED`; hidden reviews excluded from `doctors.rating_*` | Appointments, Provider Directory | `DoctorReviewed` |
 | Fraud/Risk (automated) | **POSTPONE** (Phase 2) | — | — | — | — | — |
 | Analytics | **POSTPONE** (Phase 3) | — | — | — | — | — |
 | Admin/Policy Config | **MVP** (minimal) | Commission rate, cancellation tiers as data | `policy_configs` | Rate/tier changes apply to *new* transactions only, never retroactively | Identity (admin role) | `PolicyConfigChanged` |
@@ -222,7 +222,7 @@ Base conventions are **REF File 10 §2.2** (versioning `/v1`, error envelope sha
 Full contract set deferred to the Phase 3 Laboratory specification (File 10 §1). Placeholder module exists in Part 03 for data-model forward-compatibility only.
 
 ### 05.12 Reviews — **FUTURE**
-Deferred to Phase 2 (File 10 §1.2 / DEC-017). No contract specified here.
+Un-postponed for doctors only on 2026-11-16 — contract in File 12 "Doctor reviews un-postponed" addendum (anchored on `appointment_id`, not `encounter_id`). Clinics/pharmacies/labs still deferred (File 10 §1.2 / DEC-017).
 
 ---
 

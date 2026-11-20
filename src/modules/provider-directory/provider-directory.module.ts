@@ -34,6 +34,8 @@ import { GetDoctorUseCase } from './application/get-doctor.use-case';
 import { GetMyDoctorRegistrationStatusUseCase } from './application/get-my-doctor-registration-status.use-case';
 import { GetMyDoctorProfileUseCase } from './application/get-my-doctor-profile.use-case';
 import { GetPharmacyBranchUseCase } from './application/get-pharmacy-branch.use-case';
+import { AssertDoctorVisibleUseCase } from './application/assert-doctor-visible.use-case';
+import { RecomputeDoctorRatingUseCase } from './application/recompute-doctor-rating.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from './application/list-assistant-user-ids-for-branch.use-case';
 import { GetPharmacyUseCase } from './application/get-pharmacy.use-case';
 import { ListAssistantsUseCase } from './application/list-assistants.use-case';
@@ -203,6 +205,8 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     UpdateMyClinicBranchUseCase,
     UpdateMyAffiliationUseCase,
     ListAssistantUserIdsForBranchUseCase,
+    RecomputeDoctorRatingUseCase,
+    AssertDoctorVisibleUseCase,
     ManageAddressUseCase,
   ],
   exports: [
@@ -221,6 +225,9 @@ import { ScheduleTemplateRepository } from '../scheduling-appointments/infrastru
     // `lab_branches` and needs to write the address behind one inside its
     // own transaction — this is that application-layer seam (File 12 Part 05).
     ManageAddressUseCase,
+    // `reviews` recomputes `doctors.rating_*` through this, never directly.
+    RecomputeDoctorRatingUseCase,
+    AssertDoctorVisibleUseCase,
   ],
 })
 export class ProviderDirectoryModule {}

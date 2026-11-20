@@ -47,6 +47,16 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       data: { appointmentId: p.appointmentId },
     }),
   },
+  DoctorReviewed: {
+    tier: 'INFORMATIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.doctorUserId,
+    render: (p) => ({
+      title: 'تقييم جديد',
+      body: `حصلت على تقييم جديد: ${p.rating} من 5.`,
+      data: { reviewId: p.reviewId },
+    }),
+  },
   AppointmentCancelled: {
     tier: 'TRANSACTIONAL',
     channels: ['PUSH'],
@@ -349,6 +359,39 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
       body: 'وصل طلب جديد إلى فرعك. راجع الطلب داخل لوحة التحكم.',
       data: { pharmacyOrderId: p.pharmacyOrderId },
     }),
+  },
+  NewDoctorRequestForAdmin: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.adminUserId,
+    render: (p) => {
+      const doctorName = typeof p.doctorName === 'string' && p.doctorName.trim() !== '' ? p.doctorName.trim() : null;
+      const clinicName = typeof p.clinicName === 'string' && p.clinicName.trim() !== '' ? p.clinicName.trim() : null;
+      const subject = doctorName ?? clinicName;
+      return {
+        title: 'طلب إضافة دكتور جديد',
+        body: subject
+          ? `طلب مريض إضافة "${subject}" إلى المنصة، وبانتظار مراجعتك.`
+          : 'طلب مريض إضافة دكتور جديد إلى المنصة، وبانتظار مراجعتك.',
+        data: { doctorRequestId: p.doctorRequestId, doctorName, clinicName, specialty: p.specialty ?? null },
+      };
+    },
+  },
+  DoctorRequestStatusChanged: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.patientId,
+    render: (p) => {
+      const text =
+        p.status === 'DOCTOR_ADDED'
+          ? { title: 'تمت إضافة الدكتور', body: 'تمت إضافة الدكتور الذي طلبته إلى المنصة، يمكنك الآن البحث عنه وحجز موعد.' }
+          : p.status === 'REJECTED'
+            ? { title: 'تعذّر إضافة الدكتور', body: 'تعذّر إضافة الدكتور الذي طلبته. افتح التطبيق لمراجعة التفاصيل.' }
+            : p.status === 'IN_REVIEW'
+              ? { title: 'طلبك قيد المراجعة', body: 'بدأنا مراجعة طلب إضافة الدكتور.' }
+              : { title: 'تحديث على طلبك', body: 'تغيّرت حالة طلب إضافة الدكتور. افتح التطبيق لمراجعتها.' };
+      return { ...text, data: { doctorRequestId: p.doctorRequestId, status: p.status } };
+    },
   },
   NewProviderRegistrationForAdmin: {
     tier: 'TRANSACTIONAL',

@@ -1,0 +1,34 @@
+/// A patient's request to onboard a doctor who is not on the platform yet.
+/// Every detail field is optional (the patient may only know a name or a
+/// clinic); the use-case requires at least one. Reviewed by Admin, who moves
+/// `status` PENDING -> IN_REVIEW -> DOCTOR_ADDED | REJECTED and may leave an
+/// `admin_note` the patient can read.
+model DoctorRequest {
+  id           String              @id @default(uuid()) @db.Uuid
+  patient_id   String              @db.Uuid
+  doctor_name  String?
+  clinic_name  String?
+  location     String?
+  specialty    String?
+  contact_phone String?
+  notes        String?
+  status       DoctorRequestStatus @default(PENDING)
+  admin_note   String?
+  created_at   DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime            @updatedAt @db.Timestamptz(6)
+  version      Int                 @default(1)
+  patient      User                @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+
+  @@index([patient_id, created_at])
+  @@index([status, created_at])
+  @@map("doctor_requests")
+}
+
+enum DoctorRequestStatus {
+  PENDING
+  IN_REVIEW
+  DOCTOR_ADDED
+  REJECTED
+
+  @@map("doctor_requests_status_enum")
+}
