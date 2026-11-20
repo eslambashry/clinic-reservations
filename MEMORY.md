@@ -90,7 +90,7 @@ src/
       <module-name>.module.ts
 
 prisma/
-  schema/*.prisma            # One file per bounded context (identity, provider-directory, scheduling, prescriptions, pharmacy, laboratory, payments, notifications, audit, shared, postponed)
+  schema/*.prisma            # One file per bounded context (identity, provider-directory, scheduling, prescriptions, pharmacy, laboratory, doctor-requests, payments, notifications, audit, shared, postponed)
 
 docs/
   FILE_10_..., FILE_11_..., FILE_12_...   # Spec / decisions / conventions (see §1)
