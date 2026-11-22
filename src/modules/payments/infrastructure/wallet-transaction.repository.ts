@@ -41,10 +41,18 @@ export class WalletTransactionRepository {
   }
 
   /** Sum of this wallet's top-ups (PENDING + COMPLETED, i.e. not failed) created at/after `since` - the rolling daily-limit input. */
-  async sumTopUpsSince(db: Prisma.TransactionClient, walletId: string, since: Date): Promise<Prisma.Decimal> {
+  async sumTopUpsSince(db: Prisma.TransactionClient, walletId: string, since: Date, pendingNotBefore?: Date): Promise<Prisma.Decimal> {
+    // `pendingNotBefore`: a PENDING top-up created before it is abandoned (payment window long over) and no longer counts.
     const result = await db.walletTransaction.aggregate({
       _sum: { amount: true },
-      where: { wallet_id: walletId, type: 'TOP_UP', status: { in: ['PENDING', 'COMPLETED'] }, created_at: { gte: since } },
+      where: {
+        wallet_id: walletId,
+        type: 'TOP_UP',
+        created_at: { gte: since },
+        ...(pendingNotBefore
+          ? { OR: [{ status: 'COMPLETED' as const }, { status: 'PENDING' as const, created_at: { gte: pendingNotBefore > since ? pendingNotBefore : since } }] }
+          : { status: { in: ['PENDING', 'COMPLETED'] as ('PENDING' | 'COMPLETED')[] } }),
+      },
     });
     return result._sum.amount ?? new Prisma.Decimal(0);
   }

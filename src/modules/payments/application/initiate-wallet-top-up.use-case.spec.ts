@@ -92,4 +92,12 @@ describe('InitiateWalletTopUpUseCase', () => {
     walletTransactions.sumTopUpsSince.mockResolvedValue('9000.00');
     await expect(useCase.execute({ userId: 'u1', amount: '1000.00', customer })).resolves.toMatchObject({ paymentIntentId: 'pi-1' });
   });
+
+  it('excludes abandoned PENDING top-ups (older than the payment window) from the daily total', async () => {
+    const { useCase, walletTransactions } = setup();
+    await useCase.execute({ userId: 'u1', amount: '100.00', customer });
+    const [, , , pendingNotBefore] = walletTransactions.sumTopUpsSince.mock.calls[0];
+    expect(pendingNotBefore).toBeInstanceOf(Date);
+    expect(Date.now() - pendingNotBefore.getTime()).toBeLessThan(16 * 60 * 1000);
+  });
 });

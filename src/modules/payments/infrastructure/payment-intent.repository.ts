@@ -86,4 +86,27 @@ export class PaymentIntentRepository {
     });
     return result.count === 1;
   }
+
+  /**
+   * Reconciliation/cleanup finder: online `CARD` intents still `CREATED`, older than `olderThan`
+   * (and newer than `newerThan` when given), with their latest attempt. `requireInitiatedAttempt`
+   * limits it to intents that still have an unresolved (INITIATED) attempt.
+   */
+  findStalePendingOnline(
+    db: Prisma.TransactionClient,
+    params: { payableTypes: PayableType[]; olderThan: Date; newerThan?: Date; requireInitiatedAttempt: boolean; limit: number },
+  ) {
+    return db.paymentIntent.findMany({
+      where: {
+        status: 'CREATED',
+        method: 'CARD',
+        payable_type: { in: params.payableTypes },
+        created_at: { lt: params.olderThan, ...(params.newerThan ? { gte: params.newerThan } : {}) },
+        ...(params.requireInitiatedAttempt ? { payment_attempts: { some: { status: 'INITIATED' } } } : {}),
+      },
+      include: { payment_attempts: { orderBy: { created_at: 'desc' }, take: 1 } },
+      orderBy: { created_at: 'asc' },
+      take: params.limit,
+    });
+  }
 }

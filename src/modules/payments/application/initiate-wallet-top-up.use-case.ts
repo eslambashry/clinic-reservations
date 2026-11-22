@@ -65,7 +65,9 @@ export class InitiateWalletTopUpUseCase {
         });
       }
       const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const alreadyToday = Number(await this.walletTransactions.sumTopUpsSince(tx, wallet.id, since));
+      // A PENDING top-up older than the payment window is abandoned and must not eat the daily limit.
+      const pendingNotBefore = new Date(Date.now() - PAYMENT_CONSTANTS.WALLET_TOPUP_WINDOW_MINUTES * 60 * 1000);
+      const alreadyToday = Number(await this.walletTransactions.sumTopUpsSince(tx, wallet.id, since, pendingNotBefore));
       if (alreadyToday + requested > PAYMENT_CONSTANTS.TOPUP_MAX_DAILY) {
         throw new DomainError(422, 'TOPUP_DAILY_LIMIT_EXCEEDED', `تجاوزت الحد الأقصى اليومي للشحن (${PAYMENT_CONSTANTS.TOPUP_MAX_DAILY} ${fee.currency}).`, {
           maxDaily: PAYMENT_CONSTANTS.TOPUP_MAX_DAILY.toFixed(2),

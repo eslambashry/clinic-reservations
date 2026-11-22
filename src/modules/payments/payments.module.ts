@@ -22,6 +22,8 @@ import { FAWRY_GATEWAY } from './application/ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY } from './application/ports/payment-gateway.port';
 import { ProcessCancellationRefundUseCase } from './application/process-cancellation-refund.use-case';
 import { ProcessWalletTopUpUseCase } from './application/process-wallet-top-up.use-case';
+import { FindStalePendingOnlinePaymentsUseCase } from './application/find-stale-pending-online-payments.use-case';
+import { ExpireStaleWalletTopUpUseCase } from './application/expire-stale-wallet-top-up.use-case';
 import { AdminWithdrawalsUseCase } from './application/admin-withdrawals.use-case';
 import { ManageMyWithdrawalsUseCase } from './application/manage-my-withdrawals.use-case';
 import { RequestWithdrawalUseCase } from './application/request-withdrawal.use-case';
@@ -96,6 +98,8 @@ import { AuditModule } from '../audit/audit.module';
     CaptureInternalWalletPaymentUseCase,
     ProcessWalletTopUpUseCase,
     CancelOnlinePaymentIntentUseCase,
+    FindStalePendingOnlinePaymentsUseCase,
+    ExpireStaleWalletTopUpUseCase,
     InitiateWalletTopUpUseCase,
     GetWalletUseCase,
     ListWalletTransactionsUseCase,
@@ -122,6 +126,8 @@ import { AuditModule } from '../audit/audit.module';
     CaptureInternalWalletPaymentUseCase,
     ProcessWalletTopUpUseCase,
     CancelOnlinePaymentIntentUseCase,
+    FindStalePendingOnlinePaymentsUseCase,
+    ExpireStaleWalletTopUpUseCase,
   ],
 })
 export class PaymentsModule {}
