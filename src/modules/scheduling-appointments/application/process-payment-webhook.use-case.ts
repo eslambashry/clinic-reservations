@@ -8,7 +8,8 @@ import { MarkOnlinePaymentFailedUseCase } from '../../payments/application/mark-
 import { FAWRY_GATEWAY, FawryGatewayPort } from '../../payments/application/ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY, PaymentGatewayPort } from '../../payments/application/ports/payment-gateway.port';
 import { ProcessWalletTopUpUseCase } from '../../payments/application/process-wallet-top-up.use-case';
-import { computeRemainingBalance } from '../../payments/domain/payment-money.rules';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { computeRemainingBalance } from '../../payments/domain/payment-money.rules';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
 import { WebhookEventRepository } from '../../../shared/core/webhooks/webhook-event.repository';
@@ -116,9 +117,19 @@ export class ProcessPaymentWebhookUseCase {
         return { handled: true };
       }
 
-      const payment = await this.findPayment.execute(tx, event.gatewayReference, input.provider === 'fawry' ? 'fawry' : 'paymob');
+      const payment = await this.findPayment.execute(tx, event.gatewayReference, 'paymob');
       if (!payment) {
         this.logger.warn({ gatewayReference: event.gatewayReference }, 'Payment webhook referenced an unknown attempt');
+        return { handled: false };
+      }
+
+      // Hardening: a SUCCESS event must collect exactly what the intent asked for, in the same currency.
+      // Anything else is never credited/confirmed - logged for manual review (the delivery stays recorded so it is not retried).
+      if (event.success && !this.collectedMatchesIntent(event, payment)) {
+        this.logger.error(
+          { paymentIntentId: payment.paymentIntentId, expectedAmount: payment.amount, expectedCurrency: payment.currency, gotAmountCents: event.amountCents, gotCurrency: event.currency },
+          'Payment webhook amount/currency does not match the payment intent - NOT processed, needs manual review',
+        );
         return { handled: false };
       }
 
@@ -196,11 +207,10 @@ export class ProcessPaymentWebhookUseCase {
         throw new Error(`Failed to book slot ${slot.id} for converted hold ${hold.id}`);
       }
 
-      const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
+      // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+      // const billing = await this.affiliationBilling.execute(tx, slot.doctor_clinic_affiliation_id);
       await this.captureOnlinePayment.execute(tx, {
         paymentIntentId: payment.paymentIntentId,
-        providerType: 'DOCTOR',
-        providerId: billing.doctorId,
       });
 
       const appointment = await this.appointments.create(tx, {
@@ -212,7 +222,7 @@ export class ProcessPaymentWebhookUseCase {
         paymentIntentId: payment.paymentIntentId,
         // From the intent stored at initiate time (validated then) — never
         // the client, never today's fee. `null` full_amount = paid in full.
-        remainingBalance: payment.fullAmount ? computeRemainingBalance(payment.fullAmount, payment.amount) : undefined,
+        // remainingBalance: payment.fullAmount ? computeRemainingBalance(payment.fullAmount, payment.amount) : undefined, (partial payment disabled)
       });
 
       await this.audit.record(tx, {
@@ -236,9 +246,21 @@ export class ProcessPaymentWebhookUseCase {
     if (provider === 'paymob') {
       return this.paymobGateway;
     }
-    if (provider === 'fawry') {
-      return this.fawryGateway;
-    }
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // if (provider === 'fawry') {
+    //   return this.fawryGateway;
+    // }
     return null;
+  }
+
+  /** Compares what the gateway reports it collected to the intent (money compared in minor units, currency case-insensitively). */
+  private collectedMatchesIntent(
+    event: { amountCents?: number; currency?: string },
+    payment: { amount: string; currency: string },
+  ): boolean {
+    if (event.amountCents === undefined || event.currency === undefined) {
+      return false;
+    }
+    return event.amountCents === Math.round(Number(payment.amount) * 100) && event.currency.toUpperCase() === payment.currency.toUpperCase();
   }
 }

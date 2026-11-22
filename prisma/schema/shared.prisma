@@ -322,6 +322,10 @@ enum WalletTransactionType {
   TOP_UP
   APPOINTMENT_PAYMENT
   REFUND
+  /// Manual withdrawal request: balance debited immediately on request.
+  WITHDRAWAL
+  /// Credit returning a rejected/cancelled withdrawal request to the wallet.
+  WITHDRAWAL_REFUND
 
   @@map("wallet_transactions_type_enum")
 }
@@ -425,6 +429,8 @@ enum PolicyType {
   /// `{ "minAmount": "50.00" }` — smallest online appointment payment
   /// allowed (capped at the consult fee itself for cheaper doctors).
   MIN_APPOINTMENT_PAYMENT
+  /// `{ "amount": "12.00" }` - the flat service fee a patient pays per booking.
+  SERVICE_FEE
 
   @@map("policy_configs_policy_type_enum")
 }

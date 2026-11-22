@@ -61,9 +61,14 @@ export class DeleteAccountUseCase {
           );
         }
 
+        // Allowed once the balance is zero. A PENDING withdrawal has already been debited, but its money is still owed to the patient.
         const wallet = await tx.wallet.findUnique({ where: { user_id: userId }, select: { balance: true } });
         if (wallet && wallet.balance.gt(0)) {
-          throw new ConflictError('ACCOUNT_HAS_WALLET_BALANCE', 'لديك رصيد في المحفظة. يرجى استرداده أو استخدامه قبل حذف الحساب.');
+          throw new ConflictError('ACCOUNT_HAS_WALLET_BALANCE', 'لديك رصيد في المحفظة. اسحب رصيدك أولًا ثم احذف الحساب.');
+        }
+        const pendingWithdrawals = await tx.withdrawalRequest.count({ where: { patient_user_id: userId, status: 'PENDING' } });
+        if (pendingWithdrawals > 0) {
+          throw new ConflictError('ACCOUNT_HAS_PENDING_WITHDRAWAL', 'لديك طلب سحب قيد المراجعة. انتظر تنفيذه أو ألغه قبل حذف الحساب.');
         }
 
         const now = new Date();

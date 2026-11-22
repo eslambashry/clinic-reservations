@@ -196,6 +196,17 @@ async function main() {
     );
   }
 
+  // Flat service fee a patient pays per booking (admin-editable via PUT policy-configs).
+  const existingServiceFee = await prisma.policyConfig.findFirst({
+    where: { region_code: DEFAULT_REGION, policy_type: 'SERVICE_FEE' },
+  });
+  if (!existingServiceFee) {
+    await prisma.policyConfig.create({
+      data: { region_code: DEFAULT_REGION, policy_type: 'SERVICE_FEE', value: { amount: '12.00' } },
+    });
+    console.log('Seeded policy config: SERVICE_FEE = 12.00');
+  }
+
   // Seed baseline + demo-data specialties (File 10 §3.3: specialties are
   // static reference data). The original four are the load-bearing baseline
   // the test doctor below depends on; the rest exist so the doctor roster

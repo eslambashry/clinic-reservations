@@ -118,6 +118,8 @@ export class PaymobPaymentGatewayAdapter implements PaymentGatewayPort {
       gatewayTransactionId: String(obj.id),
       success: obj.success === true && obj.error_occured !== true,
       failureCode: obj.success === true ? undefined : ((obj.data?.txn_response_code as string) ?? 'GATEWAY_DECLINED'),
+      amountCents: obj.amount_cents === undefined || obj.amount_cents === null ? undefined : Number(obj.amount_cents),
+      currency: typeof obj.currency === 'string' ? obj.currency : undefined,
     };
   }
 

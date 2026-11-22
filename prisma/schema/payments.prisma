@@ -86,6 +86,7 @@ model Wallet {
   version      Int                 @default(1)
   user         User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   transactions WalletTransaction[]
+  withdrawal_requests WithdrawalRequest[]
 
   @@map("wallets")
 }
@@ -111,6 +112,7 @@ model WalletTransaction {
   /// paid for/refunded (same polymorphic-reference convention as
   /// `PaymentIntent.payable_id` — File 12 Part 05: no cross-module FK).
   appointment_id     String?                 @db.Uuid
+  withdrawal_request_id String?              @db.Uuid
   /// Idempotency for top-up funding callbacks (File 11 Part 11: "client
   /// retries a wallet top-up request" must be a safe no-op) — set to the
   /// funding `PaymentIntent.idempotency_key` for `TOP_UP` rows.
@@ -121,6 +123,7 @@ model WalletTransaction {
   version            Int                     @default(1)
   wallet             Wallet                  @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
   payment_intent     PaymentIntent?          @relation(fields: [payment_intent_id], references: [id])
+  withdrawal_request WithdrawalRequest?      @relation(fields: [withdrawal_request_id], references: [id])
 
   @@index([wallet_id, created_at])
   @@map("wallet_transactions")
@@ -168,4 +171,51 @@ model ProviderLedgerEntry {
   related_payment_intent    PaymentIntent?  @relation(fields: [related_payment_intent_id], references: [id])
 
   @@map("provider_ledger_entries")
+}
+
+enum WithdrawalStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+  CANCELLED
+
+  @@map("withdrawal_requests_status_enum")
+}
+
+enum WithdrawalPayoutMethod {
+  IBAN
+  WALLET_NUMBER
+
+  @@map("withdrawal_requests_payout_method_enum")
+}
+
+/// Manual wallet withdrawal. The amount is debited from the wallet when the
+/// request is created (WalletTransaction WITHDRAWAL) and only returned
+/// (WITHDRAWAL_REFUND) on reject/cancel. At most one PENDING request per
+/// patient - enforced by a hand-written partial unique index (see migration).
+model WithdrawalRequest {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  patient_user_id      String                 @db.Uuid
+  wallet_id            String                 @db.Uuid
+  amount               Decimal                @db.Decimal(10, 2)
+  status               WithdrawalStatus       @default(PENDING)
+  account_holder_name  String
+  payout_method        WithdrawalPayoutMethod
+  payout_account       String
+  proof_file_url       String?
+  reject_reason        String?
+  processed_by_user_id String?                @db.Uuid
+  processed_at         DateTime?              @db.Timestamptz(6)
+  cancelled_at         DateTime?              @db.Timestamptz(6)
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @updatedAt @db.Timestamptz(6)
+  version              Int                    @default(1)
+  patient              User                   @relation("WithdrawalPatient", fields: [patient_user_id], references: [id])
+  processed_by         User?                  @relation("WithdrawalProcessedBy", fields: [processed_by_user_id], references: [id])
+  wallet               Wallet                 @relation(fields: [wallet_id], references: [id])
+  wallet_transactions  WalletTransaction[]
+
+  @@index([status, created_at])
+  @@index([patient_user_id, created_at])
+  @@map("withdrawal_requests")
 }

@@ -18,16 +18,17 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { onlinePaymentHoldExpiresAt } from '../domain/appointment-lifecycle.rules';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
-import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
+import { ServiceFeeReader } from '../../../shared/kernel/policy-config/service-fee.reader';
 
 export interface InitiateOnlineAppointmentPaymentInput {
   method: OnlinePaymentMethod;
   customer: PaymentPhoneInfo;
   billingData?: PaymentBillingInfo;
-  /** Optional partial amount (>= configured minimum, <= consult fee). Omitted = pay in full. Validated server-side against the real fee. */
-  paymentAmount?: string;
-  /** `MOBILE_WALLET` only: the wallet-linked number Fawry sends the Request-to-Pay to. (`walletProvider` is deprecated and ignored — File 12 Part 55.) */
-  walletMobileNumber?: string;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // paymentAmount?: string; (partial payment disabled)
+  // walletMobileNumber?: string; (MOBILE_WALLET/Fawry disabled)
 }
 
 export interface InitiateOnlineAppointmentPaymentResult {
@@ -76,7 +77,9 @@ export class InitiateOnlineAppointmentPaymentUseCase {
     @Inject(InitiateOnlinePaymentUseCase) private readonly initiatePayment: InitiateOnlinePaymentUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
-    @Inject(ResolveAppointmentPaymentAmountUseCase) private readonly resolvePaymentAmount: ResolveAppointmentPaymentAmountUseCase,
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // @Inject(ResolveAppointmentPaymentAmountUseCase) private readonly resolvePaymentAmount: ResolveAppointmentPaymentAmountUseCase,
+    @Inject(ServiceFeeReader) private readonly serviceFeeReader: ServiceFeeReader,
   ) {}
 
   async execute(
@@ -124,10 +127,10 @@ export class InitiateOnlineAppointmentPaymentUseCase {
       // Server-side validation against the real fee; the gateway only ever
       // sees `paymentAmount`. On a retry `prepare()` keeps the stored
       // intent's amount regardless of what is sent again.
-      const resolved = await this.resolvePaymentAmount.execute(tx, {
-        requestedAmount: input.paymentAmount,
-        consultFee: billing.consultFee,
-      });
+      // Fee-only: charge exactly the service fee snapshotted on the hold (legacy holds fall back to the current policy).
+      const serviceFee = hold.service_fee ? Number(hold.service_fee).toFixed(2) : (await this.serviceFeeReader.get(tx)).amount;
+      // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+      // const resolved = await this.resolvePaymentAmount.execute(tx, { requestedAmount: input.paymentAmount, consultFee: billing.consultFee });
 
       // Fawry checkout (FAWRY and MOBILE_WALLET) collects only the patient's
       // phone. Names and email are never forwarded to Fawry, even if an older
@@ -151,13 +154,13 @@ export class InitiateOnlineAppointmentPaymentUseCase {
         payerUserId: actor.sub,
         payableType: 'APPOINTMENT',
         payableId: appointmentId,
-        amount: resolved.paymentAmount,
-        fullAmount: resolved.fullAmount,
+        amount: serviceFee,
+        // fullAmount: resolved.fullAmount, (partial payment disabled)
         currency: billing.currency,
         method: input.method,
         idempotencyKey: `hold:${hold.id}`,
         customer,
-        walletMobileNumber: input.method === 'MOBILE_WALLET' ? input.walletMobileNumber : undefined,
+        // walletMobileNumber: input.method === 'MOBILE_WALLET' ? input.walletMobileNumber : undefined, (disabled)
         existingPaymentIntentId: hold.payment_intent_id ?? undefined,
         expiresAt,
       });

@@ -28,6 +28,11 @@ export const APPOINTMENT_CONSTANTS = {
  */
 export const PAYMENT_CONSTANTS = {
   WALLET_TOPUP_WINDOW_MINUTES: 15,
+  /** Wallet top-up limits (EGP). Minimum is the current SERVICE_FEE policy, not a constant. */
+  TOPUP_MAX_PER_OPERATION: 5000,
+  TOPUP_MAX_DAILY: 10000,
+  /** Minimum withdrawal = service fee x this multiplier (plan: x1, change here). */
+  WITHDRAWAL_MIN_FEE_MULTIPLIER: 1,
 } as const;
 
 /**

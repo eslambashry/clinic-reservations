@@ -32,6 +32,19 @@ export class PaymentIntentRepository {
     });
   }
 
+  /** Service fees collected: captured (not refunded) APPOINTMENT intents in the range. */
+  async sumCapturedAppointmentFees(db: Prisma.TransactionClient, range: { from?: Date; to?: Date }): Promise<Prisma.Decimal> {
+    const result = await db.paymentIntent.aggregate({
+      _sum: { amount: true },
+      where: {
+        payable_type: 'APPOINTMENT',
+        status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] },
+        ...(range.from || range.to ? { created_at: { gte: range.from, lte: range.to } } : {}),
+      },
+    });
+    return result._sum.amount ?? new Prisma.Decimal(0);
+  }
+
   findById(db: Prisma.TransactionClient, id: string): Promise<PaymentIntent | null> {
     return db.paymentIntent.findUnique({ where: { id } });
   }

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { FinanceController } from './api/finance.controller';
-import { ProviderPayoutsController } from './api/provider-payouts.controller';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { ProviderPayoutsController } from './api/provider-payouts.controller';
+import { WithdrawalsController } from './api/withdrawals.controller';
 import { WalletController } from './api/wallet.controller';
 import { CancelOnlinePaymentIntentUseCase } from './application/cancel-online-payment-intent.use-case';
 import { CaptureInternalWalletPaymentUseCase } from './application/capture-internal-wallet-payment.use-case';
@@ -20,6 +22,11 @@ import { FAWRY_GATEWAY } from './application/ports/fawry-gateway.port';
 import { PAYMENT_GATEWAY } from './application/ports/payment-gateway.port';
 import { ProcessCancellationRefundUseCase } from './application/process-cancellation-refund.use-case';
 import { ProcessWalletTopUpUseCase } from './application/process-wallet-top-up.use-case';
+import { AdminWithdrawalsUseCase } from './application/admin-withdrawals.use-case';
+import { ManageMyWithdrawalsUseCase } from './application/manage-my-withdrawals.use-case';
+import { RequestWithdrawalUseCase } from './application/request-withdrawal.use-case';
+import { ReturnWithdrawalToWalletUseCase } from './application/return-withdrawal-to-wallet.use-case';
+import { WithdrawalRequestRepository } from './infrastructure/withdrawal-request.repository';
 import { RecordProviderPayoutUseCase } from './application/record-provider-payout.use-case';
 import { FawryPaymentGatewayAdapter } from './infrastructure/fawry-payment-gateway.adapter';
 import { PaymentAttemptRepository } from './infrastructure/payment-attempt.repository';
@@ -66,7 +73,9 @@ import { AuditModule } from '../audit/audit.module';
  */
 @Module({
   imports: [AuditModule],
-  controllers: [WalletController, FinanceController, ProviderPayoutsController],
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // controllers: [WalletController, FinanceController, ProviderPayoutsController],
+  controllers: [WalletController, FinanceController, WithdrawalsController],
   providers: [
     PaymentIntentRepository,
     PaymentAttemptRepository,
@@ -94,6 +103,11 @@ import { AuditModule } from '../audit/audit.module';
     ListProviderLedgerEntriesUseCase,
     GetProviderOutstandingBalanceUseCase,
     RecordProviderPayoutUseCase,
+    WithdrawalRequestRepository,
+    RequestWithdrawalUseCase,
+    ManageMyWithdrawalsUseCase,
+    AdminWithdrawalsUseCase,
+    ReturnWithdrawalToWalletUseCase,
   ],
   exports: [
     PAYMENT_GATEWAY,

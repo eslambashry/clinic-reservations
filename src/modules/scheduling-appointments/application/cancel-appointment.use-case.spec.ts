@@ -47,7 +47,6 @@ describe('CancelAppointmentUseCase', () => {
       appointments as any,
       slots as any,
       policyConfig as any,
-      refund as any,
       audit as any,
       outbox as any,
       appointmentScope as any,
@@ -149,31 +148,28 @@ describe('CancelAppointmentUseCase', () => {
     expect(doctorNotifyCalls).toHaveLength(0);
   });
 
-  it('reads the CANCELLATION_TIER fee percent and processes a real refund when a payment_intent_id is present', async () => {
-    const { tx, appointments, policyConfig, refund, useCase } = setup();
+  it('never refunds on cancellation: the service fee is kept (refund 0, fee 0, no CANCELLATION_TIER read) even when a payment_intent_id is present', async () => {
+    const { appointments, policyConfig, refund, useCase } = setup();
     appointments.findById.mockResolvedValue(appointmentWithPayment);
     appointments.cancel.mockResolvedValue(true);
-    policyConfig.getValue.mockResolvedValue({ feePercent: 10 });
-    refund.execute.mockResolvedValue({ refundAmount: '180.00', feeApplied: '20.00' });
 
     const result = await useCase.execute('appointment-1', input, actor);
 
-    expect(policyConfig.getValue).toHaveBeenCalledWith(tx, 'EG', 'CANCELLATION_TIER');
-    expect(refund.execute).toHaveBeenCalledWith(tx, { paymentIntentId: 'intent-1', feePercent: 10 });
-    expect(result).toEqual({ status: 'CANCELLED', refundAmount: 180, feeApplied: 20 });
+    expect(policyConfig.getValue).not.toHaveBeenCalled();
+    expect(refund.execute).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: 'CANCELLED', refundAmount: 0, feeApplied: 0 });
   });
 
-  it('bypasses the CANCELLATION_TIER read entirely and always uses feePercent 0 for a provider-initiated cancellation', async () => {
-    const { tx, appointments, policyConfig, refund, useCase } = setup();
+  it('also keeps the service fee for a provider-initiated cancellation', async () => {
+    const { appointments, policyConfig, refund, useCase } = setup();
     appointments.findById.mockResolvedValue(appointmentWithPayment);
     appointments.cancel.mockResolvedValue(true);
-    refund.execute.mockResolvedValue({ refundAmount: '200.00', feeApplied: '0.00' });
 
     const result = await useCase.execute('appointment-1', { reason: 'PROVIDER_REQUEST' }, actor);
 
     expect(policyConfig.getValue).not.toHaveBeenCalled();
-    expect(refund.execute).toHaveBeenCalledWith(tx, { paymentIntentId: 'intent-1', feePercent: 0 });
-    expect(result).toEqual({ status: 'CANCELLED', refundAmount: 200, feeApplied: 0 });
+    expect(refund.execute).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: 'CANCELLED', refundAmount: 0, feeApplied: 0 });
   });
 
   it('folds an optional note into the persisted cancelled_reason', async () => {
@@ -227,18 +223,16 @@ describe('CancelAppointmentUseCase', () => {
       expectNoSideEffects(m);
     });
 
-    it('lets a patient cancel 1 ms before start_at, with the unchanged pre-start fee/refund behaviour', async () => {
+    it('lets a patient cancel 1 ms before start_at, with no refund (service fee is kept)', async () => {
       jest.useFakeTimers().setSystemTime(new Date('2026-10-03T08:59:59.999Z'));
       const m = setup();
       m.appointments.findById.mockResolvedValue(appointmentWithPayment);
       m.appointments.cancel.mockResolvedValue(true);
       m.slots.findById.mockResolvedValue({ id: 'slot-1', start_at: new Date('2026-10-03T09:00:00.000Z') });
-      m.policyConfig.getValue.mockResolvedValue({ feePercent: 10 });
-      m.refund.execute.mockResolvedValue({ refundAmount: '180.00', feeApplied: '20.00' });
 
-      await expect(m.useCase.execute('appointment-1', input, actor)).resolves.toEqual({ status: 'CANCELLED', refundAmount: 180, feeApplied: 20 });
+      await expect(m.useCase.execute('appointment-1', input, actor)).resolves.toEqual({ status: 'CANCELLED', refundAmount: 0, feeApplied: 0 });
       expect(m.appointments.cancel).toHaveBeenCalledWith(expect.anything(), 'appointment-1', 1, 'patient-1', 'PATIENT_REQUEST', new Date('2026-10-03T08:59:59.999Z'));
-      expect(m.refund.execute).toHaveBeenCalledWith(expect.anything(), { paymentIntentId: 'intent-1', feePercent: 10 });
+      expect(m.refund.execute).not.toHaveBeenCalled();
     });
 
     it('403s an assistant (CLINIC_STAFF) before reading the appointment — provider cancellation is doctor-only', async () => {

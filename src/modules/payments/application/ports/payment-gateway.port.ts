@@ -84,6 +84,10 @@ export interface ParsedWebhookEvent {
   gatewayTransactionId: string;
   success: boolean;
   failureCode?: string;
+  /** Amount the gateway says it collected, in minor units (Paymob `amount_cents`). Webhook handlers verify it against the intent before crediting anything. */
+  amountCents?: number;
+  /** Currency the gateway says it collected (ISO code). Verified against the intent like `amountCents`. */
+  currency?: string;
 }
 
 export interface PaymentGatewayPort {
