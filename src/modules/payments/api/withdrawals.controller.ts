@@ -24,7 +24,7 @@ export class WithdrawalsController {
   @Get()
   @ApiOperation({ summary: 'Admin: withdrawal requests, optionally filtered by status' })
   list(@Query() query: ListWithdrawalsQueryDto): Promise<{ items: AdminWithdrawalView[] }> {
-    return this.admin.list({ status: query.status, limit: query.limit });
+    return this.admin.list({ status: query.status, limit: query.limit === undefined ? undefined : Number(query.limit) });
   }
 
   @Get(':id')
