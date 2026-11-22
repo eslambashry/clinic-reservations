@@ -40,7 +40,7 @@ describe('scheduling jobs', () => {
 
 describe('payment jobs', () => {
   it('PaymobReconciliationJob delegates to the use-case and logs only on changes', async () => {
-    const { PaymobReconciliationJob } = require('./paymob-reconciliation.job');
+    const { PaymobReconciliationJob } = await import('./paymob-reconciliation.job');
     const uc = { execute: jest.fn().mockResolvedValue({ checked: 2, paid: 1, failed: 0 }) };
     const job = new PaymobReconciliationJob(uc as any);
     const log = jest.spyOn((job as any).logger, 'log').mockImplementation();
@@ -50,7 +50,7 @@ describe('payment jobs', () => {
   });
 
   it('StaleTopUpCleanupJob delegates to the use-case and stays quiet when nothing expired', async () => {
-    const { StaleTopUpCleanupJob } = require('./stale-top-up-cleanup.job');
+    const { StaleTopUpCleanupJob } = await import('./stale-top-up-cleanup.job');
     const uc = { execute: jest.fn().mockResolvedValue({ checked: 1, expired: 0 }) };
     const job = new StaleTopUpCleanupJob(uc as any);
     const log = jest.spyOn((job as any).logger, 'log').mockImplementation();

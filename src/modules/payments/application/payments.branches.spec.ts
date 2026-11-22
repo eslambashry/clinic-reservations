@@ -76,28 +76,17 @@ describe('CaptureInternalWalletPaymentUseCase branches', () => {
   function setup() {
     const wallets = { getOrCreate: jest.fn().mockResolvedValue({ id: 'w' }), debit: jest.fn().mockResolvedValue(true), findById: jest.fn() };
     const paymentIntents = { create: jest.fn().mockResolvedValue({ id: 'i', version: 1 }), markCaptured: jest.fn() };
-    const policyConfig = { getValue: jest.fn() };
     const uc = new CaptureInternalWalletPaymentUseCase(
       wallets as any,
       { create: jest.fn() } as any,
       paymentIntents as any,
-      { create: jest.fn() } as any,
-      { create: jest.fn() } as any,
-      policyConfig as any,
       { emit: jest.fn() } as any,
     );
-    return { paymentIntents, policyConfig, uc };
+    return { paymentIntents, uc };
   }
 
-  it('500s when the commission rate is not configured', async () => {
-    const { policyConfig, uc } = setup();
-    policyConfig.getValue.mockResolvedValue(null);
-    await expect(uc.execute(tx, input)).rejects.toMatchObject({ code: 'COMMISSION_RATE_NOT_CONFIGURED' });
-  });
-
   it('500s when the intent cannot be marked captured', async () => {
-    const { paymentIntents, policyConfig, uc } = setup();
-    policyConfig.getValue.mockResolvedValue({ ratePercent: 10 });
+    const { paymentIntents, uc } = setup();
     paymentIntents.markCaptured.mockResolvedValue(false);
     await expect(uc.execute(tx, input)).rejects.toMatchObject({ code: 'PAYMENT_CAPTURE_FAILED' });
   });

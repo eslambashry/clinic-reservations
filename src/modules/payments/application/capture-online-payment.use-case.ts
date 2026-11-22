@@ -18,11 +18,9 @@ export interface CaptureOnlinePaymentInput {
   providerId?: string;
 }
 
-export interface CaptureOnlinePaymentResult {
-  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
-  // commissionAmount: string;
-  // providerAmount: string;
-}
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// export interface CaptureOnlinePaymentResult { commissionAmount: string; providerAmount: string; }
+export type CaptureOnlinePaymentResult = Record<string, never>;
 
 /**
  * File 12 Part 50: the webhook-driven counterpart to
