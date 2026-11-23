@@ -7,11 +7,12 @@ describe('RejectDoctorUseCase', () => {
   function setup() {
     const tx = {} as any;
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    const doctors = { findById: jest.fn().mockResolvedValue({ id: 'd1', version: 2, status: 'PENDING' }), setStatus: jest.fn() };
+    const doctors = { findById: jest.fn().mockResolvedValue({ id: 'd1', user_id: 'u1', version: 2, status: 'PENDING' }), setStatus: jest.fn() };
+    const roleMemberships = { convertPersonalRole: jest.fn().mockResolvedValue(true) };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const useCase = new RejectDoctorUseCase(prisma as any, doctors as any, audit as any, outbox as any);
-    return { tx, doctors, audit, outbox, useCase };
+    const useCase = new RejectDoctorUseCase(prisma as any, doctors as any, audit as any, outbox as any, roleMemberships as any);
+    return { tx, doctors, audit, outbox, roleMemberships, useCase };
   }
 
   it('404s when doctor missing', async () => {
