@@ -84,6 +84,21 @@ export interface ParsedWebhookEvent {
   gatewayTransactionId: string;
   success: boolean;
   failureCode?: string;
+  /** Amount the gateway says it collected, in minor units (Paymob `amount_cents`). Webhook handlers verify it against the intent before crediting anything. */
+  amountCents?: number;
+  /** Currency the gateway says it collected (ISO code). Verified against the intent like `amountCents`. */
+  currency?: string;
+}
+
+/** Result of asking the gateway what became of a merchant reference (reconciliation, not webhook). */
+export type GatewayInquiryStatus = 'PAID' | 'FAILED' | 'PENDING' | 'NOT_FOUND';
+
+export interface GatewayTransactionInquiry {
+  status: GatewayInquiryStatus;
+  /** Present for PAID/FAILED: shaped exactly like a parsed webhook so the SAME processing path (amount/currency checks, idempotency) is reused. */
+  event?: ParsedWebhookEvent;
+  /** Raw gateway transaction object (stored as the webhook_events payload). */
+  rawBody?: Record<string, unknown>;
 }
 
 export interface PaymentGatewayPort {
@@ -99,5 +114,8 @@ export interface PaymentGatewayPort {
   parseWebhookEvent(rawBody: Record<string, unknown>): ParsedWebhookEvent;
 
   /** File 12 Part 50.6 — used only for the late-webhook-after-expiry auto-refund path; amount is in the intent's own currency, decimal string. */
+  /** Transaction inquiry by our merchant reference (the attempt UUID); returns NOT_FOUND rather than throwing when the gateway has no transaction. */
+  queryTransaction(merchantReference: string): Promise<GatewayTransactionInquiry>;
+
   refund(gatewayReference: string, amount: string): Promise<{ gatewayRefundReference?: string }>;
 }

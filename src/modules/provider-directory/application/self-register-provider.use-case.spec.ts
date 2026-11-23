@@ -38,6 +38,7 @@ describe('SelfRegisterProviderUseCase', () => {
     const scheduleTemplates = { create: jest.fn().mockResolvedValue({ id: 'template-1' }) };
     const outbox = { emit: jest.fn() };
     const listActiveAdminUserIds = { execute: jest.fn().mockResolvedValue([]) };
+    const grantRoleMembership = { execute: jest.fn().mockResolvedValue(undefined) };
     const useCase = new SelfRegisterProviderUseCase(
       prisma as any,
       specialties as any,
@@ -52,8 +53,9 @@ describe('SelfRegisterProviderUseCase', () => {
       scheduleTemplates as any,
       outbox as any,
       listActiveAdminUserIds as any,
+      grantRoleMembership as any,
     );
-    return { tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, scheduleTemplates, outbox, listActiveAdminUserIds, useCase };
+    return { grantRoleMembership, tx, specialties, clinics, addresses, branches, doctors, affiliations, audit, updateUserProfile, mediaStorage, scheduleTemplates, outbox, listActiveAdminUserIds, useCase };
   }
 
   it('rejects an unknown specialty before creating anything', async () => {

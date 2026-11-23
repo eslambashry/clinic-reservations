@@ -3,7 +3,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/co
 import { DeleteAccountUseCase } from './delete-account.use-case';
 
 describe('DeleteAccountUseCase', () => {
-  function setup(over: { user?: any; roles?: string[]; doctor?: any; open?: number; wallet?: any } = {}) {
+  function setup(over: { user?: any; roles?: string[]; doctor?: any; open?: number; wallet?: any; pendingWithdrawals?: number } = {}) {
     const tx = {
       user: {
         findUnique: jest.fn().mockResolvedValue('user' in over ? over.user : { id: 'u1', deleted_at: null }),
@@ -16,6 +16,7 @@ describe('DeleteAccountUseCase', () => {
       doctor: { findUnique: jest.fn().mockResolvedValue(over.doctor ?? null), update: jest.fn() },
       appointment: { count: jest.fn().mockResolvedValue(over.open ?? 0) },
       wallet: { findUnique: jest.fn().mockResolvedValue('wallet' in over ? over.wallet : null) },
+      withdrawalRequest: { count: jest.fn().mockResolvedValue(over.pendingWithdrawals ?? 0) },
       notificationPreference: { deleteMany: jest.fn() },
     };
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
@@ -78,5 +79,11 @@ describe('DeleteAccountUseCase', () => {
 
     const empty = setup({ wallet: { balance: new Prisma.Decimal(0) } });
     await expect(empty.useCase.execute('u1')).resolves.toBeUndefined();
+  });
+
+  it('refuses while a withdrawal request is still PENDING', async () => {
+    const { tx, useCase } = setup({ pendingWithdrawals: 1 });
+    await expect(useCase.execute('u1')).rejects.toMatchObject({ code: 'ACCOUNT_HAS_PENDING_WITHDRAWAL' });
+    expect(tx.user.update).not.toHaveBeenCalled();
   });
 });

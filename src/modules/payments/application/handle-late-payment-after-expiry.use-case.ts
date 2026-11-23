@@ -6,6 +6,8 @@ import { PAYMENT_GATEWAY, PaymentGatewayPort } from './ports/payment-gateway.por
 import { PaymentAttemptRepository } from '../infrastructure/payment-attempt.repository';
 import { PaymentIntentRepository } from '../infrastructure/payment-intent.repository';
 import { RefundRepository } from '../infrastructure/refund.repository';
+import { WalletRepository } from '../infrastructure/wallet.repository';
+import { WalletTransactionRepository } from '../infrastructure/wallet-transaction.repository';
 
 export interface HandleLatePaymentAfterExpiryInput {
   paymentIntentId: string;
@@ -49,6 +51,8 @@ export class HandleLatePaymentAfterExpiryUseCase {
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
     @Inject(FAWRY_GATEWAY) private readonly fawryGateway: FawryGatewayPort,
+    @Inject(WalletRepository) private readonly wallets: WalletRepository,
+    @Inject(WalletTransactionRepository) private readonly walletTransactions: WalletTransactionRepository,
   ) {}
 
   async execute(tx: Prisma.TransactionClient, input: HandleLatePaymentAfterExpiryInput): Promise<void> {
@@ -64,21 +68,45 @@ export class HandleLatePaymentAfterExpiryUseCase {
       return;
     }
 
-    let gatewayRefundReference: string | undefined;
-    try {
-      // File 12 Part 55: only CARD is on Paymob; FAWRY and MOBILE_WALLET are
-      // both refunded through FawryPay, keyed off Fawry's own reference.
-      const result =
-        intent.method === 'CARD'
-          ? await this.gateway.refund(input.gatewayReference, intent.amount.toString())
-          : await this.refundFawry(tx, intent.id, intent.amount.toString());
-      gatewayRefundReference = result.gatewayRefundReference;
-    } catch (error) {
-      this.logger.error(
-        { err: error, paymentIntentId: intent.id },
-        'Auto-refund gateway call failed for a payment that arrived after its hold expired — needs manual Ops follow-up',
-      );
-    }
+    // Fee-only flow: the money already sits in the platform's single bank account, so a payment that arrives after the
+    // hold expired is credited back to the patient's WALLET (internal ledger) instead of a gateway refund.
+    const wallet = await this.wallets.getOrCreate(tx, intent.payer_user_id, intent.currency);
+    const credited = await this.wallets.credit(tx, wallet.id, intent.amount.toString());
+    await this.walletTransactions.create(tx, {
+      walletId: wallet.id,
+      type: 'REFUND',
+      status: 'COMPLETED',
+      amount: intent.amount.toString(),
+      resultingBalance: credited.balance.toFixed(2),
+      paymentIntentId: intent.id,
+    });
+    const gatewayRefundReference = 'WALLET_CREDIT';
+
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // let gatewayRefundReference: string | undefined;
+    // try {
+    // // File 12 Part 55: only CARD is on Paymob; FAWRY and MOBILE_WALLET are
+    // // both refunded through FawryPay, keyed off Fawry's own reference.
+    // const result =
+    // intent.method === 'CARD'
+    // ? await this.gateway.refund(input.gatewayReference, intent.amount.toString())
+    // : await this.refundFawry(tx, intent.id, intent.amount.toString());
+    // gatewayRefundReference = result.gatewayRefundReference;
+    // } catch (error) {
+    // this.logger.error(
+    // { err: error, paymentIntentId: intent.id },
+    // 'Auto-refund gateway call failed for a payment that arrived after its hold expired — needs manual Ops follow-up',
+    // );
+    // }
+    // 
+    // const capturedIntent = await this.paymentIntents.findById(tx, intent.id);
+    // await this.paymentIntents.markRefunded(tx, capturedIntent!.id, capturedIntent!.version, 'REFUNDED');
+    // await this.refunds.create(tx, {
+    // paymentIntentId: intent.id,
+    // amount: intent.amount.toString(),
+    // reason: 'HOLD_EXPIRED_BEFORE_PAYMENT_CONFIRMED',
+    // status: gatewayRefundReference ? 'COMPLETED' : 'PROCESSING',
+    // });
 
     const capturedIntent = await this.paymentIntents.findById(tx, intent.id);
     await this.paymentIntents.markRefunded(tx, capturedIntent!.id, capturedIntent!.version, 'REFUNDED');
@@ -86,7 +114,7 @@ export class HandleLatePaymentAfterExpiryUseCase {
       paymentIntentId: intent.id,
       amount: intent.amount.toString(),
       reason: 'HOLD_EXPIRED_BEFORE_PAYMENT_CONFIRMED',
-      status: gatewayRefundReference ? 'COMPLETED' : 'PROCESSING',
+      status: 'COMPLETED',
     });
 
     await this.outbox.emit(tx, 'PaymentAutoRefunded', {

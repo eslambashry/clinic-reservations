@@ -11,6 +11,7 @@ export interface NewWalletTransaction {
   resultingBalance?: string;
   paymentIntentId?: string;
   appointmentId?: string;
+  withdrawalRequestId?: string;
   idempotencyKey?: string;
 }
 
@@ -33,9 +34,36 @@ export class WalletTransactionRepository {
         resulting_balance: input.resultingBalance,
         payment_intent_id: input.paymentIntentId,
         appointment_id: input.appointmentId,
+        withdrawal_request_id: input.withdrawalRequestId,
         idempotency_key: input.idempotencyKey,
       },
     });
+  }
+
+  /** Sum of this wallet's top-ups (PENDING + COMPLETED, i.e. not failed) created at/after `since` - the rolling daily-limit input. */
+  async sumTopUpsSince(db: Prisma.TransactionClient, walletId: string, since: Date, pendingNotBefore?: Date): Promise<Prisma.Decimal> {
+    // `pendingNotBefore`: a PENDING top-up created before it is abandoned (payment window long over) and no longer counts.
+    const result = await db.walletTransaction.aggregate({
+      _sum: { amount: true },
+      where: {
+        wallet_id: walletId,
+        type: 'TOP_UP',
+        created_at: { gte: since },
+        ...(pendingNotBefore
+          ? { OR: [{ status: 'COMPLETED' as const }, { status: 'PENDING' as const, created_at: { gte: pendingNotBefore > since ? pendingNotBefore : since } }] }
+          : { status: { in: ['PENDING', 'COMPLETED'] as ('PENDING' | 'COMPLETED')[] } }),
+      },
+    });
+    return result._sum.amount ?? new Prisma.Decimal(0);
+  }
+
+  /** Completed top-ups in a date range (finance summary). Not scoped to a wallet. */
+  async sumCompletedTopUps(db: Prisma.TransactionClient, range: { from?: Date; to?: Date }): Promise<Prisma.Decimal> {
+    const result = await db.walletTransaction.aggregate({
+      _sum: { amount: true },
+      where: { type: 'TOP_UP', status: 'COMPLETED', ...(range.from || range.to ? { created_at: { gte: range.from, lte: range.to } } : {}) },
+    });
+    return result._sum.amount ?? new Prisma.Decimal(0);
   }
 
   findByIdempotencyKey(db: Prisma.TransactionClient, idempotencyKey: string): Promise<WalletTransaction | null> {

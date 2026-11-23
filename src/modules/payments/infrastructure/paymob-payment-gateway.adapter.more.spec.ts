@@ -160,3 +160,46 @@ describe('PaymobPaymentGatewayAdapter (additional)', () => {
     });
   });
 });
+
+describe('PaymobPaymentGatewayAdapter.queryTransaction', () => {
+  const build = () => new PaymobPaymentGatewayAdapter({ get: jest.fn().mockReturnValue({ apiKey: 'k', integrationIdCard: 'i', iframeId: 'f', hmacSecret: 's' }) } as any);
+  const respond = (...responses: any[]) => {
+    let i = 0;
+    (global as any).fetch = jest.fn(() => Promise.resolve(responses[i++]));
+    return (global as any).fetch as jest.Mock;
+  };
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve(body), text: () => Promise.resolve('') });
+
+  it('returns PAID with a webhook-shaped event', async () => {
+    const fetchMock = respond(ok({ token: 'auth' }), ok({ id: 77, success: true, pending: false, error_occured: false, amount_cents: 1000, currency: 'EGP', order: { id: 5 } }));
+    const result = await build().queryTransaction('ref-1');
+    expect(fetchMock.mock.calls[1][0]).toContain('/api/ecommerce/orders/transaction_inquiry');
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ auth_token: 'auth', merchant_order_id: 'ref-1' });
+    expect(result.status).toBe('PAID');
+    expect(result.event).toMatchObject({ gatewayReference: 'ref-1', gatewayTransactionId: '77', success: true, amountCents: 1000, currency: 'EGP' });
+  });
+
+  it('returns FAILED for an unsuccessful transaction', async () => {
+    respond(ok({ token: 'auth' }), ok({ id: 78, success: false, pending: false, data: { txn_response_code: '5' } }));
+    const result = await build().queryTransaction('ref-1');
+    expect(result.status).toBe('FAILED');
+    expect(result.event?.failureCode).toBe('5');
+  });
+
+  it('returns PENDING when Paymob says pending', async () => {
+    respond(ok({ token: 'auth' }), ok({ id: 79, success: false, pending: true }));
+    expect((await build().queryTransaction('ref-1')).status).toBe('PENDING');
+  });
+
+  it('returns NOT_FOUND on 404 or an empty body', async () => {
+    respond(ok({ token: 'auth' }), { ok: false, status: 404, text: () => Promise.resolve('') });
+    expect((await build().queryTransaction('ref-1')).status).toBe('NOT_FOUND');
+    respond(ok({ token: 'auth' }), ok({}));
+    expect((await build().queryTransaction('ref-1')).status).toBe('NOT_FOUND');
+  });
+
+  it('throws ExternalProviderError on other HTTP errors', async () => {
+    respond(ok({ token: 'auth' }), { ok: false, status: 500, text: () => Promise.resolve('x') });
+    await expect(build().queryTransaction('ref-1')).rejects.toBeDefined();
+  });
+});

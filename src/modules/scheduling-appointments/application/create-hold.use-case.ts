@@ -10,7 +10,9 @@ import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { holdExpiresAt } from '../domain/appointment-lifecycle.rules';
 import { AppointmentHoldRepository } from '../infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from '../infrastructure/appointment-slot.repository';
-import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
+import { ServiceFeeReader } from '../../../shared/kernel/policy-config/service-fee.reader';
 
 export interface CreateHoldInput {
   doctorClinicAffiliationId: string;
@@ -23,15 +25,14 @@ export interface CreateHoldResult {
   slotId: string;
   expiresAt: Date;
   status: 'HELD';
-  /** The doctor's consult fee for this slot, e.g. `"500.00"` — what a full payment charges. */
+  /** The doctor's consult fee for this slot — INFORMATIONAL ONLY, never charged in the app. */
   fullAmount: string;
+  /** Flat service fee snapshotted on the hold — the only amount the patient pays. */
+  serviceFee: string;
   currency: string;
-  /**
-   * Smallest partial amount the wallet/online payment will accept
-   * (`min(MIN_APPOINTMENT_PAYMENT, fullAmount)`). `null` when the policy is
-   * not configured — only a full payment works then.
-   */
-  minPaymentAmount: string | null;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // /** Smallest partial amount (MIN_APPOINTMENT_PAYMENT). */
+  // minPaymentAmount: string | null;
 }
 
 /**
@@ -50,7 +51,9 @@ export class CreateHoldUseCase {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(GetAffiliationBillingInfoUseCase) private readonly affiliationBilling: GetAffiliationBillingInfoUseCase,
-    @Inject(ResolveAppointmentPaymentAmountUseCase) private readonly resolvePaymentAmount: ResolveAppointmentPaymentAmountUseCase,
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // @Inject(ResolveAppointmentPaymentAmountUseCase) private readonly resolvePaymentAmount: ResolveAppointmentPaymentAmountUseCase,
+    @Inject(ServiceFeeReader) private readonly serviceFeeReader: ServiceFeeReader,
   ) {}
 
   async execute(input: CreateHoldInput, actor: AccessTokenPayload): Promise<CreateHoldResult> {
@@ -77,13 +80,15 @@ export class CreateHoldUseCase {
         throw new BusinessRuleError('AFFILIATION_PAUSED', 'الحجز غير متاح حاليًا لدى هذا الطبيب في هذا الفرع.');
       }
 
+      const serviceFee = await this.serviceFeeReader.get(tx);
+
       const claimed = await this.slots.markHeld(tx, slot.id);
       if (!claimed) {
         throw new ConflictError('SLOT_ALREADY_BOOKED', 'لم يعد هذا الموعد متاحًا. اختر موعدًا آخر.', { slotId: slot.id });
       }
 
       const expiresAt = holdExpiresAt(new Date());
-      const hold = await this.holds.create(tx, { slotId: slot.id, patientId: actor.sub, expiresAt }).catch((error: unknown) => {
+      const hold = await this.holds.create(tx, { slotId: slot.id, patientId: actor.sub, expiresAt, serviceFee: serviceFee.amount }).catch((error: unknown) => {
         throw translateCreateHoldError(error, slot.id);
       });
 
@@ -105,7 +110,8 @@ export class CreateHoldUseCase {
       // Informational only — confirm/payments re-read the fee and the
       // minimum and re-validate; the client can never supply either.
       const fullAmount = Number(billing.consultFee).toFixed(2);
-      const minPaymentAmount = await this.resolvePaymentAmount.findMinimum(tx, fullAmount);
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+      // const minPaymentAmount = await this.resolvePaymentAmount.findMinimum(tx, fullAmount);
 
       return {
         holdId: hold.id,
@@ -113,8 +119,10 @@ export class CreateHoldUseCase {
         expiresAt,
         status: 'HELD' as const,
         fullAmount,
-        currency: billing.currency,
-        minPaymentAmount,
+        serviceFee: serviceFee.amount,
+        currency: serviceFee.currency,
+        // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+        // minPaymentAmount,
       };
     });
   }

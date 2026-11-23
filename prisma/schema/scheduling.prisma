@@ -57,6 +57,8 @@ model AppointmentHold {
   /// online payment at a time (a retried initiate reuses the same intent,
   /// see `InitiateOnlineAppointmentPaymentUseCase`).
   payment_intent_id               String?         @unique @db.Uuid
+  /// Service fee snapshotted from the SERVICE_FEE policy at hold time; confirm/online payment charge exactly this. `null` = legacy hold (falls back to the current policy).
+  service_fee                     Decimal?        @db.Decimal(10, 2)
   patient                         User            @relation(fields: [patient_id], references: [id], onDelete: Cascade)
   rescheduled_from_appointment    Appointment?    @relation("HoldReschedulesAppointment", fields: [rescheduled_from_appointment_id], references: [id])
   slot                            AppointmentSlot @relation(fields: [slot_id], references: [id], onDelete: Cascade)

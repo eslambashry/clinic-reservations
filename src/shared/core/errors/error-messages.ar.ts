@@ -59,7 +59,8 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   PHONE_ALREADY_REGISTERED: 'رقم الهاتف مسجَّل بالفعل في حساب آخر.',
   EMAIL_NOT_EDITABLE: 'لا يمكن تعديل البريد الإلكتروني من الملف الشخصي.',
   ACCOUNT_HAS_OPEN_APPOINTMENTS: 'لديك مواعيد قائمة. يرجى إلغاؤها أو إنهاؤها قبل حذف الحساب.',
-  ACCOUNT_HAS_WALLET_BALANCE: 'لديك رصيد في المحفظة. يرجى استرداده أو استخدامه قبل حذف الحساب.',
+  ACCOUNT_HAS_WALLET_BALANCE: 'لديك رصيد في المحفظة. اسحب رصيدك أولًا ثم احذف الحساب.',
+  ACCOUNT_HAS_PENDING_WITHDRAWAL: 'لديك طلب سحب قيد المراجعة. انتظر تنفيذه أو ألغه قبل حذف الحساب.',
   LEGAL_VERSION_MISMATCH: 'نسخة الشروط والأحكام غير صحيحة.',
   STAFF_ALREADY_PROVISIONED: 'رقم الهاتف مُضاف بالفعل إلى فريق هذه الجهة.',
   STAFF_ASSIGNED_ELSEWHERE: 'رقم الهاتف مرتبط بفريق جهة أخرى.',
@@ -127,7 +128,7 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   SPECIALTY_PARENT_CYCLE: 'لا يمكن جعل التخصص تابعاً لنفسه أو لأحد تخصصاته الفرعية.',
 
   // ── Payments ────────────────────────────────────────────────────────────
-  PAYMENT_METHOD_NOT_SUPPORTED: 'استخدم /appointments/{holdId}/payments لإتمام الدفع بالبطاقة أو فوري أو المحفظة الإلكترونية.',
+  PAYMENT_METHOD_NOT_SUPPORTED: 'طريقة الدفع غير متاحة. ادفع رسوم الخدمة من المحفظة أو بالبطاقة.',
   PAYMENT_AMOUNT_BELOW_MINIMUM: 'المبلغ أقل من الحد الأدنى المسموح به للدفع.',
   PAYMENT_AMOUNT_EXCEEDS_FEE: 'المبلغ أكبر من قيمة الكشف.',
   PAYMENT_AMOUNT_INVALID: 'مبلغ الدفع غير صالح.',
@@ -147,6 +148,17 @@ export const AR_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // ── Internal MedSuper Wallet ────────────────────────────────────────────
   INSUFFICIENT_WALLET_BALANCE: 'رصيد المحفظة غير كافٍ لإتمام هذه العملية.',
   INVALID_AMOUNT: 'قيمة الشحن يجب أن تكون أكبر من صفر.',
+  SERVICE_FEE_NOT_CONFIGURED: 'رسوم الخدمة غير مُهيّأة. تواصل مع الدعم.',
+  TOPUP_BELOW_MINIMUM: 'مبلغ الشحن أقل من الحد الأدنى المسموح به.',
+  TOPUP_ABOVE_MAX_PER_OPERATION: 'مبلغ الشحن أكبر من الحد الأقصى للعملية الواحدة.',
+  TOPUP_DAILY_LIMIT_EXCEEDED: 'تجاوزت الحد الأقصى اليومي للشحن.',
+
+  // ── Withdrawals ─────────────────────────────────────────────────────────
+  WITHDRAWAL_BELOW_MINIMUM: 'مبلغ السحب أقل من الحد الأدنى المسموح به.',
+  WITHDRAWAL_AMOUNT_INVALID: 'مبلغ السحب غير صالح.',
+  WITHDRAWAL_ALREADY_PENDING: 'لديك طلب سحب قيد المراجعة بالفعل. انتظر معالجته أو ألغه أولًا.',
+  WITHDRAWAL_NOT_PENDING: 'تمت معالجة هذا الطلب بالفعل.',
+  WITHDRAWAL_PAYOUT_ACCOUNT_INVALID: 'بيانات حساب التحويل غير صالحة.',
 
   // ── Notifications ───────────────────────────────────────────────────────
   SAFETY_CRITICAL_NOTIFICATION_NOT_DISABLEABLE: 'لا يمكن تعطيل الإشعارات الحرِجة المتعلقة بسلامتك.',

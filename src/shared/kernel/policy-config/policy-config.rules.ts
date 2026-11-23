@@ -18,7 +18,12 @@ export interface MinAppointmentPaymentValue {
   minAmount: string;
 }
 
+export interface ServiceFeeValue {
+  amount: string;
+}
+
 export type PolicyConfigValue =
+  | ServiceFeeValue
   | CommissionRateValue
   | CancellationTierValue
   | NotificationQuietHoursValue
@@ -88,6 +93,17 @@ export function validatePolicyValue(policyType: PolicyType, rawValue: unknown): 
         startHour: requireNumberInRange(value, 'startHour', 0, 23, true),
         endHour: requireNumberInRange(value, 'endHour', 0, 23, true),
       };
+    case 'SERVICE_FEE': {
+      requireExactKeys(value, ['amount']);
+      const amount = value.amount;
+      // Decimal string, > 0 (a zero fee would make the wallet/payment flow meaningless).
+      if (typeof amount !== 'string' || !/^\d+(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) {
+        throw new BusinessRuleError('POLICY_VALUE_INVALID', 'الحقل "amount" يجب أن يكون مبلغًا موجبًا بصيغة عشرية (مثل 12.00).');
+      }
+      return { amount };
+    }
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // (MIN_APPOINTMENT_PAYMENT is no longer read anywhere; the validator stays so existing rows remain editable.)
     case 'MIN_APPOINTMENT_PAYMENT': {
       requireExactKeys(value, ['minAmount']);
       const minAmount = value.minAmount;

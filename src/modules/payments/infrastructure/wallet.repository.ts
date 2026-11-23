@@ -7,6 +7,12 @@ export class WalletRepository {
     return db.wallet.findUnique({ where: { user_id: userId } });
   }
 
+  /** SUM(wallets.balance) - what the platform owes patients in total. */
+  async sumBalances(db: Prisma.TransactionClient): Promise<Prisma.Decimal> {
+    const result = await db.wallet.aggregate({ _sum: { balance: true } });
+    return result._sum.balance ?? new Prisma.Decimal(0);
+  }
+
   findById(db: Prisma.TransactionClient, id: string): Promise<Wallet | null> {
     return db.wallet.findUnique({ where: { id } });
   }

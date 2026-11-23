@@ -49,6 +49,8 @@ model User {
   doctor_requests                 DoctorRequest[]
   substitutions_proposed          Substitution[]
   wallet                          Wallet?
+  withdrawal_requests             WithdrawalRequest[] @relation("WithdrawalPatient")
+  withdrawal_requests_processed   WithdrawalRequest[] @relation("WithdrawalProcessedBy")
 
   @@map("users")
 }

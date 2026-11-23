@@ -9,15 +9,17 @@ describe('InitiateWalletTopUpUseCase', () => {
   function setup() {
     const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) };
     const wallets = { getOrCreate: jest.fn().mockResolvedValue({ id: 'w1', currency: 'EGP' }) };
-    const walletTransactions = { create: jest.fn().mockResolvedValue({}) };
+    const walletTransactions: any = { create: jest.fn().mockResolvedValue({}) };
     const online = {
       prepare: jest.fn().mockResolvedValue(prepared),
       callGateway: jest.fn().mockResolvedValue({ redirectUrl: 'https://pay', metadata: { m: 1 } }),
       completeFailure: jest.fn().mockResolvedValue(undefined),
       completeSuccess: jest.fn().mockResolvedValue(undefined),
     };
-    const useCase = new InitiateWalletTopUpUseCase(prisma as any, wallets as any, walletTransactions as any, online as any);
-    return { prisma, wallets, walletTransactions, online, useCase };
+    const serviceFee = { get: jest.fn().mockResolvedValue({ amount: '12.00', currency: 'EGP' }) };
+    walletTransactions.sumTopUpsSince = jest.fn().mockResolvedValue('0');
+    const useCase = new InitiateWalletTopUpUseCase(prisma as any, wallets as any, walletTransactions as any, online as any, serviceFee as any);
+    return { prisma, wallets, walletTransactions, online, serviceFee, useCase };
   }
 
   it.each(['0', '-5', 'abc', ''])('rejects invalid amount %p', async (amount) => {
@@ -63,8 +65,39 @@ describe('InitiateWalletTopUpUseCase', () => {
     const { useCase, online } = setup();
     const err = new Error('gateway down');
     online.callGateway.mockRejectedValue(err);
-    await expect(useCase.execute({ userId: 'u1', amount: '10', customer })).rejects.toBe(err);
+    await expect(useCase.execute({ userId: 'u1', amount: '100', customer })).rejects.toBe(err);
     expect(online.completeFailure).toHaveBeenCalledWith(tx, 'pa-1');
     expect(online.completeSuccess).not.toHaveBeenCalled();
+  });
+
+  it('rejects an amount below the service fee', async () => {
+    const { useCase } = setup();
+    await expect(useCase.execute({ userId: 'u1', amount: '11.99', customer })).rejects.toMatchObject({ code: 'TOPUP_BELOW_MINIMUM' });
+  });
+
+  it('rejects an amount above the per-operation maximum', async () => {
+    const { useCase } = setup();
+    await expect(useCase.execute({ userId: 'u1', amount: '5000.01', customer })).rejects.toMatchObject({ code: 'TOPUP_ABOVE_MAX_PER_OPERATION' });
+  });
+
+  it('rejects when the rolling 24h total would exceed the daily limit', async () => {
+    const { useCase, walletTransactions, online } = setup();
+    walletTransactions.sumTopUpsSince.mockResolvedValue('9000.00');
+    await expect(useCase.execute({ userId: 'u1', amount: '1000.01', customer })).rejects.toMatchObject({ code: 'TOPUP_DAILY_LIMIT_EXCEEDED' });
+    expect(online.callGateway).not.toHaveBeenCalled();
+  });
+
+  it('allows a top-up that lands exactly on the daily limit', async () => {
+    const { useCase, walletTransactions } = setup();
+    walletTransactions.sumTopUpsSince.mockResolvedValue('9000.00');
+    await expect(useCase.execute({ userId: 'u1', amount: '1000.00', customer })).resolves.toMatchObject({ paymentIntentId: 'pi-1' });
+  });
+
+  it('excludes abandoned PENDING top-ups (older than the payment window) from the daily total', async () => {
+    const { useCase, walletTransactions } = setup();
+    await useCase.execute({ userId: 'u1', amount: '100.00', customer });
+    const [, , , pendingNotBefore] = walletTransactions.sumTopUpsSince.mock.calls[0];
+    expect(pendingNotBefore).toBeInstanceOf(Date);
+    expect(Date.now() - pendingNotBefore.getTime()).toBeLessThan(16 * 60 * 1000);
   });
 });

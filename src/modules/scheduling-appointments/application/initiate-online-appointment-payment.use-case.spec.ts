@@ -1,6 +1,5 @@
 import { NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { InitiateOnlineAppointmentPaymentUseCase } from './initiate-online-appointment-payment.use-case';
-import { ResolveAppointmentPaymentAmountUseCase } from './resolve-appointment-payment-amount.use-case';
 
 function buildTx() {
   return {} as any;
@@ -24,8 +23,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     const initiatePayment = { prepare: jest.fn(), callGateway: jest.fn(), completeSuccess: jest.fn(), completeFailure: jest.fn() };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
-    const policyConfig = { getValue: jest.fn().mockResolvedValue({ minAmount: '50.00' }) };
-    const resolvePaymentAmount = new ResolveAppointmentPaymentAmountUseCase(policyConfig as any);
+    const serviceFeeReader = { get: jest.fn().mockResolvedValue({ amount: '15.00', currency: 'EGP' }) };
     const useCase = new InitiateOnlineAppointmentPaymentUseCase(
       prisma as any,
       holds as any,
@@ -34,15 +32,15 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       initiatePayment as any,
       audit as any,
       outbox as any,
-      resolvePaymentAmount,
+      serviceFeeReader as any,
     );
-    return { tx, prisma, holds, slots, affiliationBilling, initiatePayment, audit, outbox, policyConfig, useCase };
+    return { tx, prisma, holds, slots, affiliationBilling, initiatePayment, audit, outbox, serviceFeeReader, useCase };
   }
 
-  describe('partial payment amount', () => {
-    function arrange() {
+  describe('service fee amount', () => {
+    function arrange(holdRow: any = activeHold) {
       const s = setup();
-      s.holds.findById.mockResolvedValue(activeHold);
+      s.holds.findById.mockResolvedValue(holdRow);
       s.slots.findById.mockResolvedValue(slot);
       s.affiliationBilling.execute.mockResolvedValue({ ...billing, consultFee: '300.00' });
       s.initiatePayment.prepare.mockImplementation(async (_tx: any, input: any) => ({
@@ -56,23 +54,31 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       return s;
     }
 
-    it.each([['50.00'], ['100'], ['299.99'], ['300.00']])('accepts %s and charges exactly that, with the full fee snapshotted', async (paymentAmount) => {
-      const { initiatePayment, useCase } = arrange();
+    it('charges exactly the service fee snapshotted on the hold (not the consult fee)', async () => {
+      const { initiatePayment, serviceFeeReader, useCase } = arrange({ ...activeHold, service_fee: { toString: () => '12.00' } });
 
-      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount }, actor);
+      await useCase.execute('hold-1', { method: 'CARD', customer, billingData }, actor);
 
-      const prepareInput = initiatePayment.prepare.mock.calls[0][1];
-      expect(Number(prepareInput.amount)).toBe(Number(paymentAmount));
-      expect(prepareInput.fullAmount).toBe('300.00');
+      expect(initiatePayment.prepare.mock.calls[0][1]).toMatchObject({ amount: '12.00' });
+      expect(initiatePayment.prepare.mock.calls[0][1]).not.toHaveProperty('fullAmount');
+      expect(serviceFeeReader.get).not.toHaveBeenCalled();
     });
 
-    it('defaults to the full fee when no amount is sent — the pre-existing behavior', async () => {
-      const { initiatePayment, policyConfig, useCase } = arrange();
+    it('falls back to the current SERVICE_FEE policy for a legacy hold without a snapshot', async () => {
+      const { tx, initiatePayment, serviceFeeReader, useCase } = arrange({ ...activeHold, service_fee: null });
 
-      await useCase.execute('hold-1', { method: 'FAWRY', customer }, actor);
+      await useCase.execute('hold-1', { method: 'CARD', customer, billingData }, actor);
 
-      expect(initiatePayment.prepare.mock.calls[0][1]).toMatchObject({ amount: '300.00', fullAmount: '300.00' });
-      expect(policyConfig.getValue).not.toHaveBeenCalled();
+      expect(serviceFeeReader.get).toHaveBeenCalledWith(tx);
+      expect(initiatePayment.prepare.mock.calls[0][1]).toMatchObject({ amount: '15.00' });
+    });
+
+    it('never trusts a client-supplied amount, fee or remaining balance — extra body fields are simply not read', async () => {
+      const { initiatePayment, useCase } = arrange({ ...activeHold, service_fee: { toString: () => '12.00' } });
+
+      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '1', consultFee: '1', remainingBalance: '0' } as any, actor);
+
+      expect(initiatePayment.prepare.mock.calls[0][1].amount).toBe('12.00');
     });
 
     it('strips billing name and email from Fawry gateway input even if a caller includes billingData', async () => {
@@ -88,70 +94,10 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
       });
     });
 
-    it('MOBILE_WALLET (Fawry) needs no billingData, forwards only the phone, and passes the wallet number through', async () => {
-      const { initiatePayment, useCase } = arrange();
-
-      await useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, walletMobileNumber: '01012345678' }, actor);
-
-      const prepareInput = initiatePayment.prepare.mock.calls[0][1];
-      expect(prepareInput.customer).toEqual({ firstName: '', lastName: '', email: '', phone: customer.phone });
-      expect(prepareInput.walletMobileNumber).toBe('01012345678');
-      expect(prepareInput).not.toHaveProperty('walletProvider');
-    });
-
-    it('MOBILE_WALLET ignores billingData and walletProvider from older app versions', async () => {
-      const { initiatePayment, useCase } = arrange();
-
-      await useCase.execute(
-        'hold-1',
-        { method: 'MOBILE_WALLET', customer, billingData, walletProvider: 'VODAFONE_CASH', walletMobileNumber: '01012345678' } as any,
-        actor,
-      );
-
-      const prepareInput = initiatePayment.prepare.mock.calls[0][1];
-      expect(prepareInput.customer.email).toBe('');
-      expect(prepareInput).not.toHaveProperty('walletProvider');
-    });
-
     it('still requires billingData for CARD (Paymob)', async () => {
       const { useCase } = arrange();
 
       await expect(useCase.execute('hold-1', { method: 'CARD', customer }, actor)).rejects.toMatchObject({ code: 'PAYMENT_BILLING_DATA_REQUIRED' });
-    });
-
-    it.each([
-      ['49.99', 'PAYMENT_AMOUNT_BELOW_MINIMUM'],
-      ['0', 'PAYMENT_AMOUNT_INVALID'],
-      ['0.00', 'PAYMENT_AMOUNT_INVALID'],
-      ['-50', 'PAYMENT_AMOUNT_INVALID'],
-      ['abc', 'PAYMENT_AMOUNT_INVALID'],
-      ['300.01', 'PAYMENT_AMOUNT_EXCEEDS_FEE'],
-      ['301', 'PAYMENT_AMOUNT_EXCEEDS_FEE'],
-    ])('rejects %s with %s and never reaches the gateway', async (paymentAmount, code) => {
-      const { initiatePayment, useCase } = arrange();
-
-      await expect(useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount }, actor)).rejects.toMatchObject({ code });
-      expect(initiatePayment.callGateway).not.toHaveBeenCalled();
-    });
-
-    it('caps the minimum at the fee itself for a doctor cheaper than the minimum', async () => {
-      const { affiliationBilling, initiatePayment, useCase } = arrange();
-      affiliationBilling.execute.mockResolvedValue({ ...billing, consultFee: '40.00' });
-
-      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '40.00' }, actor);
-      expect(initiatePayment.prepare.mock.calls[0][1]).toMatchObject({ amount: '40.00', fullAmount: '40.00' });
-
-      await expect(useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '39.99' }, actor)).rejects.toMatchObject({
-        code: 'PAYMENT_AMOUNT_BELOW_MINIMUM',
-      });
-    });
-
-    it('never trusts a client-supplied fee or remaining balance — extra body fields are simply not read', async () => {
-      const { initiatePayment, useCase } = arrange();
-
-      await useCase.execute('hold-1', { method: 'CARD', customer, billingData, paymentAmount: '100', consultFee: '1', remainingBalance: '0' } as any, actor);
-
-      expect(initiatePayment.prepare.mock.calls[0][1].fullAmount).toBe('300.00');
     });
   });
 
@@ -255,7 +201,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     });
     initiatePayment.callGateway.mockResolvedValue({ metadata: {}, referenceCode: '123456' });
 
-    const result = await useCase.execute('hold-1', { method: 'FAWRY', customer, paymentAmount: '100.00' }, actor);
+    const result = await useCase.execute('hold-1', { method: 'FAWRY', customer }, actor);
 
     expect(result).toMatchObject({ amount: '200.00', currency: 'EGP', referenceCode: '123456' });
   });
@@ -294,7 +240,7 @@ describe('InitiateOnlineAppointmentPaymentUseCase', () => {
     holds.linkOnlinePayment.mockResolvedValue(false);
 
     await expect(
-      useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer, walletMobileNumber: '01000000000' }, actor),
+      useCase.execute('hold-1', { method: 'MOBILE_WALLET', customer }, actor),
     ).rejects.toMatchObject({ code: 'HOLD_EXPIRED' });
 
     expect(initiatePayment.callGateway).not.toHaveBeenCalled();

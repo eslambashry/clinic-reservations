@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { DomainError } from '../../../shared/core/errors/domain-errors';
 import { PAYMENT_CONSTANTS } from '../../../shared/config/constants';
+import { ServiceFeeReader } from '../../../shared/kernel/policy-config/service-fee.reader';
 import { PrismaService } from '../../../shared/kernel/prisma/prisma.service';
 import { InitiateOnlinePaymentUseCase } from './initiate-online-payment.use-case';
 import { PaymentCustomerInfo } from './ports/payment-gateway.port';
@@ -36,6 +37,7 @@ export class InitiateWalletTopUpUseCase {
     @Inject(WalletRepository) private readonly wallets: WalletRepository,
     @Inject(WalletTransactionRepository) private readonly walletTransactions: WalletTransactionRepository,
     @Inject(InitiateOnlinePaymentUseCase) private readonly initiateOnlinePayment: InitiateOnlinePaymentUseCase,
+    @Inject(ServiceFeeReader) private readonly serviceFee: ServiceFeeReader,
   ) {}
 
   async execute(input: InitiateWalletTopUpInput): Promise<InitiateWalletTopUpResult> {
@@ -50,6 +52,28 @@ export class InitiateWalletTopUpUseCase {
     // call the gateway with no transaction open, then persist the outcome.
     const { walletTransactionId, prepared } = await this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallets.getOrCreate(tx, input.userId, 'EGP');
+
+      // Limits: min = current service fee, max per operation and max per rolling 24h are constants.
+      const fee = await this.serviceFee.get(tx);
+      const requested = Number(input.amount);
+      if (requested < Number(fee.amount)) {
+        throw new DomainError(422, 'TOPUP_BELOW_MINIMUM', `الحد الأدنى للشحن هو ${fee.amount} ${fee.currency}.`, { minAmount: fee.amount });
+      }
+      if (requested > PAYMENT_CONSTANTS.TOPUP_MAX_PER_OPERATION) {
+        throw new DomainError(422, 'TOPUP_ABOVE_MAX_PER_OPERATION', `الحد الأقصى للشحن في العملية الواحدة هو ${PAYMENT_CONSTANTS.TOPUP_MAX_PER_OPERATION} ${fee.currency}.`, {
+          maxAmount: PAYMENT_CONSTANTS.TOPUP_MAX_PER_OPERATION.toFixed(2),
+        });
+      }
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      // A PENDING top-up older than the payment window is abandoned and must not eat the daily limit.
+      const pendingNotBefore = new Date(Date.now() - PAYMENT_CONSTANTS.WALLET_TOPUP_WINDOW_MINUTES * 60 * 1000);
+      const alreadyToday = Number(await this.walletTransactions.sumTopUpsSince(tx, wallet.id, since, pendingNotBefore));
+      if (alreadyToday + requested > PAYMENT_CONSTANTS.TOPUP_MAX_DAILY) {
+        throw new DomainError(422, 'TOPUP_DAILY_LIMIT_EXCEEDED', `تجاوزت الحد الأقصى اليومي للشحن (${PAYMENT_CONSTANTS.TOPUP_MAX_DAILY} ${fee.currency}).`, {
+          maxDaily: PAYMENT_CONSTANTS.TOPUP_MAX_DAILY.toFixed(2),
+          usedLast24h: alreadyToday.toFixed(2),
+        });
+      }
       const walletTransactionId = randomUUID();
       // File 12 Part 51: computed once, reused for both the gateway call
       // below and (if a future use-case ever needs to expire a stale

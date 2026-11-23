@@ -76,8 +76,7 @@ describe('GetAppointmentUseCase', () => {
     const { appointments, useCase } = setup();
     appointments.findByIdWithSlotTimes.mockResolvedValue({
       ...appointment,
-      payment_intent: { method: 'CARD', amount: { toFixed: () => '150.00' }, full_amount: { toFixed: () => '300.00' }, currency: 'EGP' },
-      remaining_balance: { toFixed: () => '150.00' },
+      payment_intent: { method: 'CARD', amount: { toFixed: () => '12.00' }, full_amount: null, currency: 'EGP' },
     });
 
     const result = await useCase.execute('appointment-1', actor);
@@ -85,9 +84,7 @@ describe('GetAppointmentUseCase', () => {
     expect(result.payment).toEqual({
       method: 'CARD',
       currency: 'EGP',
-      fullAmount: '300.00',
-      paidAmount: '150.00',
-      remainingBalance: '150.00',
+      serviceFee: '12.00',
     });
   });
 });
