@@ -2,23 +2,25 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, ProviderType } from '@prisma/client';
 import { DomainError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
-import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
-import { REGION_CONSTANTS } from '../../../shared/config/constants';
-import { computeCommissionSplit } from '../domain/payment-money.rules';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
+// import { REGION_CONSTANTS } from '../../../shared/config/constants';
+// import { computeCommissionSplit } from '../domain/payment-money.rules';
 import { PaymentIntentRepository } from '../infrastructure/payment-intent.repository';
-import { PaymentSplitRepository } from '../infrastructure/payment-split.repository';
-import { ProviderLedgerRepository } from '../infrastructure/provider-ledger.repository';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { PaymentSplitRepository } from '../infrastructure/payment-split.repository';
+// import { ProviderLedgerRepository } from '../infrastructure/provider-ledger.repository';
 
 export interface CaptureOnlinePaymentInput {
   paymentIntentId: string;
-  providerType: ProviderType;
-  providerId: string;
+  /** No longer used (no commission/provider ledger). */
+  providerType?: ProviderType;
+  providerId?: string;
 }
 
-export interface CaptureOnlinePaymentResult {
-  commissionAmount: string;
-  providerAmount: string;
-}
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// export interface CaptureOnlinePaymentResult { commissionAmount: string; providerAmount: string; }
+export type CaptureOnlinePaymentResult = Record<string, never>;
 
 /**
  * File 12 Part 50: the webhook-driven counterpart to
@@ -43,9 +45,10 @@ export interface CaptureOnlinePaymentResult {
 export class CaptureOnlinePaymentUseCase {
   constructor(
     @Inject(PaymentIntentRepository) private readonly paymentIntents: PaymentIntentRepository,
-    @Inject(PaymentSplitRepository) private readonly paymentSplits: PaymentSplitRepository,
-    @Inject(ProviderLedgerRepository) private readonly ledger: ProviderLedgerRepository,
-    @Inject(PolicyConfigReader) private readonly policyConfig: PolicyConfigReader,
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // @Inject(PaymentSplitRepository) private readonly paymentSplits: PaymentSplitRepository,
+    // @Inject(ProviderLedgerRepository) private readonly ledger: ProviderLedgerRepository,
+    // @Inject(PolicyConfigReader) private readonly policyConfig: PolicyConfigReader,
     @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
@@ -55,43 +58,45 @@ export class CaptureOnlinePaymentUseCase {
       throw new NotFoundError('PaymentIntent', input.paymentIntentId);
     }
 
-    const rate = await this.policyConfig.getValue<{ ratePercent: number }>(
-      tx,
-      REGION_CONSTANTS.DEFAULT_REGION_CODE,
-      'COMMISSION_RATE',
-    );
-    if (rate === null) {
-      throw new DomainError(500, 'COMMISSION_RATE_NOT_CONFIGURED', 'نسبة العمولة غير مُهيّأة لهذه المنطقة. تواصل مع الدعم.');
-    }
-
-    const split = computeCommissionSplit({ amount: intent.amount.toString(), commissionRatePercent: rate.ratePercent });
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // const rate = await this.policyConfig.getValue<{ ratePercent: number }>(
+    // tx,
+    // REGION_CONSTANTS.DEFAULT_REGION_CODE,
+    // 'COMMISSION_RATE',
+    // );
+    // if (rate === null) {
+    // throw new DomainError(500, 'COMMISSION_RATE_NOT_CONFIGURED', 'نسبة العمولة غير مُهيّأة لهذه المنطقة. تواصل مع الدعم.');
+    // }
+    // 
+    // const split = computeCommissionSplit({ amount: intent.amount.toString(), commissionRatePercent: rate.ratePercent });
 
     const captured = await this.paymentIntents.markCaptured(tx, intent.id, intent.version);
     if (!captured) {
       throw new DomainError(500, 'PAYMENT_CAPTURE_FAILED', 'تعذّر تحصيل الدفعة. أعد المحاولة.', { paymentIntentId: intent.id });
     }
 
-    await this.paymentSplits.create(tx, {
-      paymentIntentId: intent.id,
-      payeeType: 'PLATFORM',
-      amount: split.platformAmount,
-      type: 'COMMISSION',
-    });
-    await this.paymentSplits.create(tx, {
-      paymentIntentId: intent.id,
-      payeeType: 'PROVIDER',
-      payeeId: input.providerId,
-      amount: split.providerAmount,
-      type: 'PROVIDER_SHARE',
-    });
-
-    await this.ledger.create(tx, {
-      providerType: input.providerType,
-      providerId: input.providerId,
-      entryType: 'EARNING',
-      amount: split.providerAmount,
-      relatedPaymentIntentId: intent.id,
-    });
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // await this.paymentSplits.create(tx, {
+    // paymentIntentId: intent.id,
+    // payeeType: 'PLATFORM',
+    // amount: split.platformAmount,
+    // type: 'COMMISSION',
+    // });
+    // await this.paymentSplits.create(tx, {
+    // paymentIntentId: intent.id,
+    // payeeType: 'PROVIDER',
+    // payeeId: input.providerId,
+    // amount: split.providerAmount,
+    // type: 'PROVIDER_SHARE',
+    // });
+    // 
+    // await this.ledger.create(tx, {
+    // providerType: input.providerType,
+    // providerId: input.providerId,
+    // entryType: 'EARNING',
+    // amount: split.providerAmount,
+    // relatedPaymentIntentId: intent.id,
+    // });
 
     await this.outbox.emit(tx, 'PaymentCaptured', {
       paymentIntentId: intent.id,
@@ -103,6 +108,6 @@ export class CaptureOnlinePaymentUseCase {
       method: intent.method,
     });
 
-    return { commissionAmount: split.platformAmount, providerAmount: split.providerAmount };
+    return {};
   }
 }

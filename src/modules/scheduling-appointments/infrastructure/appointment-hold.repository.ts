@@ -6,6 +6,8 @@ export interface NewHold {
   slotId: string;
   patientId: string;
   expiresAt: Date;
+  /** Service fee snapshot (decimal string) taken from the SERVICE_FEE policy at hold time. */
+  serviceFee?: string;
   /** File 12 Part 35.13: set when this hold was created by `POST .../reschedule`, so confirm can propagate it onto the new `Appointment`. */
   rescheduledFromAppointmentId?: string;
 }
@@ -18,6 +20,7 @@ export class AppointmentHoldRepository {
         slot_id: input.slotId,
         patient_id: input.patientId,
         expires_at: input.expiresAt,
+        service_fee: input.serviceFee,
         rescheduled_from_appointment_id: input.rescheduledFromAppointmentId,
       },
     });

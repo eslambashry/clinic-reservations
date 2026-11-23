@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DomainError, ExternalProviderError } from '../../../shared/core/errors/domain-errors';
 import { AppConfig } from '../../../shared/config/configuration';
 import {
+  GatewayTransactionInquiry,
   InitiatedCardPayment,
   InitiatePaymentInput,
   ParsedWebhookEvent,
@@ -118,7 +119,50 @@ export class PaymobPaymentGatewayAdapter implements PaymentGatewayPort {
       gatewayTransactionId: String(obj.id),
       success: obj.success === true && obj.error_occured !== true,
       failureCode: obj.success === true ? undefined : ((obj.data?.txn_response_code as string) ?? 'GATEWAY_DECLINED'),
+      amountCents: obj.amount_cents === undefined || obj.amount_cents === null ? undefined : Number(obj.amount_cents),
+      currency: typeof obj.currency === 'string' ? obj.currency : undefined,
     };
+  }
+
+  /**
+   * Reconciliation inquiry (legacy Accept flow): auth token, then
+   * `POST /api/ecommerce/orders/transaction_inquiry` keyed by our
+   * `merchant_order_id`. The response is the transaction object (same shape
+   * as the webhook's `obj`), so it is run through `parseWebhookEvent`.
+   * ASSUMPTIONS TO VERIFY with Paymob: endpoint path/body, that a 404 means
+   * "no transaction yet", and which transaction is returned when an order has several.
+   */
+  async queryTransaction(merchantReference: string): Promise<GatewayTransactionInquiry> {
+    const authToken = await this.getAuthToken();
+    let transaction: Record<string, any>;
+    try {
+      const response = await fetch(`${PAYMOB_BASE_URL}/api/ecommerce/orders/transaction_inquiry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth_token: authToken, merchant_order_id: merchantReference }),
+      });
+      if (response.status === 404) {
+        return { status: 'NOT_FOUND' };
+      }
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(`Paymob transaction_inquiry responded ${response.status}: ${text}`);
+      }
+      transaction = (await response.json()) as Record<string, any>;
+    } catch (error) {
+      this.logger.error({ err: error }, 'Paymob transaction inquiry failed');
+      throw new ExternalProviderError('Paymob', 502, error);
+    }
+
+    if (!transaction || transaction.id === undefined || transaction.id === null) {
+      return { status: 'NOT_FOUND' };
+    }
+    if (transaction.pending === true) {
+      return { status: 'PENDING', rawBody: transaction };
+    }
+
+    const parsed = this.parseWebhookEvent({ obj: { ...transaction, order: { ...(transaction.order ?? {}), merchant_order_id: merchantReference } } });
+    return { status: parsed.success ? 'PAID' : 'FAILED', event: parsed, rawBody: transaction };
   }
 
   async refund(gatewayReference: string, amount: string): Promise<{ gatewayRefundReference?: string }> {

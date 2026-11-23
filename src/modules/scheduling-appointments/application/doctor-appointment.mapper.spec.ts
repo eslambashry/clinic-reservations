@@ -40,66 +40,24 @@ describe('toDoctorAppointmentSummary payment', () => {
     };
   }
 
-  it('shows the partial amount paid online and the rest to collect at the clinic', () => {
-    const summary = toDoctorAppointmentSummary(
-      row({ payment_intent: intent('FAWRY', '50', '500'), remaining_balance: new Prisma.Decimal('450') }),
-    );
+  it('never exposes a payment object to the doctor (fee-only flow)', () => {
+    const summary = toDoctorAppointmentSummary(row({ payment_intent: intent('CARD', '12', null) }));
 
-    expect(summary.payment).toEqual({
-      method: 'FAWRY',
-      currency: 'EGP',
-      fullAmount: '500.00',
-      paidAmount: '50.00',
-      remainingBalance: '450.00',
-    });
+    expect(summary).not.toHaveProperty('payment');
   });
 
-  it('treats pay-at-clinic as nothing paid yet, the whole fee due', () => {
-    const summary = toDoctorAppointmentSummary(row({ payment_intent: intent('PAY_AT_CLINIC', '300', null) }));
-
-    expect(summary.payment).toEqual({
-      method: 'PAY_AT_CLINIC',
-      currency: 'EGP',
-      fullAmount: '300.00',
-      paidAmount: '0.00',
-      remainingBalance: '300.00',
-    });
-  });
-
-  it('treats a pre-partial-payment online intent (no full_amount) as paid in full', () => {
-    const summary = toDoctorAppointmentSummary(row({ payment_intent: intent('INTERNAL_WALLET', '300', null) }));
-
-    expect(summary.payment).toMatchObject({ fullAmount: '300.00', paidAmount: '300.00', remainingBalance: '0.00' });
-  });
-
-  it('exposes what was refunded and the cancellation fee kept once a refund has completed', () => {
-    // 500 fee, 50 paid, 10% cancellation fee -> 45 back, 5 kept.
-    const summary = toDoctorAppointmentSummary(
-      row({
-        status: 'CANCELLED',
-        payment_intent: {
-          ...intent('FAWRY', '50', '500'),
-          refunds: [{ amount: new Prisma.Decimal('45'), status: 'COMPLETED' }],
-        },
-      }),
-    );
-
-    expect(summary.payment).toMatchObject({ paidAmount: '50.00', refundedAmount: '45.00', cancellationFee: '5.00' });
-  });
-
-  it('reports no refund fields when nothing was refunded or the refund has not completed', () => {
-    const noRefunds = toDoctorAppointmentSummary(row({ payment_intent: { ...intent('FAWRY', '50', '500'), refunds: [] } }));
-    const pending = toDoctorAppointmentSummary(
-      row({
-        payment_intent: { ...intent('FAWRY', '50', '500'), refunds: [{ amount: new Prisma.Decimal('45'), status: 'REQUESTED' }] },
-      }),
-    );
-
-    expect(noRefunds.payment).not.toHaveProperty('refundedAmount');
-    expect(pending.payment).not.toHaveProperty('refundedAmount');
-  });
-
-  it('is null when no payment intent is on record', () => {
-    expect(toDoctorAppointmentSummary(row()).payment).toBeNull();
-  });
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // it('exposes only the service fee paid (no consult fee, remaining balance or refund fields)', () => {
+  //   const summary = toDoctorAppointmentSummary(row({ payment_intent: intent('CARD', '12', null) }));
+  //   expect(summary.payment).toEqual({ method: 'CARD', currency: 'EGP', serviceFee: '12.00' });
+  // });
+  // it('does not expose refunds even when the intent carries completed refunds', () => {
+  //   const summary = toDoctorAppointmentSummary(
+  //     row({ payment_intent: { ...intent('CARD', '12', null), refunds: [{ amount: new Prisma.Decimal('12'), status: 'COMPLETED' }] } }),
+  //   );
+  //   expect(summary.payment).toEqual({ method: 'CARD', currency: 'EGP', serviceFee: '12.00' });
+  // });
+  // it('is null when no payment intent is on record', () => {
+  //   expect(toDoctorAppointmentSummary(row()).payment).toBeNull();
+  // });
 });

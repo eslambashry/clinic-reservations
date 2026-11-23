@@ -1,5 +1,5 @@
 import { AppointmentStatus, PaymentMethod, VisitStatus } from '@prisma/client';
-import { computeRemainingBalance } from '../../payments/domain/payment-money.rules';
+// import { computeRemainingBalance } from '../../payments/domain/payment-money.rules'; (used only by the disabled block below)
 import { AppointmentWithDoctorView } from '../infrastructure/appointment.repository';
 
 /**
@@ -16,17 +16,10 @@ import { AppointmentWithDoctorView } from '../infrastructure/appointment.reposit
 export interface DoctorAppointmentPayment {
   method: PaymentMethod;
   currency: string;
-  fullAmount: string;
-  paidAmount: string;
-  remainingBalance: string;
-  /**
-   * Present only once a refund has completed (a cancelled, paid appointment):
-   * what went back to the patient, and the cancellation fee kept out of
-   * `paidAmount`. The cancel call reports them once; this keeps them readable
-   * afterwards.
-   */
-  refundedAmount?: string;
-  cancellationFee?: string;
+  /** Service fee the patient paid (decimal string). */
+  serviceFee: string;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // fullAmount: string; paidAmount: string; remainingBalance: string; refundedAmount?: string; cancellationFee?: string;
 }
 
 /**
@@ -66,8 +59,9 @@ export interface DoctorAppointmentSummary {
   cancelledReason: string | null;
   cancelledBy: string | null;
   rescheduledFromAppointmentId: string | null;
-  /** `null` only when the appointment has no payment intent on record. */
-  payment: DoctorAppointmentPayment | null;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // /** `null` only when the appointment has no payment intent on record. */
+  // payment: DoctorAppointmentPayment | null;
   createdAt: Date;
 }
 
@@ -87,6 +81,15 @@ interface AppointmentPaymentSource {
 }
 
 /** Shared by both the doctor view and the patient-facing `AppointmentSummary` — same payment shape, same intent row, just exposed on two different response DTOs. */
+export function toAppointmentPayment(appointment: AppointmentPaymentSource): DoctorAppointmentPayment | null {
+  const intent = appointment.payment_intent;
+  if (!intent) return null;
+  // Fee-only flow: the only money in the app is the service fee; consult fee / remaining balance / refunds are not exposed.
+  return { method: intent.method, currency: intent.currency, serviceFee: intent.amount.toFixed(2) };
+}
+
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+/*
 export function toAppointmentPayment(appointment: AppointmentPaymentSource): DoctorAppointmentPayment | null {
   const intent = appointment.payment_intent;
   if (!intent) return null;
@@ -110,6 +113,8 @@ export function toAppointmentPayment(appointment: AppointmentPaymentSource): Doc
     ...refund,
   };
 }
+
+*/
 
 /** Sums the completed refunds on an intent; the fee kept is what was paid minus what went back. `{}` when nothing was refunded. */
 function summarizeRefund(
@@ -151,7 +156,8 @@ export function toDoctorAppointmentSummary(appointment: AppointmentWithDoctorVie
     cancelledReason: appointment.cancelled_reason,
     cancelledBy: appointment.cancelled_by,
     rescheduledFromAppointmentId: appointment.rescheduled_from_appointment_id,
-    payment: toAppointmentPayment(appointment),
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // payment: toAppointmentPayment(appointment),
     createdAt: appointment.created_at,
   };
 }

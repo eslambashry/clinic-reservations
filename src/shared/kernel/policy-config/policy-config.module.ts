@@ -4,6 +4,8 @@ import { ListPolicyConfigsUseCase } from './list-policy-configs.use-case';
 import { PolicyConfigReader } from './policy-config.reader';
 import { PolicyConfigRepository } from './policy-config.repository';
 import { PolicyConfigsController } from './policy-configs.controller';
+import { ServiceFeeController } from './service-fee.controller';
+import { ServiceFeeReader } from './service-fee.reader';
 import { UpsertPolicyConfigUseCase } from './upsert-policy-config.use-case';
 
 /**
@@ -22,8 +24,8 @@ import { UpsertPolicyConfigUseCase } from './upsert-policy-config.use-case';
 @Global()
 @Module({
   imports: [AuditModule],
-  controllers: [PolicyConfigsController],
-  providers: [PolicyConfigReader, PolicyConfigRepository, ListPolicyConfigsUseCase, UpsertPolicyConfigUseCase],
-  exports: [PolicyConfigReader],
+  controllers: [PolicyConfigsController, ServiceFeeController],
+  providers: [PolicyConfigReader, ServiceFeeReader, PolicyConfigRepository, ListPolicyConfigsUseCase, UpsertPolicyConfigUseCase],
+  exports: [PolicyConfigReader, ServiceFeeReader],
 })
 export class PolicyConfigModule {}

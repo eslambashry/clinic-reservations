@@ -36,6 +36,10 @@ import { AppointmentRepository } from './infrastructure/appointment.repository';
 import { AppointmentHoldRepository } from './infrastructure/appointment-hold.repository';
 import { AppointmentSlotRepository } from './infrastructure/appointment-slot.repository';
 import { HoldExpiryJob } from './infrastructure/hold-expiry.job';
+import { PaymobReconciliationJob } from './infrastructure/paymob-reconciliation.job';
+import { StaleTopUpCleanupJob } from './infrastructure/stale-top-up-cleanup.job';
+import { ReconcilePaymobPaymentsUseCase } from './application/reconcile-paymob-payments.use-case';
+import { CleanupStaleWalletTopUpsUseCase } from './application/cleanup-stale-wallet-top-ups.use-case';
 import { WaitingVisitExpiryJob } from './infrastructure/waiting-visit-expiry.job';
 import { ScheduleTemplateRepository } from './infrastructure/schedule-template.repository';
 import { SlotGenerationJob } from './infrastructure/slot-generation.job';
@@ -72,6 +76,10 @@ import { IdentityAuthModule } from '../identity-auth/identity-auth.module';
     GetAppointmentForReviewUseCase,
     SlotGenerationJob,
     HoldExpiryJob,
+    PaymobReconciliationJob,
+    StaleTopUpCleanupJob,
+    ReconcilePaymobPaymentsUseCase,
+    CleanupStaleWalletTopUpsUseCase,
     WaitingVisitExpiryJob,
     // application
     CreateScheduleTemplateUseCase,

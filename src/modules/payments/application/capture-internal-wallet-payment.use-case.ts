@@ -2,12 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PayableType, Prisma, ProviderType } from '@prisma/client';
 import { BusinessRuleError, DomainError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
-import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
-import { REGION_CONSTANTS } from '../../../shared/config/constants';
-import { computeCommissionSplit } from '../domain/payment-money.rules';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { PolicyConfigReader } from '../../../shared/kernel/policy-config/policy-config.reader';
+// import { REGION_CONSTANTS } from '../../../shared/config/constants';
+// import { computeCommissionSplit } from '../domain/payment-money.rules';
 import { PaymentIntentRepository } from '../infrastructure/payment-intent.repository';
-import { PaymentSplitRepository } from '../infrastructure/payment-split.repository';
-import { ProviderLedgerRepository } from '../infrastructure/provider-ledger.repository';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { PaymentSplitRepository } from '../infrastructure/payment-split.repository';
+// import { ProviderLedgerRepository } from '../infrastructure/provider-ledger.repository';
 import { WalletRepository } from '../infrastructure/wallet.repository';
 import { WalletTransactionRepository } from '../infrastructure/wallet-transaction.repository';
 
@@ -16,18 +18,21 @@ export interface CaptureInternalWalletPaymentInput {
   payableType: PayableType;
   payableId: string;
   amount: string;
-  /** Full price when `amount` is a partial payment toward it — stored on the intent; commission still applies to `amount` unchanged. */
-  fullAmount?: string;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // /** Full price when `amount` is a partial payment toward it. */
+  // fullAmount?: string;
   currency: string;
-  providerType: ProviderType;
-  providerId: string;
+  /** No longer used (no commission/provider ledger) - kept optional so callers need not change. */
+  providerType?: ProviderType;
+  providerId?: string;
   idempotencyKey: string;
 }
 
 export interface CaptureInternalWalletPaymentResult {
   paymentIntentId: string;
-  commissionAmount: string;
-  providerAmount: string;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // commissionAmount: string;
+  // providerAmount: string;
   newWalletBalance: string;
 }
 
@@ -64,9 +69,10 @@ export class CaptureInternalWalletPaymentUseCase {
     @Inject(WalletRepository) private readonly wallets: WalletRepository,
     @Inject(WalletTransactionRepository) private readonly walletTransactions: WalletTransactionRepository,
     @Inject(PaymentIntentRepository) private readonly paymentIntents: PaymentIntentRepository,
-    @Inject(PaymentSplitRepository) private readonly paymentSplits: PaymentSplitRepository,
-    @Inject(ProviderLedgerRepository) private readonly ledger: ProviderLedgerRepository,
-    @Inject(PolicyConfigReader) private readonly policyConfig: PolicyConfigReader,
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // @Inject(PaymentSplitRepository) private readonly paymentSplits: PaymentSplitRepository,
+    // @Inject(ProviderLedgerRepository) private readonly ledger: ProviderLedgerRepository,
+    // @Inject(PolicyConfigReader) private readonly policyConfig: PolicyConfigReader,
     @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
 
@@ -91,44 +97,46 @@ export class CaptureInternalWalletPaymentUseCase {
       currency: input.currency,
       idempotencyKey: input.idempotencyKey,
       method: 'INTERNAL_WALLET',
-      fullAmount: input.fullAmount,
+      // fullAmount: input.fullAmount, (partial payment disabled)
     });
 
-    const rate = await this.policyConfig.getValue<{ ratePercent: number }>(
-      tx,
-      REGION_CONSTANTS.DEFAULT_REGION_CODE,
-      'COMMISSION_RATE',
-    );
-    if (rate === null) {
-      throw new DomainError(500, 'COMMISSION_RATE_NOT_CONFIGURED', 'نسبة العمولة غير مُهيّأة لهذه المنطقة. تواصل مع الدعم.');
-    }
-    const split = computeCommissionSplit({ amount: input.amount, commissionRatePercent: rate.ratePercent });
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // const rate = await this.policyConfig.getValue<{ ratePercent: number }>(
+    // tx,
+    // REGION_CONSTANTS.DEFAULT_REGION_CODE,
+    // 'COMMISSION_RATE',
+    // );
+    // if (rate === null) {
+    // throw new DomainError(500, 'COMMISSION_RATE_NOT_CONFIGURED', 'نسبة العمولة غير مُهيّأة لهذه المنطقة. تواصل مع الدعم.');
+    // }
+    // const split = computeCommissionSplit({ amount: input.amount, commissionRatePercent: rate.ratePercent });
 
     const captured = await this.paymentIntents.markCaptured(tx, intent.id, intent.version);
     if (!captured) {
       throw new DomainError(500, 'PAYMENT_CAPTURE_FAILED', 'تعذّر تحصيل الدفعة. أعد المحاولة.', { paymentIntentId: intent.id });
     }
 
-    await this.paymentSplits.create(tx, {
-      paymentIntentId: intent.id,
-      payeeType: 'PLATFORM',
-      amount: split.platformAmount,
-      type: 'COMMISSION',
-    });
-    await this.paymentSplits.create(tx, {
-      paymentIntentId: intent.id,
-      payeeType: 'PROVIDER',
-      payeeId: input.providerId,
-      amount: split.providerAmount,
-      type: 'PROVIDER_SHARE',
-    });
-    await this.ledger.create(tx, {
-      providerType: input.providerType,
-      providerId: input.providerId,
-      entryType: 'EARNING',
-      amount: split.providerAmount,
-      relatedPaymentIntentId: intent.id,
-    });
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // await this.paymentSplits.create(tx, {
+    // paymentIntentId: intent.id,
+    // payeeType: 'PLATFORM',
+    // amount: split.platformAmount,
+    // type: 'COMMISSION',
+    // });
+    // await this.paymentSplits.create(tx, {
+    // paymentIntentId: intent.id,
+    // payeeType: 'PROVIDER',
+    // payeeId: input.providerId,
+    // amount: split.providerAmount,
+    // type: 'PROVIDER_SHARE',
+    // });
+    // await this.ledger.create(tx, {
+    // providerType: input.providerType,
+    // providerId: input.providerId,
+    // entryType: 'EARNING',
+    // amount: split.providerAmount,
+    // relatedPaymentIntentId: intent.id,
+    // });
 
     await this.walletTransactions.create(tx, {
       walletId: wallet.id,
@@ -152,8 +160,8 @@ export class CaptureInternalWalletPaymentUseCase {
 
     return {
       paymentIntentId: intent.id,
-      commissionAmount: split.platformAmount,
-      providerAmount: split.providerAmount,
+      // commissionAmount: split.platformAmount,
+      // providerAmount: split.providerAmount,
       newWalletBalance: debitedWallet!.balance.toFixed(2),
     };
   }
