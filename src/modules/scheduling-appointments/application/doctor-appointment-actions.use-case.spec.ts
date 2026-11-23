@@ -50,7 +50,6 @@ describe('Doctor-initiated appointment actions', () => {
         appointments as any,
         slots as any,
         policyConfig as any,
-        refund as any,
         audit as any,
         outbox as any,
         appointmentScope as any,
@@ -87,14 +86,15 @@ describe('Doctor-initiated appointment actions', () => {
       // Provider-initiated cancellation waives the fee entirely, so the
       // CANCELLATION_TIER policy is never even read (File 11 line 475).
       expect(policyConfig.getValue).not.toHaveBeenCalled();
-      expect(refund.execute).toHaveBeenCalledWith(tx, { paymentIntentId: 'intent-1', feePercent: 0 });
+      // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+      // expect(refund.execute).toHaveBeenCalledWith(tx, { paymentIntentId: 'intent-1', feePercent: 0 });
       expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: 'scheduling_appointments.appointment.cancel', reasonCode: 'PROVIDER_REQUEST' }));
       expect(outbox.emit).toHaveBeenCalledWith(
         tx,
         'AppointmentCancelled',
         expect.objectContaining({ patientId: 'patient-1', cancelledBy: 'DOCTOR', reason: 'PROVIDER_REQUEST' }),
       );
-      expect(result).toEqual({ status: 'CANCELLED', refundAmount: 250, feeApplied: 0 });
+      expect(result).toEqual({ status: 'CANCELLED', refundAmount: 0, feeApplied: 0 });
       // The doctor is the one who cancelled — no self-notification, and no
       // need to even look up their user id.
       expect(affiliationBilling.execute).not.toHaveBeenCalled();

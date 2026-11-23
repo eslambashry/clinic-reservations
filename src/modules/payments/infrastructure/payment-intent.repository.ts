@@ -32,6 +32,19 @@ export class PaymentIntentRepository {
     });
   }
 
+  /** Service fees collected: captured (not refunded) APPOINTMENT intents in the range. */
+  async sumCapturedAppointmentFees(db: Prisma.TransactionClient, range: { from?: Date; to?: Date }): Promise<Prisma.Decimal> {
+    const result = await db.paymentIntent.aggregate({
+      _sum: { amount: true },
+      where: {
+        payable_type: 'APPOINTMENT',
+        status: { in: ['CAPTURED', 'PARTIALLY_REFUNDED'] },
+        ...(range.from || range.to ? { created_at: { gte: range.from, lte: range.to } } : {}),
+      },
+    });
+    return result._sum.amount ?? new Prisma.Decimal(0);
+  }
+
   findById(db: Prisma.TransactionClient, id: string): Promise<PaymentIntent | null> {
     return db.paymentIntent.findUnique({ where: { id } });
   }
@@ -72,5 +85,28 @@ export class PaymentIntentRepository {
       data: { status, version: { increment: 1 } },
     });
     return result.count === 1;
+  }
+
+  /**
+   * Reconciliation/cleanup finder: online `CARD` intents still `CREATED`, older than `olderThan`
+   * (and newer than `newerThan` when given), with their latest attempt. `requireInitiatedAttempt`
+   * limits it to intents that still have an unresolved (INITIATED) attempt.
+   */
+  findStalePendingOnline(
+    db: Prisma.TransactionClient,
+    params: { payableTypes: PayableType[]; olderThan: Date; newerThan?: Date; requireInitiatedAttempt: boolean; limit: number },
+  ) {
+    return db.paymentIntent.findMany({
+      where: {
+        status: 'CREATED',
+        method: 'CARD',
+        payable_type: { in: params.payableTypes },
+        created_at: { lt: params.olderThan, ...(params.newerThan ? { gte: params.newerThan } : {}) },
+        ...(params.requireInitiatedAttempt ? { payment_attempts: { some: { status: 'INITIATED' } } } : {}),
+      },
+      include: { payment_attempts: { orderBy: { created_at: 'desc' }, take: 1 } },
+      orderBy: { created_at: 'asc' },
+      take: params.limit,
+    });
   }
 }

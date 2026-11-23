@@ -75,3 +75,17 @@ describe('parsePolicyType', () => {
     }
   });
 });
+
+describe('validatePolicyValue SERVICE_FEE', () => {
+  it.each(['12', '12.5', '12.00', '0.01'])('accepts a positive decimal string %p', (amount) => {
+    expect(validatePolicyValue('SERVICE_FEE' as any, { amount })).toEqual({ amount });
+  });
+
+  it.each(['0', '0.00', '-5', '12.345', 'abc', '', 12])('rejects %p', (amount) => {
+    expect(() => validatePolicyValue('SERVICE_FEE' as any, { amount })).toThrow(BusinessRuleError);
+  });
+
+  it('rejects unexpected keys', () => {
+    expect(() => validatePolicyValue('SERVICE_FEE' as any, { amount: '12.00', extra: 1 })).toThrow(BusinessRuleError);
+  });
+});

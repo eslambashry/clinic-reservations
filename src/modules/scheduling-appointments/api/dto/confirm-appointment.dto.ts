@@ -12,18 +12,22 @@ import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
  * `PAY_AT_CLINIC`, so it's confirmed here, immediately, in one call.
  */
 export class ConfirmAppointmentDto {
-  @ApiProperty({ enum: ['PAY_AT_CLINIC', 'INTERNAL_WALLET', 'ONLINE'] })
-  @IsIn(['PAY_AT_CLINIC', 'INTERNAL_WALLET', 'ONLINE'])
-  paymentMethod: 'PAY_AT_CLINIC' | 'INTERNAL_WALLET' | 'ONLINE';
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // @ApiProperty({ enum: ['PAY_AT_CLINIC', 'INTERNAL_WALLET', 'ONLINE'] })
+  // @IsIn(['PAY_AT_CLINIC', 'INTERNAL_WALLET', 'ONLINE'])
+  @ApiProperty({ enum: ['INTERNAL_WALLET', 'ONLINE'], description: 'Only INTERNAL_WALLET is accepted here (debits the service fee atomically). Card goes through POST /appointments/{holdId}/payments.' })
+  @IsIn(['INTERNAL_WALLET', 'ONLINE'])
+  paymentMethod: 'INTERNAL_WALLET' | 'ONLINE';
 
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   paymentIntentId?: string;
 
-  @ApiPropertyOptional({ example: '50.00', description: 'INTERNAL_WALLET only: optional partial amount (configured minimum up to the consult fee). Omit to pay in full. Rejected for PAY_AT_CLINIC.' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(12)
-  paymentAmount?: string;
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // @ApiPropertyOptional({ example: '50.00', description: 'INTERNAL_WALLET only: optional partial amount (configured minimum up to the consult fee). Omit to pay in full. Rejected for PAY_AT_CLINIC.' })
+  // @IsOptional()
+  // @IsString()
+  // @MaxLength(12)
+  // paymentAmount?: string;
 }

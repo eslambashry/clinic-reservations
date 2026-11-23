@@ -37,7 +37,7 @@ describe('ProcessPaymentWebhookUseCase', () => {
     const webhookEvents = { tryRecordFirstDelivery: jest.fn().mockResolvedValue(true) };
     const gateway = {
       verifyWebhookSignature: jest.fn().mockReturnValue(true),
-      parseWebhookEvent: jest.fn().mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: '999', success: true }),
+      parseWebhookEvent: jest.fn().mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: '999', success: true, amountCents: 20000, currency: 'EGP' }),
     };
     const fawryGateway = {
       verifyWebhookSignature: jest.fn().mockReturnValue(true),
@@ -131,37 +131,64 @@ describe('ProcessPaymentWebhookUseCase', () => {
     expect(webhookEvents.tryRecordFirstDelivery).not.toHaveBeenCalled();
   });
 
-  it('routes provider=fawry to the Fawry gateway, never Paymob\'s', async () => {
-    const { gateway, fawryGateway, findPayment, useCase } = setup();
-    findPayment.execute.mockResolvedValue(walletTopUpPayment);
-
-    await useCase.execute({ provider: 'fawry', rawBody, hmac: undefined });
-
-    expect(fawryGateway.verifyWebhookSignature).toHaveBeenCalledWith(rawBody, undefined);
-    expect(fawryGateway.parseWebhookEvent).toHaveBeenCalledWith(rawBody);
-    expect(gateway.verifyWebhookSignature).not.toHaveBeenCalled();
-    expect(gateway.parseWebhookEvent).not.toHaveBeenCalled();
-  });
-
-  it('tells the payment lookup which gateway sent the reference (Fawry keys attempts by the numeric merchant ref)', async () => {
-    const { findPayment, useCase } = setup();
-    findPayment.execute.mockResolvedValue(walletTopUpPayment);
-
-    await useCase.execute({ provider: 'fawry', rawBody, hmac: undefined });
-    await useCase.execute({ provider: 'paymob', rawBody, hmac });
-
-    expect(findPayment.execute.mock.calls[0][2]).toBe('fawry');
-    expect(findPayment.execute.mock.calls[1][2]).toBe('paymob');
-  });
-
-  it('rejects an unverified Fawry webhook the same way as an unverified Paymob one', async () => {
-    const { fawryGateway, webhookEvents, useCase } = setup();
-    fawryGateway.verifyWebhookSignature.mockReturnValue(false);
+  it('treats provider=fawry as unknown (Fawry is disabled): unhandled, never verified or recorded', async () => {
+    const { gateway, fawryGateway, webhookEvents, useCase } = setup();
 
     const result = await useCase.execute({ provider: 'fawry', rawBody, hmac: undefined });
 
     expect(result).toEqual({ handled: false });
+    expect(fawryGateway.verifyWebhookSignature).not.toHaveBeenCalled();
+    expect(gateway.verifyWebhookSignature).not.toHaveBeenCalled();
     expect(webhookEvents.tryRecordFirstDelivery).not.toHaveBeenCalled();
+  });
+
+  describe('amount / currency verification (success events only)', () => {
+    function arrangeSuccess(payment: any) {
+      const s = setup();
+      s.findPayment.execute.mockResolvedValue(payment);
+      s.holds.findByPaymentIntentId.mockResolvedValue(activeHold);
+      s.holds.markConverted.mockResolvedValue(undefined);
+      s.slots.findById.mockResolvedValue(slot);
+      s.slots.markBooked.mockResolvedValue(true);
+      s.affiliationBilling.execute.mockResolvedValue(billing);
+      s.appointments.create.mockResolvedValue({ id: 'appointment-1' });
+      return s;
+    }
+
+    it.each([
+      ['amount differs', { amountCents: 100, currency: 'EGP' }],
+      ['currency differs', { amountCents: 20000, currency: 'USD' }],
+      ['amount missing', { amountCents: undefined, currency: 'EGP' }],
+      ['currency missing', { amountCents: 20000, currency: undefined }],
+    ])('does not credit/confirm anything when the %s', async (_label, collected) => {
+      const { gateway, processWalletTopUp, captureOnlinePayment, appointments, handleLatePayment, findPayment, useCase } = setup();
+      gateway.parseWebhookEvent.mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: '999', success: true, ...collected });
+      findPayment.execute.mockResolvedValue(walletTopUpPayment);
+
+      await expect(useCase.execute({ provider: 'paymob', rawBody, hmac })).resolves.toEqual({ handled: false });
+
+      expect(processWalletTopUp.execute).not.toHaveBeenCalled();
+      expect(captureOnlinePayment.execute).not.toHaveBeenCalled();
+      expect(handleLatePayment.execute).not.toHaveBeenCalled();
+      expect(appointments.create).not.toHaveBeenCalled();
+    });
+
+    it('compares in minor units, so a 12.00 intent matches amount_cents 1200 (case-insensitive currency)', async () => {
+      const { gateway, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, amount: '12.00' });
+      gateway.parseWebhookEvent.mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: '999', success: true, amountCents: 1200, currency: 'egp' });
+
+      await expect(useCase.execute({ provider: 'paymob', rawBody, hmac })).resolves.toEqual({ handled: true });
+      expect(appointments.create).toHaveBeenCalled();
+    });
+
+    it('does not require amount/currency on a FAILURE event', async () => {
+      const { gateway, markFailed, findPayment, useCase } = setup();
+      gateway.parseWebhookEvent.mockReturnValue({ gatewayReference: 'attempt-1', gatewayTransactionId: '999', success: false, failureCode: 'DO_NOT_HONOR' });
+      findPayment.execute.mockResolvedValue(appointmentPayment);
+
+      await expect(useCase.execute({ provider: 'paymob', rawBody, hmac })).resolves.toEqual({ handled: true });
+      expect(markFailed.execute).toHaveBeenCalled();
+    });
   });
 
   describe('WALLET_TOPUP payable', () => {
@@ -209,7 +236,7 @@ describe('ProcessPaymentWebhookUseCase', () => {
       expect(holds.findByPaymentIntentId).not.toHaveBeenCalled();
     });
 
-    it('converts the hold, books the slot, captures the payment, and creates the CONFIRMED appointment (scenario: successful Fawry/mobile-wallet/card webhook)', async () => {
+    it('converts the hold, books the slot, captures the payment, and creates the CONFIRMED appointment (scenario: successful card webhook)', async () => {
       const { tx, findPayment, holds, slots, appointments, affiliationBilling, captureOnlinePayment, audit, outbox, useCase } = setup();
       findPayment.execute.mockResolvedValue(appointmentPayment);
       holds.findByPaymentIntentId.mockResolvedValue(activeHold);
@@ -223,57 +250,21 @@ describe('ProcessPaymentWebhookUseCase', () => {
 
       expect(holds.markConverted).toHaveBeenCalledWith(tx, 'hold-1', 1, expect.any(Date));
       expect(slots.markBooked).toHaveBeenCalledWith(tx, 'slot-1');
-      expect(captureOnlinePayment.execute).toHaveBeenCalledWith(tx, { paymentIntentId: 'intent-1', providerType: 'DOCTOR', providerId: 'doctor-1' });
+      expect(captureOnlinePayment.execute).toHaveBeenCalledWith(tx, { paymentIntentId: 'intent-1' });
       expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ id: 'appointment-1', slotId: 'slot-1', patientId: 'patient-1' }));
       expect(audit.record).toHaveBeenCalled();
       expect(outbox.emit).toHaveBeenCalledWith(tx, 'AppointmentConfirmed', expect.objectContaining({ appointmentId: 'appointment-1' }));
       expect(result).toEqual({ handled: true });
     });
 
-    describe('partial payment', () => {
-      function arrangeSuccess(payment: any) {
-        const s = setup();
-        s.findPayment.execute.mockResolvedValue(payment);
-        s.holds.findByPaymentIntentId.mockResolvedValue(activeHold);
-        s.holds.markConverted.mockResolvedValue(undefined);
-        s.slots.findById.mockResolvedValue(slot);
-        s.slots.markBooked.mockResolvedValue(true);
-        s.affiliationBilling.execute.mockResolvedValue(billing);
-        s.appointments.create.mockResolvedValue({ id: 'appointment-1' });
-        return s;
-      }
+    it('a retried success webhook creates no second appointment (intent already CAPTURED)', async () => {
+      const { findPayment, holds, appointments, useCase } = setup();
+      findPayment.execute.mockResolvedValue({ ...appointmentPayment, intentStatus: 'CAPTURED' });
+      holds.findByPaymentIntentId.mockResolvedValue(activeHold);
 
-      it('persists remaining_balance = stored full_amount - amount actually paid (300 fee, 50 paid -> 250)', async () => {
-        const { tx, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, amount: '50.00', fullAmount: '300.00' });
+      await useCase.execute({ provider: 'paymob', rawBody, hmac });
 
-        await useCase.execute({ provider: 'paymob', rawBody, hmac });
-
-        expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: '250.00' }));
-      });
-
-      it('persists 0.00 when the full amount was paid online', async () => {
-        const { tx, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, amount: '300.00', fullAmount: '300.00' });
-
-        await useCase.execute({ provider: 'paymob', rawBody, hmac });
-
-        expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: '0.00' }));
-      });
-
-      it('leaves remaining_balance unset for an intent with no full_amount (pre-existing rows)', async () => {
-        const { tx, appointments, useCase } = arrangeSuccess({ ...appointmentPayment, fullAmount: null });
-
-        await useCase.execute({ provider: 'paymob', rawBody, hmac });
-
-        expect(appointments.create).toHaveBeenCalledWith(tx, expect.objectContaining({ remainingBalance: undefined }));
-      });
-
-      it('a retried success webhook creates no second appointment (intent already CAPTURED)', async () => {
-        const { appointments, useCase } = arrangeSuccess({ ...appointmentPayment, intentStatus: 'CAPTURED', fullAmount: '300.00', amount: '50.00' });
-
-        await useCase.execute({ provider: 'paymob', rawBody, hmac });
-
-        expect(appointments.create).not.toHaveBeenCalled();
-      });
+      expect(appointments.create).not.toHaveBeenCalled();
     });
 
     it('does NOT confirm and instead auto-refunds when the hold already expired before the webhook arrived (scenario: webhook after expiration)', async () => {

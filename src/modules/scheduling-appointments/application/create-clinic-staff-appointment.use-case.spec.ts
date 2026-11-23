@@ -21,7 +21,6 @@ describe('CreateClinicStaffAppointmentUseCase', () => {
     const roleMemberships = { findActiveByUser: jest.fn(), create: jest.fn() };
     const slots = { findById: jest.fn().mockResolvedValue(slot), markBookedDirect: jest.fn().mockResolvedValue(true) };
     const appointments = { create: jest.fn().mockResolvedValue({ id: 'appointment-1' }) };
-    const paymentsCapture = { execute: jest.fn().mockResolvedValue({ paymentIntentId: 'pi-1' }) };
     const audit = { record: jest.fn() };
     const outbox = { emit: jest.fn() };
 
@@ -33,12 +32,11 @@ describe('CreateClinicStaffAppointmentUseCase', () => {
       roleMemberships as any,
       slots as any,
       appointments as any,
-      paymentsCapture as any,
       audit as any,
       outbox as any,
     );
 
-    return { tx, prisma, doctorScope, users, userRepository, roleMemberships, slots, appointments, paymentsCapture, audit, outbox, useCase };
+    return { tx, prisma, doctorScope, users, userRepository, roleMemberships, slots, appointments, audit, outbox, useCase };
   }
 
   it('walk-in with a brand-new phone creates a User + PATIENT role_membership + CONFIRMED appointment', async () => {

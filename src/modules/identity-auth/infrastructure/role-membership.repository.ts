@@ -65,6 +65,24 @@ export class RoleMembershipRepository {
     });
   }
 
+  /**
+   * One personal role per account: converts the user's ACTIVE personal
+   * membership `from` -> `to` in place (same row, so existing token/refresh
+   * references keep resolving) instead of adding a second membership.
+   * Returns true when a row was converted.
+   */
+  async convertPersonalRole(
+    db: Prisma.TransactionClient,
+    params: { userId: string; from: RoleContextType; to: RoleContextType },
+  ): Promise<boolean> {
+    await lockUserForAuthMutation(db, params.userId);
+    const result = await db.roleMembership.updateMany({
+      where: { user_id: params.userId, role_code: params.from, context_type: params.from, status: 'ACTIVE' },
+      data: { role_code: params.to, context_type: params.to, version: { increment: 1 } },
+    });
+    return result.count > 0;
+  }
+
   async setTitleSubtitle(
     db: Prisma.TransactionClient,
     id: string,

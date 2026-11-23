@@ -233,7 +233,7 @@ describe('Appointment booking loop (integration)', () => {
     const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slot.id, patientId }, actor);
 
     const outcomes = await Promise.allSettled(
-      Array.from({ length: 3 }, () => confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor)),
+      Array.from({ length: 3 }, () => confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' as any }, actor)),
     );
 
     const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
@@ -250,7 +250,7 @@ describe('Appointment booking loop (integration)', () => {
     const actor = { sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
 
     const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slot.id, patientId }, actor);
-    const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+    const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' as any }, actor);
 
     // The affiliation's consult_fee is 100.00 (beforeAll) and the seeded
     // CANCELLATION_TIER policy is 10% (src/db/seed.ts) — a real fee/refund
@@ -274,7 +274,7 @@ describe('Appointment booking loop (integration)', () => {
     const actor = { sub: patientId, roleMembershipId: randomUUID(), roleCode: 'PATIENT', contextType: 'PATIENT', permissions: [] } as any;
 
     const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: oldSlot.id, patientId }, actor);
-    const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+    const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' as any }, actor);
     const original = await prisma.appointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId } });
 
     const rescheduled = await rescheduleAppointment.execute(confirmed.appointmentId, { newSlotId: newSlot.id }, actor);
@@ -302,9 +302,9 @@ describe('Appointment booking loop (integration)', () => {
     const slotA = await freshOpenSlot(ahead(9, 2, 9));
     const slotB = await freshOpenSlot(ahead(9, 2, 10));
     const holdA = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slotA.id, patientId }, actor);
-    const confirmedA = await confirmAppointment.execute(holdA.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+    const confirmedA = await confirmAppointment.execute(holdA.holdId, { paymentMethod: 'PAY_AT_CLINIC' as any }, actor);
     const holdB = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slotB.id, patientId }, actor);
-    const confirmedB = await confirmAppointment.execute(holdB.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+    const confirmedB = await confirmAppointment.execute(holdB.holdId, { paymentMethod: 'PAY_AT_CLINIC' as any }, actor);
 
     const firstPage = await listAppointments.execute({ limit: 1 }, actor);
     expect(firstPage.items).toHaveLength(1);
@@ -341,7 +341,7 @@ describe('Appointment booking loop (integration)', () => {
       const slot = await freshOpenSlot(ahead(10, 1, hourOffset));
       const actor = patientActor(patientId);
       const hold = await createHold.execute({ doctorClinicAffiliationId: affiliationId, slotId: slot.id, patientId }, actor);
-      const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' }, actor);
+      const confirmed = await confirmAppointment.execute(hold.holdId, { paymentMethod: 'PAY_AT_CLINIC' as any }, actor);
       await prisma.appointmentSlot.update({
         where: { id: slot.id },
         data: { start_at: startAt, end_at: new Date(startAt.getTime() + 20 * 60 * 1000) },

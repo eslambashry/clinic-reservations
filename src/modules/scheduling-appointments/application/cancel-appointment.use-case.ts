@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/application/audit.service';
 import { GetAffiliationBillingInfoUseCase } from '../../provider-directory/application/get-affiliation-billing-info.use-case';
 import { ListAssistantUserIdsForBranchUseCase } from '../../provider-directory/application/list-assistant-user-ids-for-branch.use-case';
-import { ProcessCancellationRefundUseCase } from '../../payments/application/process-cancellation-refund.use-case';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { ProcessCancellationRefundUseCase } from '../../payments/application/process-cancellation-refund.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { DomainError, BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/core/errors/domain-errors';
 import { OutboxService } from '../../../shared/core/outbox/outbox.service';
@@ -54,7 +55,8 @@ export class CancelAppointmentUseCase {
     @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
     @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
     @Inject(PolicyConfigReader) private readonly policyConfig: PolicyConfigReader,
-    @Inject(ProcessCancellationRefundUseCase) private readonly refund: ProcessCancellationRefundUseCase,
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // @Inject(ProcessCancellationRefundUseCase) private readonly refund: ProcessCancellationRefundUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ResolveAppointmentScopeUseCase) private readonly appointmentScope: ResolveAppointmentScopeUseCase,
@@ -112,17 +114,21 @@ export class CancelAppointmentUseCase {
 
       await this.slots.releaseBooked(tx, appointment.slot_id);
 
-      let refundAmount = 0;
-      let feeApplied = 0;
-      if (appointment.payment_intent_id) {
-        // Provider-initiated cancellation is always a full refund, no fee
-        // tier applies (File 11 line 475) — bypasses the CANCELLATION_TIER
-        // read entirely rather than reading then overriding it.
-        const feePercent = input.reason === 'PROVIDER_REQUEST' ? 0 : await this.readCancellationFeePercent(tx);
-        const result = await this.refund.execute(tx, { paymentIntentId: appointment.payment_intent_id, feePercent });
-        refundAmount = Number(result.refundAmount);
-        feeApplied = Number(result.feeApplied);
-      }
+      // The service fee is NEVER refunded on cancellation (the fee is not a deposit on the visit).
+      const refundAmount = 0;
+      const feeApplied = 0;
+      // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+      // let refundAmount = 0;
+      // let feeApplied = 0;
+      // if (appointment.payment_intent_id) {
+      // // Provider-initiated cancellation is always a full refund, no fee
+      // // tier applies (File 11 line 475) — bypasses the CANCELLATION_TIER
+      // // read entirely rather than reading then overriding it.
+      // const feePercent = input.reason === 'PROVIDER_REQUEST' ? 0 : await this.readCancellationFeePercent(tx);
+      // const result = await this.refund.execute(tx, { paymentIntentId: appointment.payment_intent_id, feePercent });
+      // refundAmount = Number(result.refundAmount);
+      // feeApplied = Number(result.feeApplied);
+      // }
 
       await this.audit.record(tx, {
         actorUserId: actor.sub,

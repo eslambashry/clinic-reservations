@@ -190,7 +190,7 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     extractUserId: (p) => p.payerUserId,
     render: (p) => ({
       title: 'تم تأكيد الدفع',
-      body: `تم تحصيل دفعتك بمبلغ ${money(p.amount, p.currency)} بنجاح.`,
+      body: `تم دفع رسوم الخدمة بمبلغ ${money(p.amount, p.currency)} بنجاح.`,
       data: { paymentIntentId: p.paymentIntentId, payableType: p.payableType, payableId: p.payableId },
     }),
   },
@@ -209,8 +209,8 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     channels: ['PUSH'],
     extractUserId: (p) => p.payerUserId,
     render: (p) => ({
-      title: 'تم استرداد المبلغ',
-      body: `تم استرداد ${p.refundAmount} إلى وسيلة الدفع الأصلية.`,
+      title: 'تمت إضافة مبلغ إلى محفظتك',
+      body: `تمت إضافة ${p.refundAmount} إلى رصيد محفظتك.`,
       data: { paymentIntentId: p.paymentIntentId },
     }),
   },
@@ -220,8 +220,28 @@ export const NOTIFICATION_TEMPLATES: Readonly<Record<string, NotificationTemplat
     extractUserId: (p) => p.payerUserId,
     render: (p) => ({
       title: 'تم استرداد دفعتك',
-      body: 'وصلت دفعتك بعد انتهاء مهلة الحجز، فتم استرداد المبلغ بالكامل تلقائيًا.',
+      body: 'وصلت دفعتك بعد انتهاء مهلة الحجز، فتمت إضافة المبلغ بالكامل إلى رصيد محفظتك تلقائيًا.',
       data: { paymentIntentId: p.paymentIntentId },
+    }),
+  },
+  WithdrawalCompleted: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.userId,
+    render: (p) => ({
+      title: 'تم تنفيذ طلب السحب',
+      body: `تم تحويل ${p.amount} إلى حسابك. يمكنك الاطلاع على إثبات التحويل من المحفظة.`,
+      data: { withdrawalId: p.withdrawalId },
+    }),
+  },
+  WithdrawalRejected: {
+    tier: 'TRANSACTIONAL',
+    channels: ['PUSH'],
+    extractUserId: (p) => p.userId,
+    render: (p) => ({
+      title: 'تم رفض طلب السحب',
+      body: `تم رفض طلب سحب ${p.amount} وإعادة المبلغ إلى محفظتك. السبب: ${p.reason}`,
+      data: { withdrawalId: p.withdrawalId },
     }),
   },
   WalletToppedUp: {

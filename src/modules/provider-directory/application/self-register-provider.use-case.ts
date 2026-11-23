@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../../audit/application/audit.service';
+import { GrantRoleMembershipUseCase } from '../../identity-auth/application/grant-role-membership.use-case';
 import { ListActiveAdminUserIdsUseCase } from '../../identity-auth/application/list-active-admin-user-ids.use-case';
+import { RoleContextType } from '@prisma/client';
 import { UpdateUserProfileUseCase } from '../../identity-auth/application/update-user-profile.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { MEDIA_CONSTANTS, PROVIDER_REGISTRATION_CONSTANTS } from '../../../shared/config/constants';
@@ -81,6 +83,7 @@ export class SelfRegisterProviderUseCase {
     @Inject(ScheduleTemplateRepository) private readonly scheduleTemplates: ScheduleTemplateRepository,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(ListActiveAdminUserIdsUseCase) private readonly listActiveAdminUserIds: ListActiveAdminUserIdsUseCase,
+    @Inject(GrantRoleMembershipUseCase) private readonly grantRoleMembership: GrantRoleMembershipUseCase,
   ) {}
 
   async execute(dto: SubmitProviderRegistrationDto, actor: AccessTokenPayload): Promise<SelfRegisterProviderResult> {
@@ -128,6 +131,15 @@ export class SelfRegisterProviderUseCase {
       } catch (error) {
         throw translateCreateDoctorError(error, actor.sub);
       }
+
+      // One role per account: from the moment the application is submitted the
+      // applicant is a DOCTOR (doctor row stays PENDING until Admin verify), and
+      // is no longer a PATIENT — not even while waiting for approval.
+      await this.grantRoleMembership.execute(tx, {
+        userId: actor.sub,
+        roleCode: 'DOCTOR',
+        contextType: RoleContextType.DOCTOR,
+      });
 
       if (dto.full_name !== undefined || dto.email !== undefined) {
         const { firstName, lastName } = dto.full_name !== undefined ? splitFullName(dto.full_name) : { firstName: undefined, lastName: undefined };

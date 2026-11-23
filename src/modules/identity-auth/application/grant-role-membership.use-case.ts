@@ -46,6 +46,19 @@ export class GrantRoleMembershipUseCase {
       return;
     }
 
+    // One personal role per account: a patient who becomes a doctor is
+    // converted, never given a second membership next to PATIENT.
+    if (
+      input.roleCode === 'DOCTOR' &&
+      (await this.roleMemberships.convertPersonalRole(tx, {
+        userId: input.userId,
+        from: RoleContextType.PATIENT,
+        to: RoleContextType.DOCTOR,
+      }))
+    ) {
+      return;
+    }
+
     await this.roleMemberships.create(tx, {
       userId: input.userId,
       roleCode: input.roleCode,

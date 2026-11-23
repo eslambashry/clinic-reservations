@@ -5,7 +5,8 @@ import { AuditService } from '../../audit/application/audit.service';
 import { GetUserSummaryUseCase } from '../../identity-auth/application/get-user-summary.use-case';
 import { RoleMembershipRepository } from '../../identity-auth/infrastructure/role-membership.repository';
 import { UserRepository } from '../../identity-auth/infrastructure/user.repository';
-import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
+// DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+// import { CapturePayAtClinicPaymentUseCase } from '../../payments/application/capture-pay-at-clinic-payment.use-case';
 import { ResolveDoctorScopeUseCase } from '../../provider-directory/application/resolve-doctor-scope.use-case';
 import { AccessTokenPayload } from '../../../shared/core/auth/jwt-payload.interface';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/core/errors/domain-errors';
@@ -39,7 +40,8 @@ export class CreateClinicStaffAppointmentUseCase {
     @Inject(RoleMembershipRepository) private readonly roleMemberships: RoleMembershipRepository,
     @Inject(AppointmentSlotRepository) private readonly slots: AppointmentSlotRepository,
     @Inject(AppointmentRepository) private readonly appointments: AppointmentRepository,
-    @Inject(CapturePayAtClinicPaymentUseCase) private readonly paymentsCapture: CapturePayAtClinicPaymentUseCase,
+    // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+    // @Inject(CapturePayAtClinicPaymentUseCase) private readonly paymentsCapture: CapturePayAtClinicPaymentUseCase,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(OutboxService) private readonly outbox: OutboxService,
   ) {}
@@ -100,23 +102,25 @@ export class CreateClinicStaffAppointmentUseCase {
       }
 
       const appointmentId = randomUUID();
-      const billing = await this.paymentsCapture.execute(tx, {
-        payerUserId: patientId,
-        payableType: 'APPOINTMENT',
-        payableId: appointmentId,
-        amount: affiliation.consultFee,
-        currency: affiliation.currency,
-        providerType: 'DOCTOR',
-        providerId: scope.doctorId,
-        idempotencyKey: `clinic-staff:${appointmentId}`,
-      });
+      // No cash / no commission: a clinic-staff booking creates no payment intent.
+      // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+      // const billing = await this.paymentsCapture.execute(tx, {
+      // payerUserId: patientId,
+      // payableType: 'APPOINTMENT',
+      // payableId: appointmentId,
+      // amount: affiliation.consultFee,
+      // currency: affiliation.currency,
+      // providerType: 'DOCTOR',
+      // providerId: scope.doctorId,
+      // idempotencyKey: `clinic-staff:${appointmentId}`,
+      // });
 
       const appointment = await this.appointments.create(tx, {
         id: appointmentId,
         slotId: slot.id,
         patientId,
         doctorClinicAffiliationId: affiliation.affiliationId,
-        paymentIntentId: billing.paymentIntentId,
+        // paymentIntentId: billing.paymentIntentId, (pay-at-clinic disabled)
       });
 
       await this.audit.record(tx, {

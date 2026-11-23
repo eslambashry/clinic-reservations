@@ -32,14 +32,15 @@ export class FinanceController {
   ) {}
 
   @Get('summary')
-  @ApiOperation({ summary: 'Admin: commission / provider-share / refund totals over an optional date range' })
+  @ApiOperation({ summary: 'Admin: service-fee / wallet-balances / top-up / withdrawals / refund totals over an optional date range' })
   summary(@Query() query: GetFinanceSummaryQueryDto): Promise<FinanceSummary> {
     return this.getFinanceSummary.execute(query);
   }
 
-  @Get('ledger')
-  @ApiOperation({ summary: 'Admin: provider ledger entries, newest first' })
-  ledger(@Query() query: ListProviderLedgerEntriesQueryDto): Promise<ListProviderLedgerEntriesResult> {
-    return this.listLedgerEntries.execute(query);
-  }
+  // DISABLED TEMPORARILY: هذه الميزة ملغاة بشكل مؤقت حاليا
+  // @Get('ledger')
+  // @ApiOperation({ summary: 'Admin: provider ledger entries, newest first' })
+  // ledger(@Query() query: ListProviderLedgerEntriesQueryDto): Promise<ListProviderLedgerEntriesResult> {
+  // return this.listLedgerEntries.execute(query);
+  // }
 }
